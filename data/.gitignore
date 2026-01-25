@@ -1,0 +1,12 @@
+# SQLite database file
+*.db
+*.db-shm
+*.db-wal
+
+# Export files
+mappings-export.json
+directus-import.json
+export-*.sql
+
+# Backup files
+*.backup

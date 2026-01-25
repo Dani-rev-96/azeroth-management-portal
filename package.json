@@ -1,0 +1,41 @@
+{
+  "name": "wow-frontend",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@nuxt/image": "^2.0.0",
+    "@nuxtjs/sitemap": "^7.5.2",
+    "@pinia/nuxt": "^0.11.3",
+    "@primeuix/themes": "^2.0.3",
+    "@vite-pwa/nuxt": "^1.1.0",
+    "@vueuse/core": "^14.1.0",
+    "@vueuse/nuxt": "^14.1.0",
+    "better-sqlite3": "^12.6.2",
+    "gsap": "^3.14.2",
+    "nuxt": "^4.3.0",
+    "nuxt-directus": "^5.7.0",
+    "nuxt-jsonld": "^2.2.1",
+    "nuxt-multi-cache": "^4.0.3",
+    "nuxt-svgo": "^4.2.6",
+    "nuxt-viewport": "^2.3.1",
+    "nuxt-vitalizer": "^2.0.0",
+    "pinia": "^3.0.4",
+    "primevue": "^4.5.4",
+    "swiper": "^12.0.3",
+    "vue": "^3.5.27",
+    "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@primevue/nuxt-module": "^4.5.4",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.0.10",
+    "sass": "^1.97.3"
+  }
+}
