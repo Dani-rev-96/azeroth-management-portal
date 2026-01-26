@@ -1,57 +1,41 @@
 <template>
-  <form @submit.prevent="handleSubmit" class="space-y-4">
-    <!-- Realm Selection -->
-    <div>
-      <label class="block text-sm font-medium text-gray-700 mb-2">
-        Realm
-      </label>
-      <select
-        v-model="formData.realmId"
-        class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-      >
-        <option value="wotlk">Azeroth WoTLK (Classical)</option>
-        <option value="wotlk-ip">Azeroth IP (Individual Progression)</option>
-      </select>
-    </div>
-
+  <form @submit.prevent="handleSubmit" class="link-account-form">
     <!-- Account Name -->
-    <div>
-      <label class="block text-sm font-medium text-gray-700 mb-2">
+    <div class="form-group">
+      <label>
         WoW Account Name
       </label>
       <input
         v-model="formData.accountName"
         type="text"
         placeholder="e.g., MyAccount"
-        class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
         required
       />
     </div>
 
     <!-- Account Password -->
-    <div>
-      <label class="block text-sm font-medium text-gray-700 mb-2">
+    <div class="form-group">
+      <label>
         WoW Account Password
       </label>
       <input
         v-model="formData.password"
         type="password"
         placeholder="••••••••"
-        class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
         required
       />
     </div>
 
     <!-- Error Message -->
-    <div v-if="error" class="bg-red-50 border border-red-200 rounded-lg p-3">
-      <p class="text-red-900 text-sm">{{ error }}</p>
+    <div v-if="error" class="error-message">
+      <p>{{ error }}</p>
     </div>
 
     <!-- Submit Button -->
     <button
       type="submit"
       :disabled="loading"
-      class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded-lg transition duration-200"
+      class="submit-button"
     >
       {{ loading ? 'Linking...' : 'Link Account' }}
     </button>
@@ -60,7 +44,8 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { RealmId } from '~/types'
+import { useAuthStore } from '~/stores/auth'
+import { useAccountsStore } from '~/stores/accounts'
 
 const emit = defineEmits<{
   success: []
@@ -72,7 +57,6 @@ const loading = ref(false)
 const error = ref('')
 
 const formData = ref({
-  realmId: 'wotlk' as RealmId,
   accountName: '',
   password: '',
 })
@@ -89,13 +73,11 @@ const handleSubmit = async () => {
     await accountsStore.createAccountMapping(
       authStore.userId,
       formData.value.accountName,
-      formData.value.password,
-      formData.value.realmId
+      formData.value.password
     )
 
     // Reset form
     formData.value = {
-      realmId: 'wotlk',
       accountName: '',
       password: '',
     }
@@ -110,6 +92,99 @@ const handleSubmit = async () => {
 }
 </script>
 
-<style scoped>
-/* Component styles */
+<style scoped lang="scss">
+.link-account-form {
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 2rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+
+  .form-group {
+    margin-bottom: 1.5rem;
+
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+      color: #374151;
+      font-size: 0.95rem;
+    }
+
+    input,
+    select {
+      width: 100%;
+      padding: 0.75rem;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 1rem;
+      transition: all 0.2s;
+      background: white;
+      color: #1f2937;
+
+      &:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      }
+
+      &::placeholder {
+        color: #9ca3af;
+      }
+    }
+
+    select {
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.75rem center;
+      background-size: 1.25rem;
+      padding-right: 2.5rem;
+    }
+  }
+
+  .error-message {
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    color: #dc2626;
+
+    p {
+      margin: 0;
+      font-size: 0.95rem;
+    }
+  }
+
+  .submit-button {
+    width: 100%;
+    padding: 0.875rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+
+    &:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+    }
+
+    &:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  }
+}
 </style>

@@ -1,10 +1,9 @@
 import { defineStore } from 'pinia'
-import type { ManagedAccount, AccountMapping, RealmId } from '~/types'
+import type { ManagedAccount, AccountMapping } from '~/types'
 
 interface AccountsState {
   accounts: ManagedAccount[]
   currentAccountId?: number
-  selectedRealmId: RealmId
   loading: boolean
   error?: string
 }
@@ -13,7 +12,6 @@ export const useAccountsStore = defineStore('accounts', {
   state: (): AccountsState => ({
     accounts: [],
     currentAccountId: undefined,
-    selectedRealmId: 'wotlk',
     loading: false,
     error: undefined,
   }),
@@ -25,9 +23,6 @@ export const useAccountsStore = defineStore('accounts', {
       state.currentAccountId 
         ? state.accounts.find(acc => acc.mapping.wowAccountId === state.currentAccountId)
         : undefined,
-    
-    accountsByRealm: (state) => (realmId: RealmId) =>
-      state.accounts.filter(acc => acc.realm.id === realmId),
     
     hasAccounts: (state) => state.accounts.length > 0,
   },
@@ -57,8 +52,7 @@ export const useAccountsStore = defineStore('accounts', {
     async createAccountMapping(
       keycloakId: string,
       wowAccountName: string,
-      wowAccountPassword: string,
-      realmId: RealmId
+      wowAccountPassword: string
     ) {
       try {
         const data = await $fetch<ManagedAccount>('/api/accounts/map', {
@@ -67,7 +61,6 @@ export const useAccountsStore = defineStore('accounts', {
             keycloakId,
             wowAccountName,
             wowAccountPassword,
-            realmId,
           },
         })
 
@@ -98,10 +91,6 @@ export const useAccountsStore = defineStore('accounts', {
 
     selectAccount(accountId: number) {
       this.currentAccountId = accountId
-    },
-
-    selectRealm(realmId: RealmId) {
-      this.selectedRealmId = realmId
     },
   },
 })

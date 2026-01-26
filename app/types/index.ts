@@ -1,5 +1,5 @@
 // Keycloak User from oauth-proxy
-export interface KeycloakUser {
+export type KeycloakUser = {
   sub: string
   preferred_username: string
   email: string
@@ -12,8 +12,9 @@ export interface KeycloakUser {
 // WoW Server Realm Configuration
 export type RealmId = 'wotlk' | 'wotlk-ip' | 'wotlk-ip-boosted'
 
-export interface RealmConfig {
+export type RealmConfig = {
   id: RealmId
+  realmId: number // Numeric ID from realmlist table
   name: string
   description: string
   version: string // WOTLK, etc.
@@ -23,8 +24,24 @@ export interface RealmConfig {
   databaseHost: string
 }
 
+// AzerothCore Account (raw from acore_auth.account table)
+export type AzerothCoreAccount = {
+  id: number
+  username: string
+  salt: string
+  verifier: string
+  email: string | null
+  joindate: string
+  last_ip: string
+  last_login: string | null
+  online: number
+  expansion: number
+  mutetime: bigint
+  locale: number
+}
+
 // WoW Account (stored in auth database)
-export interface WoWAccount {
+export type WoWAccount = {
   id: number
   username: string
   sha_pass_hash: string
@@ -39,7 +56,7 @@ export interface WoWAccount {
 }
 
 // WoW Character
-export interface WoWCharacter {
+export type WoWCharacter = {
   guid: number
   name: string
   race: number
@@ -60,26 +77,30 @@ export interface WoWCharacter {
 }
 
 // Mapping between Keycloak and WoW Account
-export interface AccountMapping {
+export type AccountMapping = {
   keycloakId: string
   keycloakUsername: string
   wowAccountId: number
   wowAccountName: string
-  realmId: RealmId
   createdAt: string
   lastUsed?: string
 }
 
+// Realm character data for an account
+export type RealmCharacterData = {
+  realm: RealmConfig
+  characters: WoWCharacter[]
+}
+
 // Account Management Data (combined view for frontend)
-export interface ManagedAccount {
+export type ManagedAccount = {
   mapping: AccountMapping
   wowAccount: WoWAccount
-  characters: WoWCharacter[]
-  realm: RealmConfig
+  realms: RealmCharacterData[] // Characters grouped by realm
 }
 
 // API Response Types
-export interface ApiResponse<T> {
+export type ApiResponse<T> = {
   success: boolean
   data?: T
   error?: string
@@ -87,12 +108,12 @@ export interface ApiResponse<T> {
 }
 
 // SOAP Request/Response
-export interface SoapRequest {
+export type SoapRequest = {
   command: string
   args?: string[]
 }
 
-export interface SoapResponse {
+export type SoapResponse = {
   status: number
   result?: string
 }

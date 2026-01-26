@@ -24,6 +24,13 @@ logs
 .env.*.local
 !.env.example
 
+# Database credentials (plaintext local only - encrypted .enc versions are safe to commit)
+.db.local.json
+.db.staging.json
+.db.production.json
+# But allow encrypted versions
+!.db.*.enc.json
+
 # nix
 result
 
@@ -34,3 +41,9 @@ models
 #direnv
 .direnv
 .envrc*
+
+/secrets
+
+**/*.cred.*
+!**/*.cred.enc.*
+

@@ -28,7 +28,6 @@ export function exportForDirectus() {
     keycloak_username: m.keycloak_username,
     wow_account_id: m.wow_account_id,
     wow_account_name: m.wow_account_username,
-    realm: m.realm_id,
     status: 'active',
     date_created: m.created_at,
     date_updated: m.last_used,
@@ -53,9 +52,9 @@ export function exportToSQL(dialect: 'postgres' | 'mysql' = 'postgres') {
     const lastUsed = m.last_used ? `'${m.last_used}'` : 'NULL'
     
     if (dialect === 'postgres') {
-      return `INSERT INTO account_mappings (keycloak_id, keycloak_username, wow_account_id, wow_account_username, realm_id, created_at, last_used, metadata) VALUES ('${m.keycloak_id}', '${m.keycloak_username}', ${m.wow_account_id}, '${m.wow_account_username}', '${m.realm_id}', '${m.created_at}', ${lastUsed}, ${metadata});`
+      return `INSERT INTO account_mappings (keycloak_id, keycloak_username, wow_account_id, wow_account_username, created_at, last_used, metadata) VALUES ('${m.keycloak_id}', '${m.keycloak_username}', ${m.wow_account_id}, '${m.wow_account_username}', '${m.created_at}', ${lastUsed}, ${metadata});`
     } else {
-      return `INSERT INTO account_mappings (keycloak_id, keycloak_username, wow_account_id, wow_account_username, realm_id, created_at, last_used, metadata) VALUES ('${m.keycloak_id}', '${m.keycloak_username}', ${m.wow_account_id}, '${m.wow_account_username}', '${m.realm_id}', '${m.created_at}', ${lastUsed}, ${metadata});`
+      return `INSERT INTO account_mappings (keycloak_id, keycloak_username, wow_account_id, wow_account_username, created_at, last_used, metadata) VALUES ('${m.keycloak_id}', '${m.keycloak_username}', ${m.wow_account_id}, '${m.wow_account_username}', '${m.created_at}', ${lastUsed}, ${metadata});`
     }
   })
 

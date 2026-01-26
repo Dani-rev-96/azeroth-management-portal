@@ -73,3 +73,10 @@ bun run preview
 ```
 
 Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+
+### certs for ssl development
+
+mkdir certs
+cd certs
+
+mkcert -cert-file localhost.pem -key-file localhost-key.pem localhost

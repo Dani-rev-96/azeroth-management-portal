@@ -24,8 +24,16 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    // Get authenticated user from headers
-    const authenticatedUser = getHeader(event, 'x-remote-user')
+    const config = useRuntimeConfig()
+    const authMode = config.public.authMode
+
+    // Get authenticated user from headers or mock user
+    let authenticatedUser: string | undefined
+    if (authMode === 'mock') {
+      authenticatedUser = config.public.mockUser || 'admin'
+    } else {
+      authenticatedUser = getHeader(event, 'x-remote-user')
+    }
     
     // Verify the mapping belongs to the authenticated user
     const mappings = AccountMappingDB.findByKeycloakId(keycloakId)

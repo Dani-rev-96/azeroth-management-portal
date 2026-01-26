@@ -42,11 +42,10 @@ function initSchema() {
       keycloak_username TEXT NOT NULL,
       wow_account_id INTEGER NOT NULL,
       wow_account_username TEXT NOT NULL,
-      realm_id TEXT NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       last_used DATETIME,
       metadata TEXT,
-      UNIQUE(keycloak_id, wow_account_id, realm_id)
+      UNIQUE(keycloak_id, wow_account_id)
     );
     
     CREATE INDEX IF NOT EXISTS idx_keycloak_id 
@@ -54,9 +53,6 @@ function initSchema() {
     
     CREATE INDEX IF NOT EXISTS idx_wow_account_id 
       ON account_mappings(wow_account_id);
-    
-    CREATE INDEX IF NOT EXISTS idx_realm_id 
-      ON account_mappings(realm_id);
   `)
 }
 
@@ -69,7 +65,6 @@ export interface DBAccountMapping {
   keycloak_username: string
   wow_account_id: number
   wow_account_username: string
-  realm_id: RealmId
   created_at: string
   last_used: string | null
   metadata: string | null
@@ -91,12 +86,12 @@ export const AccountMappingDB = {
   /**
    * Find a specific mapping
    */
-  findByIds(keycloakId: string, wowAccountId: number, realmId: RealmId): DBAccountMapping | undefined {
+  findByIds(keycloakId: string, wowAccountId: number): DBAccountMapping | undefined {
     const db = getDatabase()
     const stmt = db.prepare(
-      'SELECT * FROM account_mappings WHERE keycloak_id = ? AND wow_account_id = ? AND realm_id = ?'
+      'SELECT * FROM account_mappings WHERE keycloak_id = ? AND wow_account_id = ?'
     )
-    return stmt.get(keycloakId, wowAccountId, realmId) as DBAccountMapping | undefined
+    return stmt.get(keycloakId, wowAccountId) as DBAccountMapping | undefined
   },
 
   /**
@@ -107,14 +102,13 @@ export const AccountMappingDB = {
     keycloakUsername: string
     wowAccountId: number
     wowAccountUsername: string
-    realmId: RealmId
     metadata?: Record<string, any>
   }): DBAccountMapping {
     const db = getDatabase()
     const stmt = db.prepare(`
       INSERT INTO account_mappings 
-        (keycloak_id, keycloak_username, wow_account_id, wow_account_username, realm_id, metadata)
-      VALUES (?, ?, ?, ?, ?, ?)
+        (keycloak_id, keycloak_username, wow_account_id, wow_account_username, metadata)
+      VALUES (?, ?, ?, ?, ?)
     `)
     
     const result = stmt.run(
@@ -122,7 +116,6 @@ export const AccountMappingDB = {
       mapping.keycloakUsername,
       mapping.wowAccountId,
       mapping.wowAccountUsername,
-      mapping.realmId,
       mapping.metadata ? JSON.stringify(mapping.metadata) : null
     )
 
@@ -166,12 +159,12 @@ export const AccountMappingDB = {
   /**
    * Check if a mapping exists
    */
-  exists(keycloakId: string, wowAccountId: number, realmId: RealmId): boolean {
+  exists(keycloakId: string, wowAccountId: number): boolean {
     const db = getDatabase()
     const stmt = db.prepare(
-      'SELECT 1 FROM account_mappings WHERE keycloak_id = ? AND wow_account_id = ? AND realm_id = ? LIMIT 1'
+      'SELECT 1 FROM account_mappings WHERE keycloak_id = ? AND wow_account_id = ? LIMIT 1'
     )
-    return stmt.get(keycloakId, wowAccountId, realmId) !== undefined
+    return stmt.get(keycloakId, wowAccountId) !== undefined
   },
 }
 

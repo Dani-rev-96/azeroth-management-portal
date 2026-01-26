@@ -1,0 +1,252 @@
+<template>
+  <form @submit.prevent="handleSubmit" class="create-account-form">
+    <!-- Username -->
+    <div class="form-group">
+      <label>
+        Username
+      </label>
+      <input
+        v-model="formData.username"
+        type="text"
+        placeholder="e.g., MyAccount"
+        minlength="3"
+        maxlength="16"
+        pattern="[a-zA-Z0-9]+"
+        required
+      />
+      <small>3-16 characters, letters and numbers only</small>
+    </div>
+
+    <!-- Password -->
+    <div class="form-group">
+      <label>
+        Password
+      </label>
+      <input
+        v-model="formData.password"
+        type="password"
+        placeholder="••••••••"
+        minlength="8"
+        required
+      />
+      <small>At least 8 characters</small>
+    </div>
+
+    <!-- Confirm Password -->
+    <div class="form-group">
+      <label>
+        Confirm Password
+      </label>
+      <input
+        v-model="formData.confirmPassword"
+        type="password"
+        placeholder="••••••••"
+        required
+      />
+    </div>
+
+    <!-- Email (Optional) -->
+    <div class="form-group">
+      <label>
+        Email (Optional)
+      </label>
+      <input
+        v-model="formData.email"
+        type="email"
+        placeholder="your@email.com"
+      />
+      <small>For account recovery</small>
+    </div>
+
+    <!-- Error Message -->
+    <div v-if="error" class="error-message">
+      <p>{{ error }}</p>
+    </div>
+
+    <!-- Success Message -->
+    <div v-if="success" class="success-message">
+      <p>Account created successfully! You can now link it to your profile.</p>
+    </div>
+
+    <!-- Submit Button -->
+    <button
+      type="submit"
+      :disabled="loading || success"
+      class="submit-button"
+    >
+      {{ loading ? 'Creating...' : success ? 'Account Created!' : 'Create Account' }}
+    </button>
+  </form>
+</template>
+
+<script setup lang="ts">
+import { ref } from 'vue'
+
+const emit = defineEmits<{
+  success: [{ username: string; password: string }]
+}>()
+
+const loading = ref(false)
+const error = ref('')
+const success = ref(false)
+
+const formData = ref({
+  username: '',
+  password: '',
+  confirmPassword: '',
+  email: '',
+})
+
+const handleSubmit = async () => {
+  loading.value = true
+  error.value = ''
+  success.value = false
+
+  try {
+    // Validate passwords match
+    if (formData.value.password !== formData.value.confirmPassword) {
+      throw new Error('Passwords do not match')
+    }
+
+    // Create account
+    await $fetch('/api/accounts/create', {
+      method: 'POST',
+      body: {
+        username: formData.value.username,
+        password: formData.value.password,
+        email: formData.value.email || undefined,
+      },
+    })
+
+    success.value = true
+
+    // Emit success with credentials so parent can auto-link
+    emit('success', {
+      username: formData.value.username,
+      password: formData.value.password,
+    })
+
+    // Reset form after delay
+    setTimeout(() => {
+      formData.value = {
+        username: '',
+        password: '',
+        confirmPassword: '',
+        email: '',
+      }
+      success.value = false
+    }, 3000)
+  } catch (err: any) {
+    error.value = err.data?.statusMessage || err.message || 'Failed to create account'
+  } finally {
+    loading.value = false
+  }
+}
+</script>
+
+<style scoped lang="scss">
+.create-account-form {
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 2rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+
+  .form-group {
+    margin-bottom: 1.5rem;
+
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+      color: #374151;
+      font-size: 0.95rem;
+    }
+
+    input {
+      width: 100%;
+      padding: 0.75rem;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 1rem;
+      transition: all 0.2s;
+      background: white;
+      color: #1f2937;
+
+      &:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      }
+
+      &::placeholder {
+        color: #9ca3af;
+      }
+    }
+
+    small {
+      display: block;
+      margin-top: 0.25rem;
+      font-size: 0.85rem;
+      color: #6b7280;
+    }
+  }
+
+  .error-message {
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    color: #dc2626;
+
+    p {
+      margin: 0;
+      font-size: 0.95rem;
+    }
+  }
+
+  .success-message {
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 8px;
+    color: #16a34a;
+
+    p {
+      margin: 0;
+      font-size: 0.95rem;
+    }
+  }
+
+  .submit-button {
+    width: 100%;
+    padding: 0.875rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+
+    &:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+    }
+
+    &:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  }
+}
+</style>

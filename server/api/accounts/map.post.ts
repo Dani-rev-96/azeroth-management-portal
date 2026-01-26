@@ -1,42 +1,50 @@
 import { AccountMappingDB } from '#server/utils/db'
-import { realms } from '#shared/utils/config'
-import type { ManagedAccount, AccountMapping, RealmId } from '~/types'
+import { verifyAccountCredentials } from '#server/services/account'
+import { findRealmsWithCharacters } from '#server/services/realm'
+import type { ManagedAccount, AccountMapping } from '~/types'
 
 /**
  * POST /api/accounts/map
  * Create mapping between Keycloak user and WoW account
+ * Verifies WoW account credentials before creating mapping
+ * No realm selection needed - auth is shared across all realms
  */
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
 
-  const { keycloakId, wowAccountName, wowAccountPassword, realmId } = body
+  const { keycloakId, wowAccountName, wowAccountPassword } = body
 
-  if (!keycloakId || !wowAccountName || !wowAccountPassword || !realmId) {
+  if (!keycloakId || !wowAccountName || !wowAccountPassword) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Missing required fields: keycloakId, wowAccountName, wowAccountPassword, realmId',
-    })
-  }
-
-  // Validate realm exists
-  if (!realms[realmId as RealmId]) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid realm ID',
+      statusMessage: 'Missing required fields: keycloakId, wowAccountName, wowAccountPassword',
     })
   }
 
   try {
-    // Get Keycloak username from auth headers
-    const keycloakUsername = getHeader(event, 'x-remote-user') || keycloakId
+    const config = useRuntimeConfig()
+    const authMode = config.public.authMode
 
-    // TODO: Verify WoW account exists and password is correct
-    // For now, we'll use a mock account ID
-    // In production, query the WoW auth database
-    const wowAccountId = Math.floor(Math.random() * 1000000) // TEMPORARY
+    // Get Keycloak username from auth headers or mock user
+    let keycloakUsername: string
+    if (authMode === 'mock') {
+      keycloakUsername = config.public.mockUser || 'admin'
+    } else {
+      keycloakUsername = getHeader(event, 'x-remote-user') || keycloakId
+    }
+
+    // Verify WoW account credentials against AzerothCore database
+    const wowAccount = await verifyAccountCredentials(wowAccountName, wowAccountPassword)
+    
+    if (!wowAccount) {
+      throw createError({
+        statusCode: 401,
+        statusMessage: 'Invalid WoW account credentials. Please check your username and password.',
+      })
+    }
 
     // Check if mapping already exists
-    if (AccountMappingDB.exists(keycloakId, wowAccountId, realmId)) {
+    if (AccountMappingDB.exists(keycloakId, wowAccount.id)) {
       throw createError({
         statusCode: 409,
         statusMessage: 'Account mapping already exists',
@@ -47,34 +55,36 @@ export default defineEventHandler(async (event) => {
     const dbMapping = AccountMappingDB.create({
       keycloakId,
       keycloakUsername,
-      wowAccountId,
-      wowAccountUsername: wowAccountName,
-      realmId,
+      wowAccountId: wowAccount.id,
+      wowAccountUsername: wowAccount.username,
     })
 
     // Transform to response format
-    const realm = realms[realmId as RealmId]
     const mapping: AccountMapping = {
       keycloakId: dbMapping.keycloak_id,
       keycloakUsername: dbMapping.keycloak_username,
       wowAccountId: dbMapping.wow_account_id,
       wowAccountName: dbMapping.wow_account_username,
-      realmId: dbMapping.realm_id as RealmId,
       createdAt: dbMapping.created_at,
     }
 
+    // Find all realms with characters for this account
+    const realms = await findRealmsWithCharacters(wowAccount.id)
+
     const result: ManagedAccount = {
       mapping,
-      realm,
       wowAccount: {
-        id: dbMapping.wow_account_id,
-        username: dbMapping.wow_account_username,
-        sha_pass_hash: '',
-        expansion: 2,
-        mutetime: 0,
-        locale: 0,
+        id: wowAccount.id,
+        username: wowAccount.username,
+        sha_pass_hash: '', // Don't expose hash
+        email: wowAccount.email || undefined,
+        last_login: wowAccount.last_login || undefined,
+        last_ip: wowAccount.last_ip,
+        expansion: wowAccount.expansion,
+        mutetime: Number(wowAccount.mutetime),
+        locale: wowAccount.locale,
       },
-      characters: [],
+      realms,
     }
 
     return result

@@ -1,9 +1,9 @@
 <template>
-  <div class="min-h-screen flex flex-col">
+  <div class="layout">
     <!-- Navigation/Header would go here -->
     
     <!-- Main Content -->
-    <div class="flex-1">
+    <div class="main-content">
       <slot />
     </div>
 

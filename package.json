@@ -1,15 +1,23 @@
 {
   "name": "wow-frontend",
+  "version": "1.0.0",
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "nuxt build",
     "dev": "nuxt dev",
-    "generate": "nuxt generate",
+    "dev:ssl": "nuxt dev --https --ssl-cert ./certs/localhost.pem --ssl-key ./certs/localhost-key.pem",
+    "dev:local": "NODE_ENV=development nuxt dev",
+    "dev:production": "NODE_ENV=production nuxt dev",
+    "dev:production:ssl": "NODE_ENV=production nuxt dev --https --ssl-cert ./certs/localhost.pem --ssl-key ./certs/localhost-key.pem",
+    "build": "nuxt build",
+    "build:staging": "NODE_ENV=staging nuxt build",
+    "build:production": "NODE_ENV=production nuxt build",
     "preview": "nuxt preview",
+    "generate": "nuxt generate",
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
+    "@azerothcore/ac-nodejs-srp6": "^1.0.8",
     "@nuxt/image": "^2.0.0",
     "@nuxtjs/sitemap": "^7.5.2",
     "@pinia/nuxt": "^0.11.3",
@@ -19,6 +27,7 @@
     "@vueuse/nuxt": "^14.1.0",
     "better-sqlite3": "^12.6.2",
     "gsap": "^3.14.2",
+    "mysql2": "^3.16.1",
     "nuxt": "^4.3.0",
     "nuxt-directus": "^5.7.0",
     "nuxt-jsonld": "^2.2.1",

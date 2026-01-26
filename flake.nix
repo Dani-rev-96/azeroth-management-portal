@@ -27,6 +27,9 @@
         defaultPkgs = with pkgs; [
           nodejs
           deno
+          mariadb
+          sops
+          age
         ];
 
         name = package-json.name;
@@ -131,6 +134,9 @@
       in
       {
         devShell = pkgs.mkShell {
+          shellHook = ''
+            export SOPS_AGE_KEY_FILE=$(pwd)/secrets/private-age-key.txt;
+          '';
           buildInputs = defaultPkgs;
         };
 

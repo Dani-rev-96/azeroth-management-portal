@@ -1,10 +1,10 @@
 <template>
-  <div class="login-page min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-500 to-blue-600">
-    <div class="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full">
-      <h1 class="text-3xl font-bold mb-6 text-center">WoW Management</h1>
+  <div class="login-page">
+    <div class="login-card">
+      <h1>WoW Management</h1>
       
-      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-        <p class="text-blue-900 text-sm">
+      <div class="info-box">
+        <p>
           This application requires authentication through Keycloak. 
           <br>
           <br>
@@ -14,13 +14,13 @@
 
       <button
         @click="handleLogin"
-        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200"
+        class="login-button"
       >
         Login with Keycloak
       </button>
 
-      <div v-if="error" class="mt-4 bg-red-50 border border-red-200 rounded-lg p-3">
-        <p class="text-red-900 text-sm">{{ error }}</p>
+      <div v-if="error" class="error-message">
+        <p>{{ error }}</p>
       </div>
     </div>
   </div>
@@ -28,6 +28,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useAuthStore } from '~/stores/auth'
 
 definePageMeta({
   layout: false,
@@ -35,9 +36,15 @@ definePageMeta({
 
 const error = ref('')
 const authStore = useAuthStore()
+const runtimeConfig = useRuntimeConfig()
+const useOauthProxy = runtimeConfig.public.authMode === 'oauth-proxy' || runtimeConfig.public.authMode === 'keycloak'
 
 const handleLogin = async () => {
   try {
+    if (useOauthProxy) {
+      window.location.href = runtimeConfig.public.keycloakUrl
+      return
+    }
     // In production with oauth-proxy, the user is already authenticated
     // We just need to verify with our backend
     const success = await authStore.initializeAuth()

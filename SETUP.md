@@ -68,7 +68,6 @@ Copy `.env.example` to `.env` and configure:
 ```env
 # Keycloak Configuration
 NUXT_PUBLIC_KEYCLOAK_REALM=wow-management
-NUXT_PUBLIC_KEYCLOAK_CLIENT_ID=wow-frontend
 NUXT_PUBLIC_KEYCLOAK_URL=http://localhost:8080
 
 # Directus Configuration (future use)
