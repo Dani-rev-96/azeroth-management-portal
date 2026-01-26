@@ -1,6 +1,6 @@
 {
   "name": "wow-frontend",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "private": true,
   "scripts": {
@@ -10,7 +10,7 @@
     "dev:production": "NODE_ENV=production nuxt dev",
     "dev:production:ssl": "NODE_ENV=production nuxt dev --https --ssl-cert ./certs/localhost.pem --ssl-key ./certs/localhost-key.pem",
     "build": "nuxt build",
-    "build:staging": "NODE_ENV=staging nuxt build",
+    "build:local": "NODE_ENV=development nuxt build",
     "build:production": "NODE_ENV=production nuxt build",
     "preview": "nuxt preview",
     "generate": "nuxt generate",

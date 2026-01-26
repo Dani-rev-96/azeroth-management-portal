@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3'
-import { join } from 'path'
+import { join, dirname } from 'path'
 import { existsSync, mkdirSync } from 'fs'
 import type { RealmId } from '~/types'
 
@@ -13,8 +13,8 @@ let db: Database.Database | null = null
  */
 export function getDatabase() {
   if (!db) {
-    // Ensure data directory exists
-    const dataDir = join(process.cwd(), 'data')
+    // Ensure data directory exists (based on DB_PATH)
+    const dataDir = dirname(DB_PATH)
     if (!existsSync(dataDir)) {
       mkdirSync(dataDir, { recursive: true })
     }
@@ -22,7 +22,7 @@ export function getDatabase() {
     db = new Database(DB_PATH)
     db.pragma('journal_mode = WAL') // Write-Ahead Logging for better concurrency
     db.pragma('foreign_keys = ON')
-    
+
     initSchema()
   }
   return db
@@ -34,7 +34,7 @@ export function getDatabase() {
  */
 function initSchema() {
   if (!db) return
-  
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS account_mappings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,11 +47,11 @@ function initSchema() {
       metadata TEXT,
       UNIQUE(keycloak_id, wow_account_id)
     );
-    
-    CREATE INDEX IF NOT EXISTS idx_keycloak_id 
+
+    CREATE INDEX IF NOT EXISTS idx_keycloak_id
       ON account_mappings(keycloak_id);
-    
-    CREATE INDEX IF NOT EXISTS idx_wow_account_id 
+
+    CREATE INDEX IF NOT EXISTS idx_wow_account_id
       ON account_mappings(wow_account_id);
   `)
 }
@@ -106,11 +106,11 @@ export const AccountMappingDB = {
   }): DBAccountMapping {
     const db = getDatabase()
     const stmt = db.prepare(`
-      INSERT INTO account_mappings 
+      INSERT INTO account_mappings
         (keycloak_id, keycloak_username, wow_account_id, wow_account_username, metadata)
       VALUES (?, ?, ?, ?, ?)
     `)
-    
+
     const result = stmt.run(
       mapping.keycloakId,
       mapping.keycloakUsername,

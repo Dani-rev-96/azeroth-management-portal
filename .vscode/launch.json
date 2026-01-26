@@ -20,6 +20,9 @@
             "name": "server: nuxt - ssl",
             "outputCapture": "std",
             "program": "${workspaceFolder}/node_modules/.bin/nuxi",
+						"env": {
+							"DB_PATH": "/home/daniel/Workspace/temp/mappings.db"
+						},
             "args": [
                 "dev",
 								"--https",

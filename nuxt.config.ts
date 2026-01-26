@@ -21,15 +21,15 @@ interface CredentialsFile {
     authMode?: 'mock' | 'oauth-proxy' | 'keycloak'
     mockUser?: string
     mockEmail?: string
-    
+
     // External services
     keycloakUrl?: string
     keycloakRealm?: string
     directusUrl?: string
-    
+
     // App config
     appBaseUrl?: string
-    
+
     // Feature flags
     debugMode?: boolean
     mockAccounts?: boolean
@@ -43,11 +43,11 @@ function loadDbCredentials(): CredentialsFile | null {
     staging: 'staging',
     development: 'local',
   }
-  
+
   const envName = envMap[env] || 'local'
   const plainPath = path.resolve(process.cwd(), `.db.${envName}.json`)
   const encPath = path.resolve(process.cwd(), `.db.${envName}.enc.json`)
-  
+
   // Try plain file first (local development)
   if (fs.existsSync(plainPath)) {
     try {
@@ -59,7 +59,7 @@ function loadDbCredentials(): CredentialsFile | null {
       console.warn(`[WARN] Failed to load .db.${envName}.json:`, error)
     }
   }
-  
+
   // Try encrypted file (staging/production)
   if (fs.existsSync(encPath)) {
     try {
@@ -76,7 +76,7 @@ function loadDbCredentials(): CredentialsFile | null {
       return null
     }
   }
-  
+
   console.warn(`[WARN] No credentials file found for environment: ${envName}`)
   console.warn(`[HINT] Expected .db.${envName}.json or .db.${envName}.enc.json`)
   return null
@@ -90,44 +90,44 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
   ssr: true,
-  
+
   // Runtime configuration
   // Note: Server/database configs are in shared/utils/config/{local,staging,production}.ts
   runtimeConfig: {
 	db: {
 	  authUser: credentials?.databases['auth-db']?.user || 'acore',
-	  authPassword: '',
+	  authPassword: credentials?.databases['auth-db']?.password || 'acore',
 	  authHost: credentials?.databases['auth-db']?.host || 'localhost',
 	  authPort: credentials?.databases['auth-db']?.port || 3306,
 	  blizzlikeWorldUser: credentials?.databases['blizzlike-db']?.user || 'acore',
-	  blizzlikeWorldPassword: '',
+	  blizzlikeWorldPassword: credentials?.databases['blizzlike-db']?.password || 'acore',
 	  blizzlikeWorldHost: credentials?.databases['blizzlike-db']?.host || 'localhost',
 	  blizzlikeWorldPort: credentials?.databases['blizzlike-db']?.port || 3306,
 	  ipWorldUser: credentials?.databases['ip-db']?.user || 'acore',
-	  ipWorldPassword: '',
+	  ipWorldPassword: credentials?.databases['ip-db']?.password || 'acore',
 	  ipWorldHost: credentials?.databases['ip-db']?.host || 'localhost',
 	  ipWorldPort: credentials?.databases['ip-db']?.port || 3307,
 	  ipBoostedWorldUser: credentials?.databases['ip-boosted-db']?.user || 'acore',
-	  ipBoostedWorldPassword: '',
+	  ipBoostedWorldPassword: credentials?.databases['ip-boosted-db']?.password || 'acore',
 	  ipBoostedWorldHost: credentials?.databases['ip-boosted-db']?.host || 'localhost',
 	  ipBoostedWorldPort: credentials?.databases['ip-boosted-db']?.port || 3308,
 	},
     // Public - accessible in browser
-    public: {      
+    public: {
       // Auth mode: 'mock' (local dev) | 'oauth-proxy' (production) | 'keycloak' (staging)
       authMode: credentials?.env?.authMode || 'mock',
       mockUser: credentials?.env?.mockUser || 'admin',
       mockEmail: credentials?.env?.mockEmail || 'admin@localhost',
-      
+
       // Feature flags
       debugMode: credentials?.env?.debugMode ?? false,
       mockAccounts: credentials?.env?.mockAccounts ?? false,
-      
+
       // External services
       keycloakUrl: credentials?.env?.keycloakUrl || 'http://localhost:8080',
       keycloakRealm: credentials?.env?.keycloakRealm || 'wow',
       directusUrl: credentials?.env?.directusUrl || 'http://localhost:8055',
-      
+
       // App config
       appBaseUrl: credentials?.env?.appBaseUrl || 'http://localhost:3000',
     },
