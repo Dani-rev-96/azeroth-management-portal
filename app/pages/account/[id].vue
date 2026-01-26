@@ -27,7 +27,7 @@
       <!-- Show characters grouped by realm -->
       <div v-for="realmData in accountData.realms" :key="realmData.realm.id" class="realm-section">
         <h2 class="realm-heading">{{ realmData.realm.name }}</h2>
-        
+
         <CharacterList
           :characters="realmData.characters"
           :loading="actionLoading"
@@ -87,7 +87,7 @@ const primaryRealm = computed<RealmConfig | null>(() => {
   if (!accountData.value || accountData.value.realms.length === 0) {
     return null
   }
-  
+
   // Sort by character count and return the realm with most characters
   const sorted = [...accountData.value.realms].sort((a, b) => b.characters.length - a.characters.length)
   return sorted[0]?.realm || null
@@ -214,40 +214,59 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .account-detail {
-  min-height: 100vh;
-}
-
-.loading,
-.error {
-  padding: 2rem;
-  text-align: center;
-}
-
-.error {
-  color: #d32f2f;
-}
-
-.back-button {
-  padding: 0.5rem 1rem;
-  cursor: pointer;
-}
-
-.account-content {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 2rem;
 }
 
+.loading,
+.error {
+  padding: 4rem 2rem;
+  text-align: center;
+}
+
+.loading {
+  color: #94a3b8;
+}
+
+.error {
+  color: #fca5a5;
+}
+
+.back-button {
+  padding: 0.75rem 1.5rem;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid #3b82f6;
+  color: #60a5fa;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+
+  &:hover {
+    background: rgba(59, 130, 246, 0.2);
+  }
+}
+
+.account-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
 .realm-section {
-  margin-bottom: 3rem;
+  padding: 2rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 1rem;
 }
 
 .realm-heading {
   font-size: 1.5rem;
   font-weight: 600;
-  color: #667eea;
+  color: #a78bfa;
   margin: 0 0 1.5rem 0;
-  padding-bottom: 0.5rem;
-  border-bottom: 2px solid #667eea;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid #334155;
 }
 </style>

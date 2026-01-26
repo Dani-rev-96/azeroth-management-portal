@@ -13,7 +13,7 @@ import { verifySrp6Password } from '#server/utils/srp6'
  */
 export async function findAccountByUsername(username: string): Promise<AzerothCoreAccount | null> {
   const pool = await getAuthDbPool()
-  
+
   const [rows] = await pool.query<RowDataPacket[]>(
     'SELECT id, username, salt, verifier, email, joindate, last_ip, last_login, online, expansion, mutetime, locale FROM account WHERE username = ?',
     [username.toUpperCase()] // AzerothCore stores usernames in uppercase
@@ -45,7 +45,7 @@ export async function findAccountByUsername(username: string): Promise<AzerothCo
  */
 export async function findAccountById(id: number): Promise<AzerothCoreAccount | null> {
   const pool = await getAuthDbPool()
-  
+
   const [rows] = await pool.query<RowDataPacket[]>(
     'SELECT id, username, salt, verifier, email, joindate, last_ip, last_login, online, expansion, mutetime, locale FROM account WHERE id = ?',
     [id]
@@ -85,7 +85,7 @@ export async function verifyAccountCredentials(
 
   console.log(`Verifying credentials for account: ${username}`);
   console.log(`Account found: `, account);
-  
+
   if (!account) {
     // Account doesn't exist
     return null
@@ -115,7 +115,7 @@ export async function verifyAccountCredentials(
  */
 export async function isAccountBanned(accountId: number): Promise<boolean> {
   const pool = await getAuthDbPool()
-  
+
   // Check account_banned table
   const [rows] = await pool.query<RowDataPacket[]>(
     'SELECT id FROM account_banned WHERE id = ? AND active = 1',
@@ -142,7 +142,7 @@ export async function updateAccountPassword(
   verifier: Buffer
 ): Promise<void> {
   const pool = await getAuthDbPool()
-  
+
   await pool.query(
     'UPDATE account SET salt = ?, verifier = ? WHERE id = ?',
     [salt, verifier, accountId]
@@ -158,7 +158,7 @@ export async function createAccount(
   email?: string
 ): Promise<AzerothCoreAccount> {
   const pool = await getAuthDbPool()
-  
+
   // Check if account already exists
   const existing = await findAccountByUsername(username)
   if (existing) {
@@ -171,9 +171,9 @@ export async function createAccount(
 
   // Insert new account with default values
   const [result] = await pool.query(
-    `INSERT INTO account 
-      (username, salt, verifier, email, expansion, joindate) 
-    VALUES 
+    `INSERT INTO account
+      (username, salt, verifier, email, expansion, joindate)
+    VALUES
       (?, ?, ?, ?, ?, NOW())`,
     [
       username.toUpperCase(), // AzerothCore stores usernames in uppercase
@@ -187,10 +187,36 @@ export async function createAccount(
   // Fetch and return the created account
   const accountId = (result as any).insertId
   const account = await findAccountById(accountId)
-  
+
   if (!account) {
     throw new Error('Failed to create account')
   }
 
   return account
+}
+
+/**
+ * Find all accounts (admin use only)
+ */
+export async function findAllAccounts(): Promise<AzerothCoreAccount[]> {
+  const pool = await getAuthDbPool()
+
+  const [rows] = await pool.query<RowDataPacket[]>(
+    'SELECT id, username, salt, verifier, email, joindate, last_ip, last_login, online, expansion, mutetime, locale FROM account WHERE username NOT LIKE "RNDBOT%" ORDER BY id ASC'
+  )
+
+  return rows.map(row => ({
+    id: row.id,
+    username: row.username,
+    salt: row.salt,
+    verifier: row.verifier,
+    email: row.email,
+    joindate: row.joindate,
+    last_ip: row.last_ip,
+    last_login: row.last_login,
+    online: row.online,
+    expansion: row.expansion,
+    mutetime: row.mutetime,
+    locale: row.locale,
+  }))
 }

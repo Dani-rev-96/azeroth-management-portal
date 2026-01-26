@@ -1,16 +1,12 @@
 /**
- * GET /api/auth/me
- * Returns current authenticated user with GM status
- *
- * In production: reads from oauth-proxy headers (X-Auth-Request-User, etc)
- * In local dev: returns mocked user from config
- * In staging: reads from Keycloak token
+ * GET /api/admin/account-mappings
+ * Get all account mappings (GM only)
  */
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
+	const config = useRuntimeConfig()
   const authMode = config.public.authMode
-
   try {
+    // Check if user is GM
     let username: string
     let email: string
 
@@ -38,26 +34,30 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Check GM status for this user
     const { getUserGMLevel } = await import('#server/services/gm')
     const gmLevel = await getUserGMLevel(username)
 
-    return {
-      sub: username,
-      preferred_username: username,
-      email: email,
-      email_verified: true,
-      isGM: gmLevel > 0,
-      gmLevel: gmLevel,
+    if (gmLevel === 0) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: 'Access denied - GM privileges required',
+      })
     }
+
+    // Get all mappings
+    const { AccountMappingDB } = await import('#server/utils/db')
+    const mappings = AccountMappingDB.findAll()
+
+    return mappings
   } catch (error) {
     if (error && typeof error === 'object' && 'statusCode' in error) {
       throw error
     }
 
+    console.error('Error fetching admin mappings:', error)
     throw createError({
-      statusCode: 401,
-      statusMessage: 'Authentication failed',
+      statusCode: 500,
+      statusMessage: 'Failed to fetch mappings',
     })
   }
 })

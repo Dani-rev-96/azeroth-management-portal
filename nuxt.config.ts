@@ -29,10 +29,6 @@ interface CredentialsFile {
 
     // App config
     appBaseUrl?: string
-
-    // Feature flags
-    debugMode?: boolean
-    mockAccounts?: boolean
   }
 }
 
@@ -118,10 +114,6 @@ export default defineNuxtConfig({
       authMode: credentials?.env?.authMode || 'mock',
       mockUser: credentials?.env?.mockUser || 'admin',
       mockEmail: credentials?.env?.mockEmail || 'admin@localhost',
-
-      // Feature flags
-      debugMode: credentials?.env?.debugMode ?? false,
-      mockAccounts: credentials?.env?.mockAccounts ?? false,
 
       // External services
       keycloakUrl: credentials?.env?.keycloakUrl || 'http://localhost:8080',
