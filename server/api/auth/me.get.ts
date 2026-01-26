@@ -1,8 +1,8 @@
 /**
  * GET /api/auth/me
  * Returns current authenticated user
- * 
- * In production: reads from oauth-proxy headers (X-Remote-User, etc)
+ *
+ * In production: reads from oauth-proxy headers (X-Auth-Request-User, etc)
  * In local dev: returns mocked user from config
  * In staging: reads from Keycloak token
  */
@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
   try {
     // Production/Staging: read from oauth-proxy headers
     if (authMode === 'oauth-proxy' || authMode === 'keycloak') {
-      const username = getHeader(event, 'x-remote-user')
+      const username = getHeader(event, 'x-auth-request-user')
       const email = getHeader(event, 'x-auth-request-email')
 
       if (!username) {
