@@ -41,18 +41,25 @@
           version = version;
           src = src;
           buildInputs = [
+            pkgs.node-gyp
             pkgs.nodejs
             pkgs.vips
           ];
 
           nativeBuildInputs = [
+            pkgs.node-gyp
             pkgs.python3
             pkgs.pkg-config
             pkgs.vips
           ];
 
-          npmDepsHash = "sha256-nqmWyrb2zkS5kMHiKCadJyMXNsejiOTJC5comj3W/CY=";
+          npmDepsHash = "sha256-qapBRBVAklt+2gWFW2XEfZ7UZErQNdBjkuIWl6CPVBs=";
+          # npmDepsHash = "sha256-TRIjkKYcJRbDDmXZj9ie0/Xxwl2QvmVtwUz/i+gBh1o=";
           # npmDepsHash = "";
+
+          npmPackFlags = [ "--ignore-scripts" ];
+          makeCacheWritable = true;
+          npmFlags = [ "--legacy-peer-deps" ];
 
           buildPhase = ''
             # each phase has pre/postHooks. When you make your own phase be sure to still call the hooks
