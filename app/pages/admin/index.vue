@@ -34,6 +34,12 @@
         >
           🛡️ GM Management
         </button>
+        <button
+          :class="{ active: activeTab === 'files' }"
+          @click="activeTab = 'files'"
+        >
+          📁 File Management
+        </button>
       </nav>
 
       <!-- Accounts Tab -->
@@ -137,6 +143,96 @@
           <p>Coming soon: Manage GM access levels and permissions</p>
         </section>
       </main>
+
+      <!-- File Management Tab -->
+      <main v-if="activeTab === 'files'" class="tab-content">
+        <section class="content-section">
+          <div class="section-header">
+            <h2>File Management</h2>
+            <p class="subtitle">Manage public download files</p>
+          </div>
+
+          <div class="file-upload-section">
+            <h3>Upload New File</h3>
+            <form @submit.prevent="uploadFile" class="upload-form">
+              <input
+                ref="fileInput"
+                type="file"
+                @change="handleFileSelect"
+                class="file-input"
+              />
+              <div v-if="selectedFile" class="selected-file">
+                <span>📎 {{ selectedFile.name }}</span>
+                <span class="file-size">{{ formatFileSize(selectedFile.size) }}</span>
+              </div>
+              <button
+                type="submit"
+                :disabled="!selectedFile || uploading"
+                class="btn-upload"
+              >
+                {{ uploading ? '⏳ Uploading...' : '📤 Upload File' }}
+              </button>
+              <div v-if="uploading" class="progress-bar">
+                <div class="progress-fill" :style="{ width: `${uploadProgress}%` }"></div>
+                <span class="progress-text">{{ uploadProgress }}%</span>
+              </div>
+              <p v-if="uploadError" class="error-message">{{ uploadError }}</p>
+              <p v-if="uploadSuccess" class="success-message">{{ uploadSuccess }}</p>
+            </form>
+          </div>
+
+          <div class="files-list-section">
+            <h3>Current Files</h3>
+            <div v-if="loadingFiles" class="loading">
+              <p>Loading files...</p>
+            </div>
+
+            <div v-else-if="publicFiles.length === 0" class="empty-state">
+              <p>No files available</p>
+            </div>
+
+            <div v-else class="files-table-container">
+              <table class="accounts-table">
+                <thead>
+                  <tr>
+                    <th>Filename</th>
+                    <th>Size</th>
+                    <th>Last Modified</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="file in publicFiles" :key="file.name">
+                    <td>
+                      <span class="filename">{{ file.name }}</span>
+                    </td>
+                    <td>{{ formatFileSize(file.size) }}</td>
+                    <td>{{ formatDate(file.modified) }}</td>
+                    <td>
+                      <div class="file-actions">
+                        <a
+                          :href="`/api/downloads/${encodeURIComponent(file.name)}`"
+                          class="btn-small"
+                          :download="file.name"
+                        >
+                          ⬇️ Download
+                        </a>
+                        <button
+                          @click="deleteFile(file.name)"
+                          class="btn-small btn-danger"
+                          :disabled="deleting === file.name"
+                        >
+                          {{ deleting === file.name ? '⏳' : '🗑️' }} Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
     </div>
   </div>
 </template>
@@ -154,6 +250,16 @@ const loadingMappings = ref(false)
 
 const accounts = ref<any[]>([])
 const mappings = ref<any[]>([])
+const publicFiles = ref<any[]>([])
+
+const loadingFiles = ref(false)
+const uploading = ref(false)
+const uploadProgress = ref(0)
+const uploadError = ref('')
+const uploadSuccess = ref('')
+const selectedFile = ref<File | null>(null)
+const fileInput = ref<HTMLInputElement | null>(null)
+const deleting = ref('')
 
 // Check GM status
 onMounted(async () => {
@@ -165,7 +271,8 @@ onMounted(async () => {
     if (isGM.value) {
       await Promise.all([
         fetchAccounts(),
-        fetchMappings()
+        fetchMappings(),
+        fetchFiles()
       ])
     }
   } catch (error) {
@@ -213,7 +320,116 @@ function viewAccount(account: any) {
   // Navigate to account detail page
   navigateTo(`/account/${account.id}`)
 }
+async function fetchFiles() {
+  loadingFiles.value = true
+  try {
+    const { data } = await useFetch('/api/downloads/list')
+    publicFiles.value = data.value || []
+  } catch (error) {
+    console.error('Failed to fetch files:', error)
+  } finally {
+    loadingFiles.value = false
+  }
+}
 
+function handleFileSelect(event: Event) {
+  const target = event.target as HTMLInputElement
+  if (target.files && target.files.length > 0) {
+    selectedFile.value = target.files[0]
+    uploadError.value = ''
+    uploadSuccess.value = ''
+  }
+}
+
+async function uploadFile() {
+  if (!selectedFile.value) return
+
+  uploading.value = true
+  uploadProgress.value = 0
+  uploadError.value = ''
+  uploadSuccess.value = ''
+
+  try {
+    const formData = new FormData()
+    formData.append('file', selectedFile.value)
+
+    // Use XMLHttpRequest for progress tracking
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          uploadProgress.value = Math.round((e.loaded / e.total) * 100)
+        }
+      })
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(JSON.parse(xhr.responseText))
+        } else {
+          reject(new Error(xhr.responseText || 'Upload failed'))
+        }
+      })
+
+      xhr.addEventListener('error', () => reject(new Error('Upload failed')))
+      xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')))
+
+      xhr.open('POST', '/api/admin/files/upload')
+      xhr.send(formData)
+    })
+
+    uploadSuccess.value = `Successfully uploaded ${selectedFile.value.name}`
+    selectedFile.value = null
+    if (fileInput.value) {
+      fileInput.value.value = ''
+    }
+
+    // Refresh file list
+    await fetchFiles()
+  } catch (error: any) {
+    console.error('Failed to upload file:', error)
+    const errorData = error.message ? JSON.parse(error.message) : {}
+    uploadError.value = errorData.data?.detail || errorData.statusMessage || error.message || 'Failed to upload file'
+  } finally {
+    uploading.value = false
+    uploadProgress.value = 0
+  }
+}
+
+async function deleteFile(filename: string) {
+  if (!confirm(`Are you sure you want to delete ${filename}?`)) {
+    return
+  }
+
+  deleting.value = filename
+
+  try {
+    await $fetch(`/api/admin/files/${encodeURIComponent(filename)}`, {
+      method: 'DELETE',
+    })
+
+    // Refresh file list
+    await fetchFiles()
+  } catch (error: any) {
+    console.error('Failed to delete file:', error)
+    alert(error.data?.message || 'Failed to delete file')
+  } finally {
+    deleting.value = ''
+  }
+}
+
+function formatFileSize(bytes: number): string {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let size = bytes
+  let unitIndex = 0
+
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024
+    unitIndex++
+  }
+
+  return `${size.toFixed(2)} ${units[unitIndex]}`
+}
 function formatDate(dateString: string | null): string {
   if (!dateString) return '-'
   return new Date(dateString).toLocaleDateString()
@@ -450,5 +666,145 @@ function formatDate(dateString: string | null): string {
 .btn-primary:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
+.file-upload-section,
+.files-list-section {
+  margin-bottom: 2rem;
+}
+
+.file-upload-section h3,
+.files-list-section h3 {
+  color: #e2e8f0;
+  font-size: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 0.75rem;
+}
+
+.file-input {
+  padding: 0.75rem;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 0.5rem;
+  color: #e2e8f0;
+  cursor: pointer;
+}
+
+.file-input::-webkit-file-upload-button {
+  padding: 0.5rem 1rem;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid #3b82f6;
+  border-radius: 0.375rem;
+  color: #60a5fa;
+  cursor: pointer;
+  margin-right: 1rem;
+}
+
+.selected-file {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 0.5rem;
+  color: #e2e8f0;
+}
+
+.selected-file .file-size {
+  color: #94a3b8;
+  font-size: 0.875rem;
+}
+
+.btn-upload {
+  padding: 1rem 2rem;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border: none;
+  color: white;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-upload:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
+.btn-upload:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.progress-bar {
+  position: relative;
+  width: 100%;
+  height: 2rem;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #e2e8f0;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.error-message {
+  color: #fca5a5;
+  margin: 0;
+  padding: 0.75rem;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 0.5rem;
+}
+
+.success-message {
+  color: #86efac;
+  margin: 0;
+  padding: 0.75rem;
+  background: rgba(34, 197, 94, 0.1);
+  border-radius: 0.5rem;
+}
+
+.filename {
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.file-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-danger {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.2);
 }
 </style>

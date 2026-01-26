@@ -13,6 +13,10 @@
             <span class="nav-icon">🎮</span>
             My Accounts
           </NuxtLink>
+          <NuxtLink to="/downloads" class="nav-link">
+            <span class="nav-icon">📦</span>
+            Downloads
+          </NuxtLink>
           <NuxtLink to="/community" class="nav-link">
             <span class="nav-icon">👥</span>
             Community

@@ -47,3 +47,5 @@ models
 **/*.cred.*
 !**/*.cred.enc.*
 
+data/public/*
+

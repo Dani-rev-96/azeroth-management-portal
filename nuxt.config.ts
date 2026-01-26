@@ -114,6 +114,7 @@ export default defineNuxtConfig({
       authMode: credentials?.env?.authMode || 'mock',
       mockUser: credentials?.env?.mockUser || 'admin',
       mockEmail: credentials?.env?.mockEmail || 'admin@localhost',
+			mockGMLevel: credentials?.env?.mockGMLevel || 3,
 
       // External services
       keycloakUrl: credentials?.env?.keycloakUrl || 'http://localhost:8080',
@@ -122,6 +123,15 @@ export default defineNuxtConfig({
 
       // App config
       appBaseUrl: credentials?.env?.appBaseUrl || 'http://localhost:3000',
+
+      // File paths
+      publicPath: process.env.PUBLIC_PATH || path.resolve(process.cwd(), 'data/public'),
+    },
+  },
+
+  nitro: {
+    experimental: {
+      bodySizeLimit: 53687091200, // 50GB in bytes for large file uploads
     },
   },
 

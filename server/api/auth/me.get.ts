@@ -11,36 +11,16 @@ export default defineEventHandler(async (event) => {
   const authMode = config.public.authMode
 
   try {
-    let username: string
-    let email: string
-
-    // Production/Staging: read from oauth-proxy headers
-    if (authMode === 'oauth-proxy' || authMode === 'keycloak') {
-      username = getHeader(event, 'x-auth-request-user') || ''
-      email = getHeader(event, 'x-auth-request-email') || ''
-
-      if (!username) {
-        throw createError({
-          statusCode: 401,
-          statusMessage: 'Not authenticated',
-        })
-      }
-    }
-    // Local development: return mocked user
-    else if (authMode === 'mock') {
-      username = config.public.mockUser || 'admin'
-      email = config.public.mockEmail || 'admin@localhost'
-    }
-    else {
-      throw createError({
-        statusCode: 500,
-        statusMessage: 'Unknown auth mode',
-      })
-    }
+    const { username, email } = await getAuthenticatedUser(event)
 
     // Check GM status for this user
     const { getUserGMLevel } = await import('#server/services/gm')
-    const gmLevel = await getUserGMLevel(username)
+    let gmLevel
+    if (authMode === "mock") {
+      gmLevel = 3
+    } else {
+      gmLevel = await getUserGMLevel(username)
+    }
 
     return {
       sub: username,
