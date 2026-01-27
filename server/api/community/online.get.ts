@@ -28,6 +28,7 @@ export default defineEventHandler(async (event) => {
       for (const account of accounts) {
         const [chars] = await charsPool.query(
           `SELECT
+            guid,
             name,
             level,
             race,
@@ -46,6 +47,7 @@ export default defineEventHandler(async (event) => {
 
         for (const char of characters) {
           onlinePlayers.push({
+            guid: char.guid,
             characterName: char.name,
             level: char.level,
             race: char.race,

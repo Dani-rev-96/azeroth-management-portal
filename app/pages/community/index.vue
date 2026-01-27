@@ -41,7 +41,12 @@
         </div>
 
         <div v-else class="players-grid">
-          <article v-for="player in onlinePlayers" :key="`${player.realm}-${player.characterName}`" class="player-card">
+          <NuxtLink
+            v-for="player in onlinePlayers"
+            :key="`${player.realm}-${player.characterName}`"
+            :to="`/character/${player.guid}/${player.realmId}`"
+            class="player-card"
+          >
             <div class="player-header">
               <h3>{{ player.characterName }}</h3>
               <span class="level-badge">Level {{ player.level }}</span>
@@ -52,7 +57,7 @@
               <p class="zone">{{ getZoneName(player.zone) }}</p>
               <p class="playtime">⏱️ {{ formatPlaytime(player.playtime) }}</p>
             </div>
-          </article>
+          </NuxtLink>
         </div>
       </section>
     </main>
@@ -121,6 +126,7 @@ import PvPStatistics from '~/components/community/PvPStatistics.vue'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
 interface OnlinePlayer {
+  guid: number
   characterName: string
   level: number
   race: number
@@ -421,11 +427,15 @@ onMounted(() => {
   border-radius: 0.75rem;
   padding: 1.5rem;
   transition: all 0.2s;
+  text-decoration: none;
+  display: block;
+  color: inherit;
 }
 
 .player-card:hover {
-  border-color: #475569;
+  border-color: #3b82f6;
   transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
 }
 
 .player-header {

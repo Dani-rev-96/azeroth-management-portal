@@ -3,6 +3,9 @@
 *.db-shm
 *.db-wal
 
+# But keep items.db - it's required for the build
+!items.db
+
 # Export files
 mappings-export.json
 directus-import.json

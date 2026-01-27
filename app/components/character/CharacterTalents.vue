@@ -28,7 +28,7 @@
             <span class="talent-number">{{ index + 1 }}</span>
           </div>
           <div class="talent-info">
-            <span class="talent-spell">Spell {{ talent.spell }}</span>
+            <span class="talent-spell">{{ talent.spellName || `Spell ${talent.spell}` }}</span>
           </div>
         </div>
       </div>

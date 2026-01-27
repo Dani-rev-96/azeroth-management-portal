@@ -1,26 +1,75 @@
 import Database from 'better-sqlite3'
+import { writeFileSync, mkdirSync } from 'fs'
+import { tmpdir } from 'os'
 import { join } from 'path'
 
-const ITEMS_DB_PATH = process.env.ITEMS_DB_PATH || join(process.cwd(), 'data', 'items.db')
-
 let itemsDb: Database.Database | null = null
+let initPromise: Promise<Database.Database> | null = null
 
 /**
  * Get or initialize the items SQLite database connection
  */
-export function getItemsDatabase() {
-  if (!itemsDb) {
-    itemsDb = new Database(ITEMS_DB_PATH, { readonly: true })
-    itemsDb.pragma('journal_mode = WAL')
+async function getItemsDatabase(): Promise<Database.Database> {
+  if (itemsDb) {
+    return itemsDb
   }
-  return itemsDb
+
+  if (initPromise) {
+    return initPromise
+  }
+
+  initPromise = (async () => {
+    let dbPath: string
+
+    // Check for environment variable override first
+    if (process.env.ITEMS_DB_PATH) {
+      dbPath = process.env.ITEMS_DB_PATH
+      console.log(`[items-db] Using database from ITEMS_DB_PATH: ${dbPath}`)
+    } else {
+      // Get the database from Nitro server assets
+      const { useStorage } = await import('#imports')
+      const storage = useStorage('assets:server')
+      const dbBuffer = await storage.getItemRaw('items.db')
+
+      if (!dbBuffer) {
+        throw new Error('items.db not found in server assets')
+      }
+
+      // Write to temp file since better-sqlite3 needs a file path
+      const tempDir = join(tmpdir(), 'wow-frontend')
+      mkdirSync(tempDir, { recursive: true })
+      dbPath = join(tempDir, 'items.db')
+
+      writeFileSync(dbPath, dbBuffer)
+      console.log(`[items-db] Extracted database to: ${dbPath}`)
+    }
+
+    itemsDb = new Database(dbPath, { readonly: true })
+    itemsDb.pragma('journal_mode = WAL')
+    return itemsDb
+  })()
+
+  return initPromise
+}
+
+/**
+ * Item display info type
+ */
+export interface ItemDisplayInfo {
+  id: number
+  inventory_icon_1: string | null
+  inventory_icon_2: string | null
+  model_name_1: string | null
+  model_name_2: string | null
+  model_texture_1: string | null
+  model_texture_2: string | null
 }
 
 /**
  * Get item display info by ID
  */
-export function getItemDisplayInfo(displayId: number) {
-  const db = getItemsDatabase()
+export async function getItemDisplayInfo(displayId: number): Promise<ItemDisplayInfo | undefined> {
+  const db = await getItemsDatabase()
   const stmt = db.prepare(`
     SELECT
       id,
@@ -39,10 +88,10 @@ export function getItemDisplayInfo(displayId: number) {
 /**
  * Get multiple item display infos by IDs
  */
-export function getItemDisplayInfoBatch(displayIds: number[]) {
+export async function getItemDisplayInfoBatch(displayIds: number[]): Promise<ItemDisplayInfo[]> {
   if (displayIds.length === 0) return []
 
-  const db = getItemsDatabase()
+  const db = await getItemsDatabase()
   const placeholders = displayIds.map(() => '?').join(',')
   const stmt = db.prepare(`
     SELECT
@@ -57,14 +106,4 @@ export function getItemDisplayInfoBatch(displayIds: number[]) {
     WHERE id IN (${placeholders})
   `)
   return stmt.all(...displayIds) as ItemDisplayInfo[]
-}
-
-export type ItemDisplayInfo = {
-  id: number
-  inventory_icon_1: string | null
-  inventory_icon_2: string | null
-  model_name_1: string | null
-  model_name_2: string | null
-  model_texture_1: string | null
-  model_texture_2: string | null
 }

@@ -1,17 +1,6 @@
 import { getAuthenticatedUser } from '#server/utils/auth'
 import { getCharactersDbPool, getWorldDbPool } from '#server/utils/mysql'
-import fs from 'fs'
-import path from 'path'
-
-// Load ItemDisplayInfo.json once
-let itemDisplayInfoCache: any[] | null = null
-function getItemDisplayInfo() {
-  if (!itemDisplayInfoCache) {
-    const filePath = path.join(process.cwd(), 'data', 'ItemDisplayInfo.json')
-    itemDisplayInfoCache = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
-  }
-  return itemDisplayInfoCache
-}
+import { getItemDisplayInfoBatch } from '#server/utils/items-db'
 
 /**
  * GET /api/characters/[guid]/[realmId]
@@ -129,11 +118,15 @@ export default defineEventHandler(async (event) => {
         itemMap.set(item.entry, item)
       })
 
-      // Get ItemDisplayInfo for icon mapping
-      const itemDisplayInfo = getItemDisplayInfo()
+      // Get ItemDisplayInfo for icon mapping from database
+      const displayIds = (itemTemplates as any[])
+        .map((item: any) => item.displayid)
+        .filter((id: number) => id > 0)
+
+      const itemDisplayInfos = await getItemDisplayInfoBatch(displayIds)
       const displayInfoMap = new Map()
-      itemDisplayInfo.forEach((info: any) => {
-        displayInfoMap.set(info.ID, info)
+      itemDisplayInfos.forEach((info) => {
+        displayInfoMap.set(info.id, info)
       })
 
       // Enrich character items with template data
@@ -149,7 +142,20 @@ export default defineEventHandler(async (event) => {
 
         // Get icon from ItemDisplayInfo
         const displayInfo = displayInfoMap.get(template.displayid)
-        const iconName = displayInfo?.InventoryIcon_1 || 'inv_misc_questionmark'
+        const iconName = displayInfo?.inventory_icon_1 || 'inv_misc_questionmark'
+
+        // Parse enchantments - just extract IDs for now
+        // Note: Without access to enchantment name tables, we can only show IDs
+        const enchantmentNames: string[] = []
+        if (charItem.enchantments) {
+          const enchantParts = charItem.enchantments.split(' ')
+          for (let i = 0; i < enchantParts.length; i += 3) {
+            const enchantId = parseInt(enchantParts[i])
+            if (enchantId > 0) {
+              enchantmentNames.push(`Enchantment ${enchantId}`)
+            }
+          }
+        }
 
         return {
           guid: charItem.char_guid,
@@ -200,6 +206,7 @@ export default defineEventHandler(async (event) => {
           arcane_res: template.arcane_res,
           delay: template.delay,
           enchantments: charItem.enchantments,
+          enchantmentNames: enchantmentNames,
           durability: charItem.durability,
           randomPropertyId: charItem.randomPropertyId,
           icon: iconName
@@ -214,6 +221,17 @@ export default defineEventHandler(async (event) => {
       WHERE guid = ?
       ORDER BY specMask, spell
     `, [guid])
+
+    // Note: Spell names would require DBC files which are not in the database
+    // For now, talents will display as "Talent: Spell ID"
+    const enrichedTalents = (talents as any[]).map((talent: any) => {
+      return {
+        guid: talent.guid,
+        spell: talent.spell,
+        specMask: talent.specMask,
+        spellName: `Talent: ${talent.spell}`
+      }
+    })
 
     // Get achievements
     const [achievements] = await charsPool.query(`
@@ -266,7 +284,7 @@ export default defineEventHandler(async (event) => {
         activeSpec: 0 // Default value
       },
       items: enrichedItems,
-      talents: talents || [],
+      talents: enrichedTalents || [],
       achievements: achievements || [],
       stats: stats || [],
       realmId

@@ -34,6 +34,13 @@
             {{ item.dmg_min1 }} - {{ item.dmg_max1 }} Damage
           </div>
 
+          <!-- Enchantments -->
+          <div v-if="item.enchantmentNames && item.enchantmentNames.length > 0" class="enchantments">
+            <div v-for="(enchant, idx) in item.enchantmentNames" :key="idx" class="enchant-line">
+              {{ enchant }}
+            </div>
+          </div>
+
           <div v-if="item.requiredLevel > 1" class="required-level">
             Requires Level {{ item.requiredLevel }}
           </div>
@@ -278,6 +285,19 @@ function getStatName(statType: number): string {
 .stat-line.damage {
   color: #ffffff;
   font-weight: 600;
+}
+
+.enchantments {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #334155;
+}
+
+.enchant-line {
+  color: #10b981;
+  font-size: 0.875rem;
+  margin: 0.25rem 0;
+  font-style: italic;
 }
 
 .required-level {

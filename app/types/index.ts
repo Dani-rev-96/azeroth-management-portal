@@ -159,12 +159,14 @@ export type CharacterItem = {
   dmg_type1?: number
   icon?: string
   enchantments?: string
+  enchantmentNames?: string[]
 }
 
 export type CharacterTalent = {
   guid: number
   spell: number
   specMask: number // 1 = first spec, 2 = second spec, 3 = both specs
+  spellName?: string
 }
 
 export type CharacterDetailResponse = {
