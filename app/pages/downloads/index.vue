@@ -52,7 +52,6 @@
               <a
                 :href="`/api/downloads/${encodeURIComponent(file.name)}`"
                 class="download-btn"
-                :download="file.name"
               >
                 ⬇️ Download
               </a>

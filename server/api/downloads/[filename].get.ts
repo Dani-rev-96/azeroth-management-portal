@@ -86,17 +86,31 @@ export default defineEventHandler(async (event) => {
       })
 
       let bytesStreamed = 0
+      let streamClosed = false
+
+      // Detect client disconnect
+      event.node.req.on('close', () => {
+        if (!streamClosed) {
+          console.log(`[Download] Client disconnected during resume at ${bytesStreamed}/${chunkSize} bytes for ${safeFilename}`)
+          streamClosed = true
+          stream.destroy()
+        }
+      })
+
       stream.on('data', (chunk) => {
         bytesStreamed += chunk.length
       })
 
       stream.on('end', () => {
+        streamClosed = true
         console.log(`[Download] Completed partial: ${safeFilename} (${bytesStreamed}/${chunkSize} bytes)`)
       })
 
       // Handle stream errors
       stream.on('error', (err) => {
-        console.error(`[Download] Stream error for ${safeFilename}:`, err)
+        if (!streamClosed) {
+          console.error(`[Download] Stream error for ${safeFilename}:`, err)
+        }
       })
 
       return sendStream(event, stream)
@@ -113,6 +127,17 @@ export default defineEventHandler(async (event) => {
     })
 
     let bytesStreamed = 0
+    let streamClosed = false
+
+    // Detect client disconnect
+    event.node.req.on('close', () => {
+      if (!streamClosed) {
+        console.log(`[Download] Client disconnected at ${bytesStreamed} bytes for ${safeFilename}`)
+        streamClosed = true
+        stream.destroy()
+      }
+    })
+
     stream.on('data', (chunk) => {
       bytesStreamed += chunk.length
       if (bytesStreamed % (100 * 1024 * 1024) === 0 || bytesStreamed < 1024 * 1024) {
@@ -121,11 +146,14 @@ export default defineEventHandler(async (event) => {
     })
 
     stream.on('end', () => {
+      streamClosed = true
       console.log(`[Download] Completed: ${safeFilename} (${bytesStreamed} bytes)`)
     })
 
     stream.on('error', (err) => {
-      console.error(`[Download] Stream error for ${safeFilename}:`, err)
+      if (!streamClosed) {
+        console.error(`[Download] Stream error for ${safeFilename}:`, err)
+      }
     })
 
     return sendStream(event, stream)
