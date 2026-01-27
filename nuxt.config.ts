@@ -154,10 +154,6 @@ export default defineNuxtConfig({
 		},
 	},
 
-  css: [
-		path.resolve(process.cwd(), 'assets/css/shared.css'),
-  ],
-
   modules: [
 		"@vueuse/nuxt",
 		"@pinia/nuxt",

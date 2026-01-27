@@ -55,7 +55,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watchEffect } from 'vue'
 import type { ManagedAccount, WoWCharacter, AzerothCoreAccount, RealmId, RealmConfig } from '~/types'
 import { useAuthStore } from '~/stores/auth'
 import { useAccountsStore } from '~/stores/accounts'
