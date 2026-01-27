@@ -137,7 +137,6 @@ function getStatName(statType: number): string {
   border: 2px solid #334155;
   border-radius: 0.5rem;
   padding: 0.75rem;
-  min-height: 140px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -178,8 +177,8 @@ function getStatName(statType: number): string {
 }
 
 .item-icon {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   border-radius: 0.375rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
 }

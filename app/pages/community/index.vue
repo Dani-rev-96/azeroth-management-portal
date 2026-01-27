@@ -197,7 +197,7 @@ const realms = ref<Record<string, any>>({})
 const config = await useServerConfig()
 realms.value = config.realms
 
-// Fetch online players
+// Fetch online players (initial load with useFetch)
 async function fetchOnlinePlayers() {
   loading.value = true
   try {
@@ -210,19 +210,34 @@ async function fetchOnlinePlayers() {
   }
 }
 
-function refreshOnlinePlayers() {
-  fetchOnlinePlayers()
+// Refresh online players (client-side with $fetch)
+async function refreshOnlinePlayers() {
+  loading.value = true
+  try {
+    const data = await $fetch('/api/community/online')
+    onlinePlayers.value = data || []
+  } catch (error) {
+    console.error('Failed to refresh online players:', error)
+  } finally {
+    loading.value = false
+  }
 }
 
 // Fetch general statistics
-async function fetchGeneralStats() {
+async function fetchGeneralStats(useClient = false) {
   statsLoading.value = true
   try {
     const url = selectedRealm.value
       ? `/api/community/stats?realmId=${selectedRealm.value}`
       : '/api/community/stats'
-    const { data } = await useFetch(url)
-    generalStats.value = (data.value as any) || {}
+
+    if (useClient) {
+      const data = await $fetch(url)
+      generalStats.value = data || {}
+    } else {
+      const { data } = await useFetch(url)
+      generalStats.value = (data.value as any) || {}
+    }
   } catch (error) {
     console.error('Failed to fetch general stats:', error)
   } finally {
@@ -231,7 +246,7 @@ async function fetchGeneralStats() {
 }
 
 // Fetch top players
-async function fetchTopPlayers(metric: string = 'level') {
+async function fetchTopPlayers(metric: string = 'level', useClient = false) {
   topPlayersLoading.value = true
   try {
     const params = new URLSearchParams({
@@ -241,8 +256,14 @@ async function fetchTopPlayers(metric: string = 'level') {
     if (selectedRealm.value) {
       params.append('realmId', selectedRealm.value)
     }
-    const { data } = await useFetch<TopPlayer[]>(`/api/community/top-players?${params}`)
-    topPlayers.value = data.value || []
+
+    if (useClient) {
+      const data = await $fetch<TopPlayer[]>(`/api/community/top-players?${params}`)
+      topPlayers.value = data || []
+    } else {
+      const { data } = await useFetch<TopPlayer[]>(`/api/community/top-players?${params}`)
+      topPlayers.value = data.value || []
+    }
   } catch (error) {
     console.error('Failed to fetch top players:', error)
   } finally {
@@ -251,14 +272,20 @@ async function fetchTopPlayers(metric: string = 'level') {
 }
 
 // Fetch PvP statistics
-async function fetchPvPStats() {
+async function fetchPvPStats(useClient = false) {
   pvpStatsLoading.value = true
   try {
     const url = selectedRealm.value
       ? `/api/community/pvp-stats?realmId=${selectedRealm.value}`
       : '/api/community/pvp-stats'
-    const { data } = await useFetch(url)
-    pvpStats.value = (data.value as any) || {}
+
+    if (useClient) {
+      const data = await $fetch(url)
+      pvpStats.value = data || {}
+    } else {
+      const { data } = await useFetch(url)
+      pvpStats.value = (data.value as any) || {}
+    }
   } catch (error) {
     console.error('Failed to fetch PvP stats:', error)
   } finally {
@@ -266,15 +293,16 @@ async function fetchPvPStats() {
   }
 }
 
+// Refresh all stats (client-side with $fetch)
 function refreshStats() {
-  fetchGeneralStats()
-  fetchTopPlayers(selectedMetric.value)
-  fetchPvPStats()
+  fetchGeneralStats(true)
+  fetchTopPlayers(selectedMetric.value, true)
+  fetchPvPStats(true)
 }
 
 function changeMetric(metric: string) {
   selectedMetric.value = metric
-  fetchTopPlayers(metric)
+  fetchTopPlayers(metric, true)
 }
 
 function handleRealmChange() {
@@ -338,8 +366,8 @@ watch(activeTab, (newTab) => {
 onMounted(() => {
   fetchOnlinePlayers()
 
-  // Auto-refresh online players every 30 seconds
-  const interval = setInterval(fetchOnlinePlayers, 30000)
+  // Auto-refresh online players every 30 seconds (using $fetch)
+  const interval = setInterval(refreshOnlinePlayers, 30000)
   onUnmounted(() => clearInterval(interval))
 })
 </script>

@@ -231,7 +231,7 @@ function formatPlaytime(seconds: number) {
   background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
   border: 1px solid #475569;
   border-radius: 0.75rem;
-  padding: 2rem;
+  padding: 1rem;
   margin-bottom: 2rem;
   display: flex;
   justify-content: space-between;
@@ -263,19 +263,20 @@ function formatPlaytime(seconds: number) {
 }
 
 .character-stats-summary {
-  display: flex;
+  display: grid;
   gap: 1rem;
+	grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+	width: 100%;
 }
 
 .stat-pill {
   background: rgba(59, 130, 246, 0.1);
   border: 1px solid #3b82f6;
   border-radius: 0.5rem;
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 0.5rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 100px;
 }
 
 .stat-icon {
@@ -316,7 +317,7 @@ function formatPlaytime(seconds: number) {
 
 .equipment-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: 1rem;
 }
 
@@ -341,7 +342,7 @@ function formatPlaytime(seconds: number) {
 .stats-grid,
 .currency-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 1rem;
 }
 

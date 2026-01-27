@@ -83,7 +83,7 @@ const talentsForSpec = computed(() => {
 
 .spec-tab {
   flex: 1;
-  padding: 0.75rem 1rem;
+  padding: 0.75rem 0.5rem;
   background: rgba(59, 130, 246, 0.1);
   border: 1px solid #334155;
   border-radius: 0.375rem;
