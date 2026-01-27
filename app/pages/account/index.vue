@@ -159,17 +159,13 @@ watchEffect(async () => {
 </script>
 
 <style scoped lang="scss">
+/* Account Index - Page-specific styles only */
+/* Shared styles are in ~/assets/css/shared.css */
+
 .dashboard {
   max-width: 1400px;
   margin: 0 auto;
   padding: 2rem;
-}
-
-.loading,
-.not-authenticated {
-  padding: 4rem 2rem;
-  text-align: center;
-  color: #94a3b8;
 }
 
 .dashboard-content {
@@ -202,7 +198,7 @@ watchEffect(async () => {
 }
 
 .section {
-  padding: 2rem;
+  padding: 1rem;
   background: #1e293b;
   border: 1px solid #334155;
   border-radius: 1rem;
@@ -223,7 +219,7 @@ watchEffect(async () => {
 
 .accounts-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 1.5rem;
 }
 

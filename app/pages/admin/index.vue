@@ -436,38 +436,20 @@ function formatDate(dateString: string | null): string {
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+/* Admin Panel - Page-specific styles only */
+/* Shared styles are in ~/assets/css/shared.css */
+
 .admin-panel {
   max-width: 1400px;
   margin: 0 auto;
   padding: 2rem;
 }
 
-.page-header {
-  margin-bottom: 2rem;
-}
-
-.header-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
 .page-header h1 {
-  font-size: 2.5rem;
-  margin: 0;
   background: linear-gradient(to right, #f59e0b, #d97706);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-}
-
-.gm-badge {
-  padding: 0.5rem 1rem;
-  background: rgba(245, 158, 11, 0.2);
-  border: 1px solid #f59e0b;
-  border-radius: 0.5rem;
-  color: #f59e0b;
-  font-weight: 600;
 }
 
 .access-denied {
@@ -488,120 +470,10 @@ function formatDate(dateString: string | null): string {
   margin-bottom: 2rem;
 }
 
-.tabs {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 2rem;
-  border-bottom: 2px solid #334155;
-}
-
-.tabs button {
-  padding: 1rem 2rem;
-  background: none;
-  border: none;
-  color: #94a3b8;
-  cursor: pointer;
-  font-size: 1rem;
-  font-weight: 600;
-  transition: all 0.2s;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-}
-
-.tabs button:hover {
-  color: #e2e8f0;
-}
-
-.tabs button.active {
-  color: #f59e0b;
-  border-bottom-color: #f59e0b;
-}
-
-.tab-content {
-  animation: fadeIn 0.3s;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.content-section {
-  /* Content wrapper for consistent spacing */
-}
-
-.section-header {
-  margin-bottom: 2rem;
-}
-
-.section-header h2 {
-  color: #e2e8f0;
-  font-size: 1.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.subtitle {
-  color: #94a3b8;
-  font-size: 0.9rem;
-}
-
 .controls {
   display: flex;
   gap: 1rem;
   align-items: center;
-}
-
-.search-input {
-  padding: 0.75rem 1rem;
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 0.5rem;
-  color: #e2e8f0;
-  font-size: 1rem;
-  min-width: 300px;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: #f59e0b;
-}
-
-.loading {
-  text-align: center;
-  padding: 4rem 2rem;
-  color: #94a3b8;
-}
-
-.accounts-table-container,
-.mappings-table-container {
-  overflow-x: auto;
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 0.75rem;
-}
-
-.accounts-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.accounts-table th {
-  padding: 1rem;
-  text-align: left;
-  background: #0f172a;
-  color: #94a3b8;
-  font-weight: 600;
-  border-bottom: 1px solid #334155;
-}
-
-.accounts-table td {
-  padding: 1rem;
-  border-bottom: 1px solid #334155;
-  color: #e2e8f0;
-}
-
-.accounts-table tbody tr:hover {
-  background: rgba(148, 163, 184, 0.05);
 }
 
 .username {
@@ -609,65 +481,17 @@ function formatDate(dateString: string | null): string {
   color: #60a5fa;
 }
 
-.gm-badge-small {
-  margin-left: 0.5rem;
-  padding: 0.125rem 0.5rem;
-  background: rgba(245, 158, 11, 0.2);
-  border: 1px solid #f59e0b;
-  border-radius: 0.25rem;
-  color: #f59e0b;
-  font-size: 0.75rem;
+.filename {
   font-weight: 600;
+  color: #e2e8f0;
 }
 
-.status-badge {
-  padding: 0.25rem 0.75rem;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
-  font-weight: 600;
+.file-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
-.status-badge.online {
-  background: rgba(34, 197, 94, 0.2);
-  color: #22c55e;
-}
-
-.status-badge.offline {
-  background: rgba(148, 163, 184, 0.2);
-  color: #94a3b8;
-}
-
-.btn-small {
-  padding: 0.5rem 1rem;
-  background: rgba(59, 130, 246, 0.1);
-  border: 1px solid #3b82f6;
-  color: #60a5fa;
-  border-radius: 0.375rem;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.875rem;
-  transition: all 0.2s;
-}
-
-.btn-small:hover {
-  background: rgba(59, 130, 246, 0.2);
-}
-
-.btn-primary {
-  padding: 1rem 2rem;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: white;
-  text-decoration: none;
-  border-radius: 0.5rem;
-  font-weight: 600;
-  display: inline-block;
-}
-
-.btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-}
-
+/* File Upload Section */
 .file-upload-section,
 .files-list-section {
   margin-bottom: 2rem;
@@ -688,15 +512,6 @@ function formatDate(dateString: string | null): string {
   background: #1e293b;
   border: 1px solid #334155;
   border-radius: 0.75rem;
-}
-
-.file-input {
-  padding: 0.75rem;
-  background: #0f172a;
-  border: 1px solid #334155;
-  border-radius: 0.5rem;
-  color: #e2e8f0;
-  cursor: pointer;
 }
 
 .file-input::-webkit-file-upload-button {
@@ -723,88 +538,5 @@ function formatDate(dateString: string | null): string {
 .selected-file .file-size {
   color: #94a3b8;
   font-size: 0.875rem;
-}
-
-.btn-upload {
-  padding: 1rem 2rem;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  border: none;
-  color: white;
-  border-radius: 0.5rem;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.2s;
-}
-
-.btn-upload:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-}
-
-.btn-upload:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.progress-bar {
-  position: relative;
-  width: 100%;
-  height: 2rem;
-  background: #0f172a;
-  border: 1px solid #334155;
-  border-radius: 0.5rem;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  transition: width 0.3s ease;
-}
-
-.progress-text {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: #e2e8f0;
-  font-weight: 600;
-  font-size: 0.875rem;
-}
-
-.error-message {
-  color: #fca5a5;
-  margin: 0;
-  padding: 0.75rem;
-  background: rgba(239, 68, 68, 0.1);
-  border-radius: 0.5rem;
-}
-
-.success-message {
-  color: #86efac;
-  margin: 0;
-  padding: 0.75rem;
-  background: rgba(34, 197, 94, 0.1);
-  border-radius: 0.5rem;
-}
-
-.filename {
-  font-weight: 600;
-  color: #e2e8f0;
-}
-
-.file-actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.btn-danger {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: #ef4444;
-  color: #fca5a5;
-}
-
-.btn-danger:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.2);
 }
 </style>

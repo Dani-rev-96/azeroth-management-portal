@@ -3,12 +3,12 @@
     <div class="modal-content" @click.stop>
       <h3>{{ title }}</h3>
       <p class="modal-description">{{ description }}</p>
-      
+
       <div v-if="action === 'rename'" class="form-group">
         <label>New Character Name</label>
-        <input 
-          v-model="newName" 
-          type="text" 
+        <input
+          v-model="newName"
+          type="text"
           placeholder="Enter new name"
           maxlength="12"
         />
@@ -23,8 +23,8 @@
 
       <div class="modal-actions">
         <button @click="$emit('close')" class="cancel-button">Cancel</button>
-        <button 
-          @click="handleConfirm" 
+        <button
+          @click="handleConfirm"
           :disabled="loading"
           class="confirm-button"
         >
@@ -105,7 +105,7 @@ const handleConfirm = async () => {
     })
 
     success.value = `${props.action === 'rename' ? 'Rename' : 'Undelete'} request submitted successfully!`
-    
+
     setTimeout(() => {
       emit('success')
       emit('close')
@@ -125,7 +125,7 @@ const handleConfirm = async () => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -133,22 +133,25 @@ const handleConfirm = async () => {
 }
 
 .modal-content {
-  background: white;
+  background: #1e293b;
+  border: 1px solid #334155;
   padding: 2rem;
-  border-radius: 8px;
+  border-radius: 1rem;
   max-width: 500px;
   width: 90%;
   max-height: 90vh;
   overflow-y: auto;
 
   h3 {
-    margin: 0 0 1rem 0;
+    margin: 0 0 0.5rem 0;
     font-size: 1.5rem;
+    color: #e2e8f0;
   }
 
   .modal-description {
     margin-bottom: 1.5rem;
-    color: #666;
+    color: #94a3b8;
+    font-size: 0.95rem;
   }
 
   .form-group {
@@ -158,19 +161,26 @@ const handleConfirm = async () => {
       display: block;
       margin-bottom: 0.5rem;
       font-weight: 600;
-      color: #333;
+      color: #e2e8f0;
     }
 
     input {
       width: 100%;
-      padding: 0.75rem;
-      border: 1px solid #ddd;
-      border-radius: 4px;
+      padding: 0.75rem 1rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 0.5rem;
+      color: #e2e8f0;
       font-size: 1rem;
+      transition: border-color 0.2s;
 
       &:focus {
         outline: none;
-        border-color: #2196f3;
+        border-color: #60a5fa;
+      }
+
+      &::placeholder {
+        color: #64748b;
       }
     }
   }
@@ -182,54 +192,39 @@ const handleConfirm = async () => {
 
     button {
       flex: 1;
-      padding: 0.75rem;
+      padding: 1rem 2rem;
       border: none;
-      border-radius: 4px;
+      border-radius: 0.5rem;
       font-weight: 600;
       cursor: pointer;
+      transition: all 0.2s;
     }
 
     .cancel-button {
-      background: #e0e0e0;
-      color: #333;
+      background: rgba(148, 163, 184, 0.1);
+      color: #94a3b8;
+      border: 1px solid #334155;
 
       &:hover {
-        background: #d0d0d0;
+        background: rgba(148, 163, 184, 0.2);
+        border-color: #475569;
       }
     }
 
     .confirm-button {
-      background: #2196f3;
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
       color: white;
 
       &:hover:not(:disabled) {
-        background: #1976d2;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
       }
 
       &:disabled {
-        background: #ccc;
+        opacity: 0.5;
         cursor: not-allowed;
       }
     }
   }
-}
-
-.error-message,
-.success-message {
-  padding: 0.75rem;
-  border-radius: 4px;
-  margin-bottom: 1rem;
-}
-
-.error-message {
-  background: #ffebee;
-  border: 1px solid #ffcdd2;
-  color: #c62828;
-}
-
-.success-message {
-  background: #e8f5e9;
-  border: 1px solid #c8e6c9;
-  color: #2e7d32;
 }
 </style>

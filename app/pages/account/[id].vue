@@ -14,7 +14,6 @@
         :account-name="accountData.mapping.wowAccountName"
         :realm-name="primaryRealm?.name || 'No Characters'"
         :realm-version="primaryRealm?.version || ''"
-        @back="navigateTo('/')"
       />
 
       <AccountSecurityInfo :account="azAccount" />
@@ -113,22 +112,18 @@ const loadAccountData = async () => {
       throw new Error('Not authenticated')
     }
 
-    // Load all accounts if not already loaded
-    if (!accountsStore.hasAccounts) {
-      await accountsStore.loadAccounts(authStore.userId)
+    // Fetch account data - server will handle permission check
+    const { data: accountMapping, error: fetchError } = await useFetch(`/api/accounts/user/mapping/${accountId.value}`)
+
+    if (fetchError.value) {
+      throw new Error(fetchError.value.statusMessage || 'Account not found or access denied')
     }
 
-    // Find the specific account
-    const account = accountsStore.allAccounts.find(
-      a => a.mapping.wowAccountId === accountId.value
-    )
-
-    if (!account) {
-      throw new Error('Account not found')
+    if (!accountMapping.value) {
+      throw new Error('Account not found or access denied')
     }
 
-    accountData.value = account
-    // No longer need to set characters separately - they're in accountData.realms
+    accountData.value = accountMapping.value as ManagedAccount
 
     // Load detailed AzerothCore account info
     await loadAzerothCoreAccount()
@@ -213,24 +208,13 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
+/* Account Detail - Page-specific styles only */
+/* Shared styles are in ~/assets/css/shared.css */
+
 .account-detail {
   max-width: 1400px;
   margin: 0 auto;
   padding: 2rem;
-}
-
-.loading,
-.error {
-  padding: 4rem 2rem;
-  text-align: center;
-}
-
-.loading {
-  color: #94a3b8;
-}
-
-.error {
-  color: #fca5a5;
 }
 
 .back-button {
@@ -255,7 +239,7 @@ onMounted(() => {
 }
 
 .realm-section {
-  padding: 2rem;
+  padding: 1rem;
   background: #1e293b;
   border: 1px solid #334155;
   border-radius: 1rem;

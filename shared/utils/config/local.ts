@@ -54,7 +54,7 @@ export const authServerConfig = {
  */
 export const getDatabaseConfigs = () => {
   const config = useRuntimeConfig()
-  
+
   return {
     'auth-db': {
       host: config.db.authHost,
@@ -89,17 +89,17 @@ export const databaseConfigs = {
   },
   'blizzlike-db': {
     host: 'localhost',
-    port: 3306,
+    port: 3307,
     databases: ['acore_world', 'acore_characters'],
   },
   'ip-db': {
     host: 'localhost',
-    port: 3307,
+    port: 3308,
     databases: ['acore_world', 'acore_characters'],
   },
   'ip-boosted-db': {
     host: 'localhost',
-    port: 3308,
+    port: 3309,
     databases: ['acore_world', 'acore_characters'],
   },
 }

@@ -2,13 +2,14 @@
   <div class="section password-section">
     <h2>Change Password</h2>
     <p class="section-description">Update your WoW account password securely</p>
-    
+
     <form @submit.prevent="handleSubmit" class="password-form">
       <div class="form-group">
         <label>New Password</label>
-        <input 
-          v-model="form.newPassword" 
-          type="password" 
+        <input
+				class="form-input"
+          v-model="form.newPassword"
+          type="password"
           placeholder="Enter new password"
           :disabled="loading"
           required
@@ -16,24 +17,25 @@
       </div>
       <div class="form-group">
         <label>Confirm Password</label>
-        <input 
-          v-model="form.confirmPassword" 
-          type="password" 
+        <input
+				class="form-input"
+          v-model="form.confirmPassword"
+          type="password"
           placeholder="Confirm new password"
           :disabled="loading"
           required
         />
       </div>
-      
+
       <div v-if="error" class="error-message">
         {{ error }}
       </div>
       <div v-if="success" class="success-message">
         {{ success }}
       </div>
-      
-      <button 
-        type="submit" 
+
+      <button
+        type="submit"
         :disabled="loading || !isValid"
         class="submit-button"
       >
@@ -99,93 +101,47 @@ const handleSubmit = async () => {
 
 <style scoped lang="scss">
 .section {
-  margin-bottom: 2rem;
-  padding: 1.5rem;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 1rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 1rem;
 
   h2 {
-    margin: 0 0 1rem 0;
+    margin: 0 0 0.5rem 0;
     font-size: 1.5rem;
+    color: #e2e8f0;
   }
 
   .section-description {
-    margin: -0.5rem 0 1rem 0;
-    color: #666;
-    font-size: 0.9rem;
+    margin: 0 0 1.5rem 0;
+    color: #94a3b8;
+    font-size: 0.95rem;
   }
 }
 
 .password-form {
   max-width: 500px;
-
-  .form-group {
-    margin-bottom: 1rem;
-
-    label {
-      display: block;
-      margin-bottom: 0.5rem;
-      font-weight: 600;
-      color: #333;
-    }
-
-    input {
-      width: 100%;
-      padding: 0.75rem;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 1rem;
-
-      &:focus {
-        outline: none;
-        border-color: #2196f3;
-      }
-
-      &:disabled {
-        background: #f5f5f5;
-        cursor: not-allowed;
-      }
-    }
-  }
 }
 
 .submit-button {
-  padding: 0.75rem 1.5rem;
+  padding: 1rem 2rem;
   border: none;
-  border-radius: 4px;
-  background: #2196f3;
+  border-radius: 0.5rem;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   color: white;
   font-weight: 600;
   cursor: pointer;
   font-size: 1rem;
+  transition: all 0.2s;
 
   &:hover:not(:disabled) {
-    background: #1976d2;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
   }
 
   &:disabled {
-    background: #ccc;
+    opacity: 0.5;
     cursor: not-allowed;
   }
-}
-
-.error-message,
-.success-message {
-  padding: 0.75rem;
-  border-radius: 4px;
-  margin-bottom: 1rem;
-}
-
-.error-message {
-  background: #ffebee;
-  border: 1px solid #ffcdd2;
-  color: #c62828;
-}
-
-.success-message {
-  background: #e8f5e9;
-  border: 1px solid #c8e6c9;
-  color: #2e7d32;
 }
 </style>

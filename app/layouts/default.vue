@@ -1,5 +1,13 @@
 <template>
   <div class="layout">
+    <!-- Mobile Menu Overlay -->
+    <div
+      v-if="authStore.isAuthenticated"
+      class="mobile-overlay"
+      :class="{ 'active': mobileMenuOpen }"
+      @click="mobileMenuOpen = false"
+    ></div>
+
     <!-- Navigation -->
     <nav class="navbar">
       <div class="nav-container">
@@ -8,7 +16,7 @@
           <span class="brand-text">Azeroth Portal</span>
         </NuxtLink>
 
-        <div v-if="authStore.isAuthenticated" class="nav-links">
+        <div v-if="authStore.isAuthenticated" class="nav-links desktop-nav">
           <NuxtLink to="/account" class="nav-link">
             <span class="nav-icon">🎮</span>
             My Accounts
@@ -27,17 +35,58 @@
           </NuxtLink>
         </div>
 
-        <div class="nav-user">
-          <div v-if="authStore.isAuthenticated" class="user-info">
-            <span class="username">{{ authStore.user?.preferred_username }}</span>
-            <span v-if="isGM" class="gm-badge">GM</span>
+        <div class="nav-right">
+          <div class="nav-user">
+            <div v-if="authStore.isAuthenticated" class="user-info">
+              <span class="username">{{ authStore.user?.preferred_username }}</span>
+              <span v-if="isGM" class="gm-badge">GM</span>
+            </div>
+            <NuxtLink v-else to="/login" class="btn-login">
+              Sign In
+            </NuxtLink>
           </div>
-          <NuxtLink v-else to="/login" class="btn-login">
-            Sign In
-          </NuxtLink>
+
+          <button
+            v-if="authStore.isAuthenticated"
+            class="mobile-menu-toggle"
+            @click="mobileMenuOpen = !mobileMenuOpen"
+            :aria-label="mobileMenuOpen ? 'Close menu' : 'Open menu'"
+          >
+            <span class="hamburger" :class="{ 'open': mobileMenuOpen }"></span>
+          </button>
         </div>
       </div>
     </nav>
+
+    <!-- Mobile Slide-in Menu -->
+    <div
+      v-if="authStore.isAuthenticated"
+      class="mobile-menu"
+      :class="{ 'open': mobileMenuOpen }"
+    >
+      <div class="mobile-menu-header">
+        <span class="mobile-menu-title">Menu</span>
+        <button class="mobile-menu-close" @click="mobileMenuOpen = false">✕</button>
+      </div>
+      <div class="mobile-nav-links">
+        <NuxtLink to="/account" class="mobile-nav-link" @click="mobileMenuOpen = false">
+          <span class="nav-icon">🎮</span>
+          My Accounts
+        </NuxtLink>
+        <NuxtLink to="/downloads" class="mobile-nav-link" @click="mobileMenuOpen = false">
+          <span class="nav-icon">📦</span>
+          Downloads
+        </NuxtLink>
+        <NuxtLink to="/community" class="mobile-nav-link" @click="mobileMenuOpen = false">
+          <span class="nav-icon">👥</span>
+          Community
+        </NuxtLink>
+        <NuxtLink v-if="isGM" to="/admin" class="mobile-nav-link mobile-nav-link-admin" @click="mobileMenuOpen = false">
+          <span class="nav-icon">🛡️</span>
+          Admin
+        </NuxtLink>
+      </div>
+    </div>
 
     <!-- Main Content -->
     <div class="main-content">
@@ -57,6 +106,7 @@
 // Initialize auth on app load
 const authStore = useAuthStore()
 const isGM = ref(false)
+const mobileMenuOpen = ref(false)
 
 onMounted(async () => {
   const isAuthenticated = await authStore.initializeAuth()
@@ -106,6 +156,12 @@ onMounted(async () => {
   gap: 2rem;
 }
 
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 .nav-brand {
   display: flex;
   align-items: center;
@@ -129,6 +185,28 @@ onMounted(async () => {
   display: flex;
   gap: 1rem;
   flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+  -webkit-overflow-scrolling: touch;
+}
+
+.nav-links::-webkit-scrollbar {
+  height: 4px;
+}
+
+.nav-links::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.nav-links::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 2px;
+}
+
+.nav-links::-webkit-scrollbar-thumb:hover {
+  background: #475569;
 }
 
 .nav-link {
@@ -141,6 +219,8 @@ onMounted(async () => {
   border-radius: 0.5rem;
   font-weight: 600;
   transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .nav-link:hover {
@@ -233,19 +313,202 @@ onMounted(async () => {
   color: #94a3b8;
 }
 
+.mobile-menu-toggle {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem;
+  z-index: 1001;
+}
+
+.hamburger {
+  display: block;
+  width: 24px;
+  height: 2px;
+  background: #94a3b8;
+  position: relative;
+  transition: background 0.3s;
+}
+
+.hamburger::before,
+.hamburger::after {
+  content: '';
+  position: absolute;
+  width: 24px;
+  height: 2px;
+  background: #94a3b8;
+  transition: all 0.3s;
+}
+
+.hamburger::before {
+  top: -8px;
+}
+
+.hamburger::after {
+  top: 8px;
+}
+
+.hamburger.open {
+  background: transparent;
+}
+
+.hamburger.open::before {
+  transform: rotate(45deg);
+  top: 0;
+}
+
+.hamburger.open::after {
+  transform: rotate(-45deg);
+  top: 0;
+}
+
+.mobile-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+
+.mobile-overlay.active {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.mobile-menu {
+  display: none;
+  position: fixed;
+  top: 0;
+  right: -300px;
+  width: 280px;
+  height: 100vh;
+  background: #1e293b;
+  border-left: 1px solid #334155;
+  z-index: 1000;
+  transition: right 0.3s ease-out;
+  overflow-y: auto;
+}
+
+.mobile-menu.open {
+  right: 0;
+}
+
+.mobile-menu-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  border-bottom: 1px solid #334155;
+}
+
+.mobile-menu-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.mobile-menu-close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.mobile-menu-close:hover {
+  color: #e2e8f0;
+}
+
+.mobile-nav-links {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 0;
+}
+
+.mobile-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  color: #94a3b8;
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.2s;
+  border-left: 3px solid transparent;
+}
+
+.mobile-nav-link:hover {
+  color: #e2e8f0;
+  background: rgba(148, 163, 184, 0.1);
+  border-left-color: #60a5fa;
+}
+
+.mobile-nav-link.router-link-active {
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.1);
+  border-left-color: #60a5fa;
+}
+
+.mobile-nav-link-admin {
+  color: #fbbf24;
+}
+
+.mobile-nav-link-admin:hover {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+  border-left-color: #f59e0b;
+}
+
+.mobile-nav-link-admin.router-link-active {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+  border-left-color: #f59e0b;
+}
+
 @media (max-width: 768px) {
   .nav-container {
-    flex-direction: column;
     gap: 1rem;
   }
 
-  .nav-links {
-    flex-direction: column;
-    width: 100%;
+  .desktop-nav {
+    display: none;
   }
 
-  .nav-link {
-    justify-content: center;
+  .mobile-menu-toggle {
+    display: block;
+  }
+
+  .mobile-overlay,
+  .mobile-menu {
+    display: block;
+  }
+
+  .brand-text {
+    font-size: 1rem;
+  }
+
+  .username {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .nav-container {
+    padding: 1rem;
+  }
+
+  .brand-text {
+    display: none;
   }
 }
 </style>

@@ -97,6 +97,9 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* Landing Page - Page-specific styles only */
+/* Shared styles are in ~/assets/css/shared.css */
+
 .landing-page {
   max-width: 1400px;
   margin: 0 auto;
@@ -132,47 +135,6 @@ onMounted(async () => {
   flex-wrap: wrap;
 }
 
-.btn-primary,
-.btn-secondary,
-.btn-admin {
-  padding: 1rem 2rem;
-  border-radius: 0.5rem;
-  text-decoration: none;
-  font-weight: 600;
-  transition: all 0.2s;
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: white;
-}
-
-.btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-}
-
-.btn-secondary {
-  background: rgba(148, 163, 184, 0.1);
-  color: #94a3b8;
-  border: 1px solid #334155;
-}
-
-.btn-secondary:hover {
-  background: rgba(148, 163, 184, 0.2);
-  border-color: #475569;
-}
-
-.btn-admin {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  color: white;
-}
-
-.btn-admin:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
-}
-
 .features {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -180,38 +142,8 @@ onMounted(async () => {
   margin-bottom: 3rem;
 }
 
-.feature-card {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 1rem;
-  padding: 2rem;
-  text-align: center;
-  transition: all 0.2s;
-}
-
-.feature-card:hover {
-  border-color: #475569;
-  transform: translateY(-4px);
-}
-
 .feature-card.admin {
   border-color: #f59e0b;
-}
-
-.feature-icon {
-  font-size: 3rem;
-  margin-bottom: 1rem;
-}
-
-.feature-card h3 {
-  font-size: 1.25rem;
-  margin-bottom: 0.5rem;
-  color: #e2e8f0;
-}
-
-.feature-card p {
-  color: #94a3b8;
-  font-size: 0.95rem;
 }
 
 .stats-preview {

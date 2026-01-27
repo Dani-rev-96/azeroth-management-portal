@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
 
     // Get total characters across all realms
     // Query each realm's character database and sum them up
-    const realmDatabases = ['blizzlike-db', 'ip-db', 'ip-boosted-db']
+    const realmDatabases = ["wotlk", "wotlk-ip", "wotlk-ip-boosted"]
     let totalCharacters = 0
 
     for (const realmDb of realmDatabases) {

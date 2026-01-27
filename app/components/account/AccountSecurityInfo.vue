@@ -57,15 +57,15 @@ const getExpansionName = (expansion: number | undefined) => {
 
 <style scoped lang="scss">
 .section {
-  margin-bottom: 2rem;
-  padding: 1.5rem;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 1rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 1rem;
 
   h2 {
-    margin: 0 0 1rem 0;
+    margin: 0 0 1.5rem 0;
     font-size: 1.5rem;
+    color: #e2e8f0;
   }
 }
 
@@ -77,27 +77,29 @@ const getExpansionName = (expansion: number | undefined) => {
   .info-item {
     display: flex;
     justify-content: space-between;
-    padding: 0.75rem;
-    background: #f5f5f5;
-    border-radius: 4px;
+    padding: 1rem;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 0.5rem;
 
     .label {
       font-weight: 600;
-      color: #555;
+      color: #94a3b8;
     }
 
     .value {
-      color: #333;
+      color: #e2e8f0;
+      font-weight: 500;
 
       &.status {
         font-weight: 600;
-        
+
         &.online {
-          color: #4caf50;
+          color: #22c55e;
         }
 
         &.offline {
-          color: #999;
+          color: #94a3b8;
         }
       }
     }

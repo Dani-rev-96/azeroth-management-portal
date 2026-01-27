@@ -145,82 +145,19 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* Community Page - Page-specific styles only */
+/* Shared styles are in ~/assets/css/shared.css */
+
 .community-page {
   max-width: 1400px;
   margin: 0 auto;
   padding: 2rem;
 }
 
-.page-header {
-  margin-bottom: 2rem;
-}
-
-.header-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
 .page-header h1 {
-  font-size: 2.5rem;
-  margin: 0;
   background: linear-gradient(to right, #60a5fa, #a78bfa);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-}
-
-.tabs {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 2rem;
-  border-bottom: 2px solid #334155;
-}
-
-.tabs button {
-  padding: 1rem 2rem;
-  background: none;
-  border: none;
-  color: #94a3b8;
-  cursor: pointer;
-  font-size: 1rem;
-  font-weight: 600;
-  transition: all 0.2s;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-}
-
-.tabs button:hover {
-  color: #e2e8f0;
-}
-
-.tabs button.active {
-  color: #60a5fa;
-  border-bottom-color: #60a5fa;
-}
-
-.tab-content {
-  animation: fadeIn 0.3s;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.content-section {
-  /* Content wrapper for consistent spacing */
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 2rem;
-}
-
-.section-header h2 {
-  color: #e2e8f0;
-  font-size: 1.5rem;
 }
 
 .refresh-btn {
@@ -241,12 +178,6 @@ onMounted(() => {
 .refresh-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.loading, .empty-state {
-  text-align: center;
-  padding: 4rem 2rem;
-  color: #94a3b8;
 }
 
 .players-grid {
@@ -281,16 +212,6 @@ onMounted(() => {
   color: #60a5fa;
   font-size: 1.25rem;
   margin: 0;
-}
-
-.level-badge {
-  padding: 0.25rem 0.75rem;
-  background: rgba(167, 139, 250, 0.2);
-  border: 1px solid #a78bfa;
-  border-radius: 0.375rem;
-  color: #a78bfa;
-  font-size: 0.875rem;
-  font-weight: 600;
 }
 
 .player-info {

@@ -116,20 +116,17 @@ onMounted(() => {
 })
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+/* Downloads Page - Page-specific styles only */
+/* Shared styles are in ~/assets/css/shared.css */
+
 .downloads-page {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 2rem;
 }
 
-.page-header {
-  margin-bottom: 2rem;
-}
-
 .header-content h1 {
-  font-size: 2.5rem;
-  margin: 0 0 0.5rem 0;
   background: linear-gradient(to right, #60a5fa, #a78bfa);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -146,16 +143,9 @@ onMounted(() => {
 }
 
 .loading, .error-state, .empty-state {
-  text-align: center;
-  padding: 4rem 2rem;
-  color: #94a3b8;
   background: #1e293b;
   border: 1px solid #334155;
   border-radius: 0.75rem;
-}
-
-.error-state {
-  color: #fca5a5;
 }
 
 .files-grid {

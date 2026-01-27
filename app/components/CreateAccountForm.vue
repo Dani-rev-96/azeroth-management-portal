@@ -147,7 +147,6 @@ const handleSubmit = async () => {
 <style scoped lang="scss">
 .create-account-form {
   max-width: 500px;
-  margin: 0 auto;
 
   .form-group {
     margin-bottom: 1.5rem;
