@@ -1,19 +1,20 @@
 /**
  * Environment-aware configuration loader
  * Automatically loads the correct config based on NODE_ENV
- *
- * Server-side (API routes - SSR):
- *   import { realms, databaseConfigs } from '~/shared/utils/config'
+ * PUBLIC - Safe to share with client (only realm metadata, no credentials)
  *
  * Client-side (Components):
- *   const { realms, databaseConfigs } = await useServerConfig()
+ *   const { realms } = await useServerConfig()
+ *
+ * Server-side (API routes - for database credentials):
+ *   import { useServerDatabaseConfig } from '#server/utils/config'
  */
 
 import type { RealmConfig, RealmId } from '~/types'
 
 /**
  * Composable for client-side config loading
- * Uses async/await with ES module dynamic imports (works in browser)
+ * Only returns realm metadata (no sensitive data)
  */
 export const useServerConfig = async () => {
   const env = process.env.NODE_ENV || 'development'
@@ -29,8 +30,6 @@ export const useServerConfig = async () => {
     return {
       realms: config.realms,
       authServerConfig: config.authServerConfig,
-      databaseConfigs: config.getDatabaseConfigs(),
-      getServerConfig: config.getServerConfig,
     }
   } catch (error) {
     console.error(`Failed to load config for environment: ${env}`, error)
@@ -39,8 +38,6 @@ export const useServerConfig = async () => {
     return {
       realms: config.realms,
       authServerConfig: config.authServerConfig,
-      databaseConfigs: config.getDatabaseConfigs(),
-      getServerConfig: config.getServerConfig,
     }
   }
 }
@@ -48,6 +45,5 @@ export const useServerConfig = async () => {
 // Export type helpers
 export type { RealmConfig, RealmId }
 
-// Direct conditional exports for server-side imports (API routes)
-// The bundler will tree-shake unused imports based on NODE_ENV at build time
+// Direct conditional exports for server-side imports
 export * from './local'

@@ -5,6 +5,7 @@
 
 import mysql from 'mysql2/promise'
 import type { Pool, PoolOptions } from 'mysql2/promise'
+import { useServerDatabaseConfig } from '#server/utils/config'
 
 type PoolCache = {
   'auth-db': Pool | null
@@ -36,14 +37,14 @@ export async function getDbPool(dbKey: keyof PoolCache): Promise<Pool> {
     return pools[dbKey]!
   }
 
-  // Get config
-  const serverConfig = await useServerConfig()
+  // Get database config (server-side only)
+  const { databaseConfigs } = await useServerDatabaseConfig()
 
   // For character databases, derive the base database key
   const isCharactersDb = dbKey.includes('-characters-')
   const configKey = isCharactersDb ? dbKey.replace('-characters-db', '-db') : dbKey
 
-  const dbConfig = serverConfig.databaseConfigs[configKey as keyof typeof serverConfig.databaseConfigs]
+  const dbConfig = databaseConfigs[configKey as keyof typeof databaseConfigs]
   if (!dbConfig) {
     throw new Error(`Database configuration not found for: ${configKey}`)
   }

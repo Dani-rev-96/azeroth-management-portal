@@ -1,18 +1,51 @@
 /**
  * GET /api/community/pvp-stats
  * Get PvP statistics from battlegrounds and arenas
+ * Query params: realmId (optional) - filter by specific realm
  */
 export default defineEventHandler(async (event) => {
   try {
-    const { getCharactersDbPool } = await import('#server/utils/mysql')
+    const query = getQuery(event)
+    const realmIdFilter = query.realmId as string | undefined
+
+    const { getAuthDbPool, getCharactersDbPool } = await import('#server/utils/mysql')
     const serverConfig = await useServerConfig()
+
+    // Get non-bot account IDs
+    const authPool = await getAuthDbPool()
+    const [accountsResult] = await authPool.query(
+      'SELECT id FROM account WHERE username NOT LIKE "RNDBOT%"'
+    )
+    const nonBotAccountIds = (accountsResult as any[]).map(row => row.id)
+
+    if (nonBotAccountIds.length === 0) {
+      return {
+        battlegrounds: { total: 0 },
+        arenas: { total: 0 },
+        topPlayers: [],
+      }
+    }
+
+    const accountFilter = `account IN (${nonBotAccountIds.join(',')})`
 
     let totalBattlegrounds = 0
     let totalArenaMatches = 0
     const topPvPPlayers = []
 
-    // Aggregate from all realms
-    for (const [realmId, realm] of Object.entries(serverConfig.realms)) {
+    // Determine which realms to query
+    const realmsToQuery = realmIdFilter
+      ? { [realmIdFilter]: serverConfig.realms[realmIdFilter as keyof typeof serverConfig.realms] }
+      : serverConfig.realms
+
+    if (realmIdFilter && !(realmIdFilter in serverConfig.realms)) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: `Invalid realm ID: ${realmIdFilter}`,
+      })
+    }
+
+    // Aggregate from selected realms
+    for (const [realmId, realm] of Object.entries(realmsToQuery)) {
       const charsPool = await getCharactersDbPool(realmId)
 
       // Count total battlegrounds
@@ -27,7 +60,7 @@ export default defineEventHandler(async (event) => {
       )
       totalArenaMatches += (arenaResult as any[])[0].total || 0
 
-      // Get top PvP players by honorable kills
+      // Get top PvP players by honorable kills (non-bot)
       const [topPvPResult] = await charsPool.query(
         `SELECT
           name,
@@ -38,7 +71,7 @@ export default defineEventHandler(async (event) => {
           totalKills,
           arenaPoints
         FROM characters
-        WHERE totalHonorPoints > 0
+        WHERE totalHonorPoints > 0 AND ${accountFilter}
         ORDER BY totalHonorPoints DESC
         LIMIT 20`
       )
