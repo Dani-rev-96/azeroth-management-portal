@@ -240,8 +240,8 @@
 <script setup lang="ts">
 const authStore = useAuthStore()
 
-const isGM = ref(false)
-const gmLevel = ref(0)
+const isGM = computed(() => authStore.user?.isGM || false)
+const gmLevel = computed(() => authStore.user?.gmLevel || 0)
 const activeTab = ref('accounts')
 const searchQuery = ref('')
 
@@ -261,22 +261,16 @@ const selectedFile = ref<File | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const deleting = ref('')
 
-// Check GM status
-onMounted(async () => {
-  try {
-    const { data } = await useFetch('/api/auth/me')
-    isGM.value = data.value?.isGM || false
-    gmLevel.value = data.value?.gmLevel || 0
-
-    if (isGM.value) {
-      await Promise.all([
-        fetchAccounts(),
-        fetchMappings(),
-        fetchFiles()
-      ])
-    }
-  } catch (error) {
-    console.error('Failed to check GM status:', error)
+// Load data when authenticated as GM
+watchEffect(async () => {
+  if (authStore.isAuthenticated && isGM.value) {
+    await Promise.all([
+      fetchAccounts(),
+      fetchMappings(),
+      fetchFiles()
+    ])
+  } else if (authStore.isAuthenticated && !isGM.value) {
+    // Not a GM, redirect
     navigateTo('/')
   }
 })

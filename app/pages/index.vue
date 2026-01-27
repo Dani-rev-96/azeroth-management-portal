@@ -68,24 +68,16 @@
 const authStore = useAuthStore()
 
 // Check if user has GM access
-const isGM = ref(false)
+const isGM = computed(() => authStore.user?.isGM || false)
 const stats = ref<{
   onlinePlayers: number
   totalAccounts: number
   totalCharacters: number
 } | null>(null)
 
-onMounted(async () => {
-  if (authStore.isAuthenticated) {
-    // Check GM status
-    try {
-      const { data } = await useFetch('/api/auth/me')
-      isGM.value = data.value?.isGM || false
-    } catch (error) {
-      console.error('Failed to check GM status:', error)
-    }
-
-    // Load basic stats
+// Load stats when authenticated
+watchEffect(async () => {
+  if (authStore.isAuthenticated && !stats.value) {
     try {
       const { data } = await useFetch('/api/stats/overview')
       stats.value = data.value

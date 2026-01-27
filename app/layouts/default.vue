@@ -105,7 +105,7 @@
 <script setup lang="ts">
 // Initialize auth on app load
 const authStore = useAuthStore()
-const isGM = ref(false)
+const isGM = computed(() => authStore.user?.isGM || false)
 const mobileMenuOpen = ref(false)
 
 onMounted(async () => {
@@ -114,16 +114,6 @@ onMounted(async () => {
     // Don't redirect if already on login page
     if (useRoute().path !== '/') {
       navigateTo('/login')
-    }
-  }
-
-  // Check GM status
-  if (isAuthenticated) {
-    try {
-      const { data } = await useFetch('/api/auth/me')
-      isGM.value = data.value?.isGM || false
-    } catch (error) {
-      console.error('Failed to check GM status:', error)
     }
   }
 })

@@ -80,6 +80,7 @@ const loading = ref(true)
 const error = ref('')
 const accountData = ref<ManagedAccount | null>(null)
 const azAccount = ref<AzerothCoreAccount | null>(null)
+const dataLoaded = ref(false)
 
 // Compute primary realm (one with most characters)
 const primaryRealm = computed<RealmConfig | null>(() => {
@@ -104,14 +105,15 @@ const dangerZoneRef = ref<any>(null)
 
 // Methods
 const loadAccountData = async () => {
+  // Don't load if already loaded or if not authenticated
+  if (dataLoaded.value || !authStore.isAuthenticated) {
+    return
+  }
+
   loading.value = true
   error.value = ''
 
   try {
-    if (!authStore.userId) {
-      throw new Error('Not authenticated')
-    }
-
     // Fetch account data - server will handle permission check
     const { data: accountMapping, error: fetchError } = await useFetch(`/api/accounts/user/mapping/${accountId.value}`)
 
@@ -128,6 +130,7 @@ const loadAccountData = async () => {
     // Load detailed AzerothCore account info
     await loadAzerothCoreAccount()
 
+    dataLoaded.value = true
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to load account'
   } finally {
@@ -179,6 +182,7 @@ const handleUndeleteCharacter = (character: WoWCharacter, realmId: RealmId) => {
 }
 
 const handleCharacterActionSuccess = () => {
+  dataLoaded.value = false
   loadAccountData() // Reload to see changes
 }
 
@@ -189,7 +193,7 @@ const closeActionModal = () => {
 
 const handleUnlinkAccount = async () => {
   try {
-    if (!authStore.userId || !accountData.value) {
+    if (!authStore.isAuthenticated || !accountData.value) {
       throw new Error('Not authenticated or no account data')
     }
 
@@ -202,8 +206,11 @@ const handleUnlinkAccount = async () => {
   }
 }
 
-onMounted(() => {
-  loadAccountData()
+// Load data when authenticated
+watchEffect(() => {
+  if (authStore.isAuthenticated) {
+    loadAccountData()
+  }
 })
 </script>
 

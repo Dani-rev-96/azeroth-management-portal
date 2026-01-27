@@ -103,6 +103,8 @@ const authStore = useAuthStore()
 const accountsStore = useAccountsStore()
 const loading = ref(true)
 
+const userId = computed(() => authStore.userId)
+
 const selectAccount = (accountId: number) => {
   accountsStore.selectAccount(accountId)
   navigateTo(`/account/${accountId}`)
@@ -110,21 +112,21 @@ const selectAccount = (accountId: number) => {
 
 const onAccountLinked = async () => {
   // Reload accounts after linking
-  if (authStore.userId) {
-    await accountsStore.loadAccounts(authStore.userId)
+  if (userId.value) {
+    await accountsStore.loadAccounts(userId.value)
   }
 }
 
 const onAccountCreated = async (credentials: { username: string; password: string }) => {
   // Auto-link the newly created account
-  if (authStore.userId) {
+  if (userId.value) {
     try {
       await accountsStore.createAccountMapping(
-        authStore.userId,
+        userId.value,
         credentials.username,
         credentials.password
       )
-      await accountsStore.loadAccounts(authStore.userId)
+      await accountsStore.loadAccounts(userId.value)
     } catch (err) {
       console.error('Failed to auto-link new account:', err)
       // User can still manually link it
@@ -145,12 +147,10 @@ const handleUnlinkAccount = async (account: ManagedAccount) => {
 }
 
 watchEffect(async () => {
-  if (authStore.isAuthenticated) {
+  if (authStore.isAuthenticated && userId.value) {
     loading.value = true
     try {
-      if (authStore.userId) {
-        await accountsStore.loadAccounts(authStore.userId)
-      }
+      await accountsStore.loadAccounts(userId.value)
     } finally {
       loading.value = false
     }
