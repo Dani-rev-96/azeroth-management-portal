@@ -1,10 +1,10 @@
 /**
  * Configuration Export
  * This is a convenience re-export that loads environment-specific configs
- * 
+ *
  * Import from here for cleaner imports:
- *   import { realms, databaseConfigs, realmDatabaseMap } from '~/utils/config'
- * 
+ *   import { realms, getDatabaseConfigs } from '~/utils/config'
+ *
  * Environment-specific configs are in shared/utils/config/:
  *   - local.ts (development)
  *   - staging.ts (staging)
@@ -14,8 +14,7 @@
 export {
   realms,
   authServerConfig,
-  databaseConfigs,
-  realmDatabaseMap,
+  getDatabaseConfigs,
   getServerConfig,
   useServerConfig,
 } from './config/index'

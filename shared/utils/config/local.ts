@@ -16,6 +16,7 @@ export const realms: Record<RealmId, RealmConfig> = {
     soapPort: 7878,
     database: 'acore_world',
     databaseHost: 'localhost',
+    databaseKey: 'blizzlike-db', // References the database config below
   },
   'wotlk-ip': {
     id: 'wotlk-ip',
@@ -27,6 +28,7 @@ export const realms: Record<RealmId, RealmConfig> = {
     soapPort: 7879,
     database: 'acore_world',
     databaseHost: 'localhost',
+    databaseKey: 'ip-db',
   },
   'wotlk-ip-boosted': {
     id: 'wotlk-ip-boosted',
@@ -38,6 +40,7 @@ export const realms: Record<RealmId, RealmConfig> = {
     soapPort: 7880,
     database: 'acore_world',
     databaseHost: 'localhost',
+    databaseKey: 'ip-boosted-db',
   },
 }
 
@@ -47,9 +50,9 @@ export const authServerConfig = {
 }
 
 /**
- * Database mappings for local development
- * Each realm can point to different database servers
- * Credentials and host/port are loaded from .db.local.json via runtimeConfig
+ * Database configurations for local development
+ * Credentials are loaded from .db.local.json via runtimeConfig
+ * Host/port can be overridden per environment
  * This config is shared with the app/browser, so no sensitive data
  */
 export const getDatabaseConfigs = () => {
@@ -59,71 +62,32 @@ export const getDatabaseConfigs = () => {
     'auth-db': {
       host: config.db.authHost,
       port: config.db.authPort,
+      user: config.db.authUser,
+      password: config.db.authPassword,
       databases: ['acore_auth'],
     },
     'blizzlike-db': {
       host: config.db.blizzlikeWorldHost,
       port: config.db.blizzlikeWorldPort,
+      user: config.db.blizzlikeWorldUser,
+      password: config.db.blizzlikeWorldPassword,
       databases: ['acore_world', 'acore_characters'],
     },
     'ip-db': {
       host: config.db.ipWorldHost,
       port: config.db.ipWorldPort,
+      user: config.db.ipWorldUser,
+      password: config.db.ipWorldPassword,
       databases: ['acore_world', 'acore_characters'],
     },
     'ip-boosted-db': {
       host: config.db.ipBoostedWorldHost,
       port: config.db.ipBoostedWorldPort,
+      user: config.db.ipBoostedWorldUser,
+      password: config.db.ipBoostedWorldPassword,
       databases: ['acore_world', 'acore_characters'],
     },
   }
-}
-
-// Export static config for backward compatibility
-// Note: This won't have the actual runtime values until server-side
-export const databaseConfigs = {
-  'auth-db': {
-    host: 'localhost',
-    port: 3306,
-    databases: ['acore_auth'],
-  },
-  'blizzlike-db': {
-    host: 'localhost',
-    port: 3307,
-    databases: ['acore_world', 'acore_characters'],
-  },
-  'ip-db': {
-    host: 'localhost',
-    port: 3308,
-    databases: ['acore_world', 'acore_characters'],
-  },
-  'ip-boosted-db': {
-    host: 'localhost',
-    port: 3309,
-    databases: ['acore_world', 'acore_characters'],
-  },
-}
-
-/**
- * Realm to database mapping
- * Each realm specifies which database server hosts its data
- */
-export const realmDatabaseMap: Record<RealmId, { id: number; auth: string; world: string }> = {
-  wotlk: {
-    id: 1,
-    auth: 'auth-db',
-    world: 'wotlk-db',
-  },
-  'wotlk-ip': {
-    id: 2,
-    auth: 'auth-db',
-    world: 'wotlk-ip-db',
-  },
-  'wotlk-ip-boosted': {
-    id: 3,
-    auth: 'auth-db',
-    world: 'wotlk-ip-boosted-db',
-  },
 }
 
 export const getServerConfig = () => {
@@ -131,6 +95,5 @@ export const getServerConfig = () => {
     realms,
     authServer: authServerConfig,
     databaseConfigs: getDatabaseConfigs(),
-    realmDatabaseMap,
   }
 }

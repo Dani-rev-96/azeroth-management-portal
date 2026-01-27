@@ -1,10 +1,10 @@
 /**
  * Environment-aware configuration loader
  * Automatically loads the correct config based on NODE_ENV
- * 
+ *
  * Server-side (API routes - SSR):
- *   import { realms, databaseConfigs, realmDatabaseMap } from '~/shared/utils/config'
- * 
+ *   import { realms, databaseConfigs } from '~/shared/utils/config'
+ *
  * Client-side (Components):
  *   const { realms, databaseConfigs } = await useServerConfig()
  */
@@ -29,8 +29,7 @@ export const useServerConfig = async () => {
     return {
       realms: config.realms,
       authServerConfig: config.authServerConfig,
-      databaseConfigs: config.databaseConfigs,
-      realmDatabaseMap: config.realmDatabaseMap,
+      databaseConfigs: config.getDatabaseConfigs(),
       getServerConfig: config.getServerConfig,
     }
   } catch (error) {
@@ -40,8 +39,7 @@ export const useServerConfig = async () => {
     return {
       realms: config.realms,
       authServerConfig: config.authServerConfig,
-      databaseConfigs: config.databaseConfigs,
-      realmDatabaseMap: config.realmDatabaseMap,
+      databaseConfigs: config.getDatabaseConfigs(),
       getServerConfig: config.getServerConfig,
     }
   }

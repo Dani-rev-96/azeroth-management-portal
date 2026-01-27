@@ -36,47 +36,27 @@ export async function getDbPool(dbKey: keyof PoolCache): Promise<Pool> {
     return pools[dbKey]!
   }
 
-  // Get credentials and config
-  const config = useRuntimeConfig()
+  // Get config
   const serverConfig = await useServerConfig()
-  
-  // Map character db keys to their base db config keys
-  const baseDbKeyMap: Record<string, keyof typeof serverConfig.databaseConfigs> = {
-    'blizzlike-characters-db': 'blizzlike-db',
-    'ip-characters-db': 'ip-db',
-    'ip-boosted-characters-db': 'ip-boosted-db',
-  }
-  
-  // Get the base config key (for character dbs, use their base db config)
-  const configKey = baseDbKeyMap[dbKey as keyof typeof baseDbKeyMap] || dbKey
+
+  // For character databases, derive the base database key
+  const isCharactersDb = dbKey.includes('-characters-')
+  const configKey = isCharactersDb ? dbKey.replace('-characters-db', '-db') : dbKey
+
   const dbConfig = serverConfig.databaseConfigs[configKey as keyof typeof serverConfig.databaseConfigs]
   if (!dbConfig) {
-    throw new Error(`Database configuration not found for: ${dbKey}`)
+    throw new Error(`Database configuration not found for: ${configKey}`)
   }
 
-  // Map dbKey to runtimeConfig credentials
-  const credentialsMap = {
-    'auth-db': { user: config.db.authUser, password: config.db.authPassword },
-    'blizzlike-db': { user: config.db.blizzlikeWorldUser, password: config.db.blizzlikeWorldPassword },
-    'blizzlike-characters-db': { user: config.db.blizzlikeWorldUser, password: config.db.blizzlikeWorldPassword },
-    'ip-db': { user: config.db.ipWorldUser, password: config.db.ipWorldPassword },
-    'ip-characters-db': { user: config.db.ipWorldUser, password: config.db.ipWorldPassword },
-    'ip-boosted-db': { user: config.db.ipBoostedWorldUser, password: config.db.ipBoostedWorldPassword },
-    'ip-boosted-characters-db': { user: config.db.ipBoostedWorldUser, password: config.db.ipBoostedWorldPassword },
-  }
-
-  const credentials = credentialsMap[dbKey]
-  
   // Determine which database to use (world or characters)
-  const isCharactersDb = dbKey.includes('-characters-')
   const databaseIndex = isCharactersDb ? 1 : 0 // 0 = world/auth, 1 = characters
-  
+
   // Create pool configuration
   const poolConfig: PoolOptions = {
     host: dbConfig.host,
     port: dbConfig.port,
-    user: credentials.user,
-    password: credentials.password,
+    user: dbConfig.user,
+    password: dbConfig.password,
     database: dbConfig.databases[databaseIndex],
     waitForConnections: true,
     connectionLimit: 10,
@@ -107,17 +87,16 @@ export async function getAuthDbPool(): Promise<Pool> {
  * @param dbType - 'world' for game data, 'characters' for character data (default: 'world')
  */
 export async function getWorldDbPool(realmId: string, dbType: 'world' | 'characters' = 'world'): Promise<Pool> {
-  // Map realm IDs to database keys
-  const realmDbMap: Record<string, keyof PoolCache> = {
-    'wotlk': dbType === 'characters' ? 'blizzlike-characters-db' : 'blizzlike-db',
-    'wotlk-ip': dbType === 'characters' ? 'ip-characters-db' : 'ip-db',
-    'wotlk-ip-boosted': dbType === 'characters' ? 'ip-boosted-characters-db' : 'ip-boosted-db',
-  }
+  const serverConfig = await useServerConfig()
+  const realm = serverConfig.realms[realmId as keyof typeof serverConfig.realms]
 
-  const dbKey = realmDbMap[realmId]
-  if (!dbKey) {
+  if (!realm) {
     throw new Error(`Unknown realm ID: ${realmId}`)
   }
+
+  // Use the databaseKey from realm config to determine pool key
+  const baseDbKey = realm.databaseKey
+  const dbKey = (dbType === 'characters' ? `${baseDbKey.replace('-db', '')}-characters-db` : baseDbKey) as keyof PoolCache
 
   return getDbPool(dbKey)
 }

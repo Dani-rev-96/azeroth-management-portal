@@ -22,6 +22,7 @@ export type RealmConfig = {
   soapPort: number
   database: string
   databaseHost: string
+  databaseKey: string // References the database config key (e.g., 'blizzlike-db', 'ip-db')
 }
 
 // AzerothCore Account (raw from acore_auth.account table)

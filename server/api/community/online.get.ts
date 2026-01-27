@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
 
     // Get all online accounts
     const [onlineAccounts] = await authPool.query(
-      'SELECT id, username, online FROM account WHERE online = 1'
+      'SELECT id, username, online FROM account WHERE online = 1 and username not like "RNDBOT%"'
     )
     const accounts = onlineAccounts as any[]
 
@@ -23,11 +23,7 @@ export default defineEventHandler(async (event) => {
 
     // For each realm, check for characters from these accounts
     for (const [realmId, realm] of Object.entries(serverConfig.realms)) {
-      const dbKey = realmId === 'wotlk' ? 'blizzlike-db' :
-                    realmId === 'wotlk-ip' ? 'ip-db' :
-                    'ip-boosted-db'
-
-      const charsPool = await getCharactersDbPool(`${dbKey}-characters` as any)
+      const charsPool = await getCharactersDbPool(realmId)
 
       for (const account of accounts) {
         const [chars] = await charsPool.query(
