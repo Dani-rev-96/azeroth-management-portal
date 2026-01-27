@@ -85,6 +85,15 @@ export default defineEventHandler(async (event) => {
         highWaterMark: 1024 * 1024 // 1MB chunks
       })
 
+      let bytesStreamed = 0
+      stream.on('data', (chunk) => {
+        bytesStreamed += chunk.length
+      })
+
+      stream.on('end', () => {
+        console.log(`[Download] Completed partial: ${safeFilename} (${bytesStreamed}/${chunkSize} bytes)`)
+      })
+
       // Handle stream errors
       stream.on('error', (err) => {
         console.error(`[Download] Stream error for ${safeFilename}:`, err)
@@ -101,6 +110,18 @@ export default defineEventHandler(async (event) => {
     // Stream the full file with larger chunks for better performance
     const stream = createReadStream(filePath, {
       highWaterMark: 1024 * 1024 // 1MB chunks
+    })
+
+    let bytesStreamed = 0
+    stream.on('data', (chunk) => {
+      bytesStreamed += chunk.length
+      if (bytesStreamed % (100 * 1024 * 1024) === 0 || bytesStreamed < 1024 * 1024) {
+        console.log(`[Download] Streamed ${bytesStreamed} bytes of ${safeFilename}`)
+      }
+    })
+
+    stream.on('end', () => {
+      console.log(`[Download] Completed: ${safeFilename} (${bytesStreamed} bytes)`)
     })
 
     stream.on('error', (err) => {
