@@ -8,6 +8,15 @@
     </header>
 
     <main class="content-section">
+      <div class="info-banner">
+        <div class="info-icon">ℹ️</div>
+        <div class="info-content">
+          <strong>Resumable Downloads:</strong>
+          If your download is interrupted, you can resume it from where it left off.
+          Your browser will automatically continue the download when you click the download link again.
+        </div>
+      </div>
+
       <section class="downloads-list">
         <div v-if="loading" class="loading">
           <p>Loading available downloads...</p>
@@ -140,6 +149,31 @@ onMounted(() => {
 
 .content-section {
   margin-top: 2rem;
+}
+
+.info-banner {
+  display: flex;
+  gap: 1rem;
+  padding: 1.25rem;
+  margin-bottom: 2rem;
+  background: #1e3a5f;
+  border: 1px solid #3b82f6;
+  border-radius: 0.75rem;
+  align-items: flex-start;
+}
+
+.info-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.info-content {
+  color: #e2e8f0;
+  line-height: 1.6;
+}
+
+.info-content strong {
+  color: #60a5fa;
 }
 
 .loading, .error-state, .empty-state {

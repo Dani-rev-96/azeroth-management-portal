@@ -30,10 +30,11 @@
           mariadb
           sops
           age
+          sqlite-interactive
         ];
 
         name = package-json.name;
-        version = package-json.version;
+        version = "${package-json.version}-4";
         src = ./.;
 
         prod-package = pkgs.buildNpmPackage {
@@ -97,6 +98,13 @@
         prod-image = pkgs.dockerTools.buildLayeredImage {
           name = name;
           tag = version;
+          contents = [
+            pkgs.bashInteractive
+            pkgs.coreutils
+            pkgs.busybox
+            pkgs.sqlite-interactive
+            prod-package
+          ];
           config = {
             Env = [
               "NODE_EXTRA_CA_CERTS=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
