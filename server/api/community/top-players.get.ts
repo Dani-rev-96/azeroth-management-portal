@@ -51,6 +51,7 @@ export default defineEventHandler(async (event) => {
         case 'playtime':
           sqlQuery = `
             SELECT
+              guid,
               name,
               level,
               race,
@@ -68,6 +69,7 @@ export default defineEventHandler(async (event) => {
         case 'achievements':
           sqlQuery = `
             SELECT
+              c.guid,
               c.name,
               c.level,
               c.race,
@@ -89,6 +91,7 @@ export default defineEventHandler(async (event) => {
         default:
           sqlQuery = `
             SELECT
+              guid,
               name,
               level,
               race,
@@ -109,6 +112,7 @@ export default defineEventHandler(async (event) => {
 
       for (const char of results as any[]) {
         topPlayers.push({
+          guid: char.guid,
           name: char.name,
           level: char.level,
           race: char.race,

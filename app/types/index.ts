@@ -118,3 +118,82 @@ export type SoapResponse = {
   status: number
   result?: string
 }
+
+// Character Detail Types
+export type CharacterItem = {
+  guid: number
+  itemId: number
+  slot: number
+  displayid: number
+  name: string
+  quality: number
+  itemLevel: number
+  requiredLevel: number
+  itemClass: number
+  itemSubclass: number
+  inventoryType: number
+  armor?: number
+  statsCount: number
+  stat_type1?: number
+  stat_value1?: number
+  stat_type2?: number
+  stat_value2?: number
+  stat_type3?: number
+  stat_value3?: number
+  stat_type4?: number
+  stat_value4?: number
+  stat_type5?: number
+  stat_value5?: number
+  stat_type6?: number
+  stat_value6?: number
+  stat_type7?: number
+  stat_value7?: number
+  stat_type8?: number
+  stat_value8?: number
+  stat_type9?: number
+  stat_value9?: number
+  stat_type10?: number
+  stat_value10?: number
+  dmg_min1?: number
+  dmg_max1?: number
+  dmg_type1?: number
+  icon?: string
+  enchantments?: string
+}
+
+export type CharacterTalent = {
+  guid: number
+  spell: number
+  specMask: number // 1 = first spec, 2 = second spec, 3 = both specs
+}
+
+export type CharacterDetailResponse = {
+  character: {
+    guid: number
+    name: string
+    race: number
+    class: number
+    gender: number
+    level: number
+    money: number
+    health: number
+    mana?: number
+    rage?: number
+    focus?: number
+    energy?: number
+    happiness?: number
+    totalTime: number
+    levelTime: number
+    arenaPoints: number
+    honorPoints: number
+    totalKills: number
+    chosenTitle?: number
+    activeSpec: number
+    specCount: number
+  }
+  items: CharacterItem[]
+  talents: CharacterTalent[]
+  achievements: any[]
+  stats: any[]
+  realmId: string
+}

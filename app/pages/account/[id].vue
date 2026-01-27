@@ -30,6 +30,7 @@
         <CharacterList
           :characters="realmData.characters"
           :loading="actionLoading"
+          :realm-id="realmData.realm.id"
           @rename="(char) => handleRenameCharacter(char, realmData.realm.id)"
           @undelete="(char) => handleUndeleteCharacter(char, realmData.realm.id)"
         />

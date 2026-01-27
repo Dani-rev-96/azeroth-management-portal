@@ -1,0 +1,281 @@
+import { getAuthenticatedUser } from '#server/utils/auth'
+import { getCharactersDbPool, getWorldDbPool } from '#server/utils/mysql'
+import fs from 'fs'
+import path from 'path'
+
+// Load ItemDisplayInfo.json once
+let itemDisplayInfoCache: any[] | null = null
+function getItemDisplayInfo() {
+  if (!itemDisplayInfoCache) {
+    const filePath = path.join(process.cwd(), 'data', 'ItemDisplayInfo.json')
+    itemDisplayInfoCache = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+  }
+  return itemDisplayInfoCache
+}
+
+/**
+ * GET /api/characters/[guid]/[realmId]
+ * Get detailed character information including equipped items and talents
+ */
+export default defineEventHandler(async (event) => {
+  try {
+    const user = await getAuthenticatedUser(event)
+    const guid = parseInt(getRouterParam(event, 'guid') || '0')
+    const realmId = getRouterParam(event, 'realmId') || ''
+
+    if (!guid || !realmId) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Character GUID and realm ID are required'
+      })
+    }
+
+    // Get character and world database pools for the realm
+    const charsPool = await getCharactersDbPool(realmId)
+    const worldPool = await getWorldDbPool(realmId, 'world')
+
+    // Get character basic info
+    const [characters] = await charsPool.query(`
+      SELECT
+        guid, name, race, class, gender, level, money,
+        health, power1 as mana, power2 as rage, power3 as focus, power4 as energy, power5 as happiness,
+        totaltime, leveltime, logout_time, is_logout_resting,
+        arenaPoints, totalHonorPoints, totalKills,
+        chosenTitle, knownTitles,
+        equipmentCache
+      FROM characters
+      WHERE guid = ?
+    `, [guid])
+
+    if (!Array.isArray(characters) || characters.length === 0) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: 'Character not found'
+      })
+    }
+
+    const character = characters[0] as any
+
+    // Get client locale from headers (default to English)
+    const acceptLanguage = getHeader(event, 'accept-language') || 'en'
+    const locale = acceptLanguage.startsWith('de') ? 'deDE' :
+                   acceptLanguage.startsWith('es') ? 'esES' :
+                   acceptLanguage.startsWith('fr') ? 'frFR' :
+                   acceptLanguage.startsWith('ru') ? 'ruRU' :
+                   acceptLanguage.startsWith('ko') ? 'koKR' :
+                   acceptLanguage.startsWith('zh') ? 'zhCN' :
+                   'enUS'
+
+    // Get equipped items from character database
+    const [charItems] = await charsPool.query(`
+      SELECT
+        ci.guid as char_guid,
+        ci.item as itemId,
+        ci.slot,
+        ii.itemEntry,
+        ii.enchantments,
+        ii.durability,
+        ii.randomPropertyId
+      FROM character_inventory ci
+      JOIN item_instance ii ON ci.item = ii.guid
+      WHERE ci.guid = ? AND ci.bag = 0 AND ci.slot < 19
+      ORDER BY ci.slot
+    `, [guid])
+
+    // Get item details from world database
+    const itemEntries = (charItems as any[]).map((i: any) => i.itemEntry)
+    let enrichedItems: any[] = []
+
+    if (itemEntries.length > 0) {
+      const placeholders = itemEntries.map(() => '?').join(',')
+
+      // Query item_template with optional localization
+      const [itemTemplates] = await worldPool.query(`
+        SELECT
+          it.entry,
+          it.displayid,
+          it.name,
+          COALESCE(itl.Name, it.name) as localizedName,
+          COALESCE(itl.Description, it.description) as localizedDescription,
+          it.Quality as quality,
+          it.ItemLevel as itemLevel,
+          it.RequiredLevel as requiredLevel,
+          it.class as itemClass,
+          it.subclass as itemSubclass,
+          it.InventoryType as inventoryType,
+          it.stat_type1, it.stat_value1,
+          it.stat_type2, it.stat_value2,
+          it.stat_type3, it.stat_value3,
+          it.stat_type4, it.stat_value4,
+          it.stat_type5, it.stat_value5,
+          it.stat_type6, it.stat_value6,
+          it.stat_type7, it.stat_value7,
+          it.stat_type8, it.stat_value8,
+          it.stat_type9, it.stat_value9,
+          it.stat_type10, it.stat_value10,
+          it.dmg_min1, it.dmg_max1, it.dmg_type1,
+          it.dmg_min2, it.dmg_max2, it.dmg_type2,
+          it.armor,
+          it.holy_res, it.fire_res, it.nature_res, it.frost_res, it.shadow_res, it.arcane_res,
+          it.delay
+        FROM item_template it
+        LEFT JOIN item_template_locale itl ON it.entry = itl.ID AND itl.locale = ?
+        WHERE it.entry IN (${placeholders})
+      `, [locale, ...itemEntries])
+
+      // Create lookup map
+      const itemMap = new Map()
+      ;(itemTemplates as any[]).forEach((item: any) => {
+        itemMap.set(item.entry, item)
+      })
+
+      // Get ItemDisplayInfo for icon mapping
+      const itemDisplayInfo = getItemDisplayInfo()
+      const displayInfoMap = new Map()
+      itemDisplayInfo.forEach((info: any) => {
+        displayInfoMap.set(info.ID, info)
+      })
+
+      // Enrich character items with template data
+      enrichedItems = (charItems as any[]).map((charItem: any) => {
+        const template = itemMap.get(charItem.itemEntry)
+        if (!template) return null
+
+        // Calculate stats count
+        let statsCount = 0
+        for (let i = 1; i <= 10; i++) {
+          if (template[`stat_type${i}`] > 0) statsCount++
+        }
+
+        // Get icon from ItemDisplayInfo
+        const displayInfo = displayInfoMap.get(template.displayid)
+        const iconName = displayInfo?.InventoryIcon_1 || 'inv_misc_questionmark'
+
+        return {
+          guid: charItem.char_guid,
+          itemId: charItem.itemId,
+          slot: charItem.slot,
+          displayid: template.displayid,
+          name: template.localizedName || template.name,
+          description: template.localizedDescription,
+          quality: template.quality,
+          itemLevel: template.itemLevel,
+          requiredLevel: template.requiredLevel,
+          itemClass: template.itemClass,
+          itemSubclass: template.itemSubclass,
+          inventoryType: template.inventoryType,
+          armor: template.armor,
+          statsCount,
+          stat_type1: template.stat_type1,
+          stat_value1: template.stat_value1,
+          stat_type2: template.stat_type2,
+          stat_value2: template.stat_value2,
+          stat_type3: template.stat_type3,
+          stat_value3: template.stat_value3,
+          stat_type4: template.stat_type4,
+          stat_value4: template.stat_value4,
+          stat_type5: template.stat_type5,
+          stat_value5: template.stat_value5,
+          stat_type6: template.stat_type6,
+          stat_value6: template.stat_value6,
+          stat_type7: template.stat_type7,
+          stat_value7: template.stat_value7,
+          stat_type8: template.stat_type8,
+          stat_value8: template.stat_value8,
+          stat_type9: template.stat_type9,
+          stat_value9: template.stat_value9,
+          stat_type10: template.stat_type10,
+          stat_value10: template.stat_value10,
+          dmg_min1: template.dmg_min1,
+          dmg_max1: template.dmg_max1,
+          dmg_type1: template.dmg_type1,
+          dmg_min2: template.dmg_min2,
+          dmg_max2: template.dmg_max2,
+          dmg_type2: template.dmg_type2,
+          holy_res: template.holy_res,
+          fire_res: template.fire_res,
+          nature_res: template.nature_res,
+          frost_res: template.frost_res,
+          shadow_res: template.shadow_res,
+          arcane_res: template.arcane_res,
+          delay: template.delay,
+          enchantments: charItem.enchantments,
+          durability: charItem.durability,
+          randomPropertyId: charItem.randomPropertyId,
+          icon: iconName
+        }
+      }).filter(Boolean)
+    }
+
+    // Get talents for both specs
+    const [talents] = await charsPool.query(`
+      SELECT guid, spell, specMask
+      FROM character_talent
+      WHERE guid = ?
+      ORDER BY specMask, spell
+    `, [guid])
+
+    // Get achievements
+    const [achievements] = await charsPool.query(`
+      SELECT achievement, date
+      FROM character_achievement
+      WHERE guid = ?
+      ORDER BY date DESC
+      LIMIT 10
+    `, [guid])
+
+    // Get statistics
+    const [stats] = await charsPool.query(`
+      SELECT
+        guid, maxhealth,
+        maxpower1, maxpower2, maxpower3, maxpower4, maxpower5, maxpower6, maxpower7,
+        strength, agility, stamina, intellect, spirit, armor,
+        resHoly, resFire, resNature, resFrost, resShadow, resArcane,
+        blockPct, dodgePct, parryPct, critPct, rangedCritPct, spellCritPct,
+        attackPower, rangedAttackPower, spellPower, resilience
+      FROM character_stats
+      WHERE guid = ?
+    `, [guid])
+
+    return {
+      character: {
+        guid: character.guid,
+        name: character.name,
+        race: character.race,
+        class: character.class,
+        gender: character.gender,
+        level: character.level,
+        money: character.money,
+        health: character.health,
+        mana: character.mana,
+        rage: character.rage,
+        focus: character.focus,
+        energy: character.energy,
+        happiness: character.happiness,
+        totalTime: character.totaltime,
+        levelTime: character.leveltime,
+        logoutTime: character.logout_time,
+        isLogoutResting: character.is_logout_resting,
+        arenaPoints: character.arenaPoints,
+        honorPoints: character.totalHonorPoints,
+        totalKills: character.totalKills,
+        chosenTitle: character.chosenTitle,
+        knownTitles: character.knownTitles,
+        equipmentCache: character.equipmentCache,
+        specCount: 1, // Default value
+        activeSpec: 0 // Default value
+      },
+      items: enrichedItems,
+      talents: talents || [],
+      achievements: achievements || [],
+      stats: stats || [],
+      realmId
+    }
+  } catch (error: any) {
+    console.error('Error fetching character details:', error)
+    throw createError({
+      statusCode: error.statusCode || 500,
+      statusMessage: error.statusMessage || 'Failed to fetch character details'
+    })
+  }
+})

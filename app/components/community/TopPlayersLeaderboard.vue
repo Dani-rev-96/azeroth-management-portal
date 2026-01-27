@@ -19,7 +19,12 @@
     </div>
 
     <div v-else class="leaderboard">
-      <div v-for="(player, index) in players" :key="`${player.realm}-${player.name}`" class="leaderboard-item">
+      <NuxtLink
+        v-for="(player, index) in players"
+        :key="`${player.realm}-${player.guid}`"
+        :to="`/character/${player.guid}/${player.realmId}`"
+        class="leaderboard-item"
+      >
         <div class="rank">
           <span class="rank-number" :class="{ gold: index === 0, silver: index === 1, bronze: index === 2 }">
             {{ index + 1 }}
@@ -37,13 +42,14 @@
           <span class="metric-value">{{ formatMetricValue(player) }}</span>
           <span class="metric-label">{{ metricLabel }}</span>
         </div>
-      </div>
+      </NuxtLink>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
 interface TopPlayer {
+  guid: number
   name: string
   level: number
   race: number
@@ -154,11 +160,15 @@ function formatMetricValue(player: TopPlayer): string {
   align-items: center;
   gap: 1.5rem;
   transition: all 0.2s;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
 }
 
 .leaderboard-item:hover {
-  border-color: #475569;
-  transform: translateX(4px);
+  border-color: #3b82f6;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
 }
 
 .rank {

@@ -142,6 +142,7 @@ interface GeneralStats {
 }
 
 interface TopPlayer {
+  guid: number
   name: string
   level: number
   race: number
@@ -234,8 +235,8 @@ async function fetchTopPlayers(metric: string = 'level') {
     if (selectedRealm.value) {
       params.append('realmId', selectedRealm.value)
     }
-    const { data } = await useFetch(`/api/community/top-players?${params}`)
-    topPlayers.value = (data.value as any) || []
+    const { data } = await useFetch<TopPlayer[]>(`/api/community/top-players?${params}`)
+    topPlayers.value = data.value || []
   } catch (error) {
     console.error('Failed to fetch top players:', error)
   } finally {

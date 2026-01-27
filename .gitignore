@@ -47,5 +47,6 @@ models
 **/*.cred.*
 !**/*.cred.enc.*
 
-data/public/*
-
+data/public
+data/blp
+data/png/Icons

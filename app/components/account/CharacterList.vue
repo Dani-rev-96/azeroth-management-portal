@@ -49,6 +49,12 @@
           </button>
         </div>
         <div v-else class="char-actions">
+          <NuxtLink
+            :to="`/character/${char.guid}/${realmId}`"
+            class="action-button view"
+          >
+            View Character
+          </NuxtLink>
           <button
             @click="$emit('rename', char)"
             :disabled="loading"
@@ -68,6 +74,7 @@ import type { WoWCharacter } from '~/types'
 defineProps<{
   characters: WoWCharacter[]
   loading?: boolean
+  realmId: string
 }>()
 
 defineEmits<{
@@ -233,6 +240,19 @@ const getRaceName = (raceId: number) => {
   font-weight: 600;
   font-size: 0.875rem;
   transition: all 0.2s;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+
+  &.view {
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+    color: white;
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+    }
+  }
 
   &.rename {
     background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
