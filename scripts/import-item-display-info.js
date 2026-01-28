@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 /**
+ * @deprecated Use import-dbc-to-sqlite.js instead
+ * This script is kept for backward compatibility only
+ *
  * Import ItemDisplayInfo.json into SQLite database for efficient querying
  * This script reads the large JSON file and creates a searchable SQLite database
  */
@@ -9,8 +12,8 @@ import Database from 'better-sqlite3'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
-const ITEM_DB_PATH = join(process.cwd(), 'data', 'items.db')
-const JSON_PATH = join(process.cwd(), 'data', 'ItemDisplayInfo.json')
+const ITEM_DB_PATH = join(process.cwd(), 'server', 'assets', 'item_display_info.db')
+const JSON_PATH = join(process.cwd(), 'data', 'dbcJsons', 'ItemDisplayInfo.json')
 
 console.log('📦 Starting ItemDisplayInfo import...')
 console.log('Reading JSON file:', JSON_PATH)

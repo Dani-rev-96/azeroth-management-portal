@@ -4,22 +4,50 @@ This directory contains data files required by the application.
 
 ## Files
 
-### Required (included in builds)
+### DBC JSON Files (`dbcJsons/`)
 
-- `items.db` - SQLite database with WoW item display information (icons, models)
-  - **Must be committed to git** - used in production builds
-  - Generated from `ItemDisplayInfo.json` via import script
+DBC (DataBase Client) files exported from WoW 3.3.5a client data and converted to JSON:
 
-### Development/Optional
+- `Item.json` - Item metadata (class, subclass, display info)
+- `ItemDisplayInfo.json` - Item display data (icons, models)
+- `SpellItemEnchantment.json` - Enchantment effects and stats
+- `Spell.json` - Spell names, descriptions, tooltips (~200MB)
+- `Talent.json` - Talent tree positioning
+- `TalentTab.json` - Talent tab/tree metadata
+- `ItemRandomSuffix.json` - Random suffix enchantments
+- `ItemRandomProperties.json` - Random property enchantments
 
-- `mappings.db` - SQLite database storing Keycloak ↔ WoW account mappings
-- `ItemDisplayInfo.json` - Source data for items.db (can be regenerated)
-- `*.json` - Export files (generated on demand)
+These JSON files are **NOT** included in production builds. They are converted to SQLite databases in `server/assets/`.
+
+### SQLite Databases (generated, stored in `server/assets/`)
+
+Optimized databases generated from DBC JSONs for runtime use:
+
+- `item.db` - Item data
+- `item_display_info.db` - Item display information
+- `spell_item_enchantment.db` - Enchantment data
+- `spell.db` - Spell information
+- `talent.db` - Talent tree data
+- `talent_tab.db` - Talent tabs
+- `item_random_suffix.db` - Random suffixes
+- `item_random_properties.db` - Random properties
+
+**Regenerate databases:**
+
+```bash
+npm run import-dbc
+```
+
+### Other Files
+
+- `mappings.db` - Keycloak ↔ WoW account mappings (development only)
 - `*.sql` - SQL export files for migration
+- `blp/` - WoW texture files (BLP format)
+- `png/` - Converted PNG icons
 
-## Items Database
+## Database Schema Examples
 
-The `items.db` file contains item display information extracted from WoW client data:
+### item_display_info
 
 ```sql
 CREATE TABLE item_display_info (
@@ -27,16 +55,20 @@ CREATE TABLE item_display_info (
   inventory_icon_1 TEXT,
   inventory_icon_2 TEXT,
   model_name_1 TEXT,
-  model_name_2 TEXT,
-  model_texture_1 TEXT,
-  model_texture_2 TEXT
+  model_name_2 TEXT
 );
 ```
 
-To regenerate from JSON:
+### spell_item_enchantment
 
-```bash
-node scripts/import-item-display-info.js
+```sql
+CREATE TABLE spell_item_enchantment (
+  id INTEGER PRIMARY KEY,
+  effect_1 INTEGER,
+  effect_arg_1 INTEGER,
+  effect_points_min_1 INTEGER,
+  name TEXT
+);
 ```
 
 ## Mappings Database Schema

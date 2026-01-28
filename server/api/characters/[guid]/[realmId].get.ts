@@ -1,6 +1,14 @@
 import { getAuthenticatedUser } from '#server/utils/auth'
 import { getCharactersDbPool, getWorldDbPool } from '#server/utils/mysql'
 import { getItemDisplayInfoBatch } from '#server/utils/items-db'
+import {
+  parseEnchantmentsField,
+  getEnchantmentInfo,
+  getRandomEnchantments,
+  formatEnchantmentEffect,
+  type EnchantmentInfo
+} from '#server/utils/enchantments'
+import { getSpellBatch, getTalentBySpellId } from '#server/utils/dbc-db'
 
 /**
  * GET /api/characters/[guid]/[realmId]
@@ -144,18 +152,8 @@ export default defineEventHandler(async (event) => {
         const displayInfo = displayInfoMap.get(template.displayid)
         const iconName = displayInfo?.inventory_icon_1 || 'inv_misc_questionmark'
 
-        // Parse enchantments - just extract IDs for now
-        // Note: Without access to enchantment name tables, we can only show IDs
-        const enchantmentNames: string[] = []
-        if (charItem.enchantments) {
-          const enchantParts = charItem.enchantments.split(' ')
-          for (let i = 0; i < enchantParts.length; i += 3) {
-            const enchantId = parseInt(enchantParts[i])
-            if (enchantId > 0) {
-              enchantmentNames.push(`Enchantment ${enchantId}`)
-            }
-          }
-        }
+        // Parse enchantments
+        const parsedEnchants = charItem.enchantments ? parseEnchantmentsField(charItem.enchantments) : []
 
         return {
           guid: charItem.char_guid,
@@ -206,12 +204,35 @@ export default defineEventHandler(async (event) => {
           arcane_res: template.arcane_res,
           delay: template.delay,
           enchantments: charItem.enchantments,
-          enchantmentNames: enchantmentNames,
+          parsedEnchants,
           durability: charItem.durability,
           randomPropertyId: charItem.randomPropertyId,
           icon: iconName
         }
       }).filter(Boolean)
+
+      // Now enrich all items with full enchantment data
+      for (const item of enrichedItems) {
+        const allEnchantInfos: EnchantmentInfo[] = []
+
+        // Get regular enchantments
+        if (item.parsedEnchants && item.parsedEnchants.length > 0) {
+          const enchantInfos = await getEnchantmentInfo(item.parsedEnchants)
+          allEnchantInfos.push(...enchantInfos)
+        }
+
+        // Get random property/suffix enchantments
+        if (item.randomPropertyId && item.randomPropertyId !== 0) {
+          const randomEnchants = await getRandomEnchantments(item.randomPropertyId, item.itemLevel)
+          allEnchantInfos.push(...randomEnchants)
+        }
+
+        // Format enchantments for display
+        item.enchantmentInfos = allEnchantInfos
+        item.enchantmentTexts = allEnchantInfos.flatMap(info =>
+          info.effects.map(effect => formatEnchantmentEffect(effect))
+        )
+      }
     }
 
     // Get talents for both specs
@@ -222,16 +243,30 @@ export default defineEventHandler(async (event) => {
       ORDER BY specMask, spell
     `, [guid])
 
-    // Note: Spell names would require DBC files which are not in the database
-    // For now, talents will display as "Talent: Spell ID"
-    const enrichedTalents = (talents as any[]).map((talent: any) => {
-      return {
-        guid: talent.guid,
-        spell: talent.spell,
-        specMask: talent.specMask,
-        spellName: `Talent: ${talent.spell}`
+    // Enrich talents with spell names and talent tree info
+    const enrichedTalents = []
+    if ((talents as any[]).length > 0) {
+      const spellIds = (talents as any[]).map((t: any) => t.spell)
+      const spells = await getSpellBatch(spellIds)
+      const spellMap = new Map(spells.map(s => [s.id, s]))
+
+      for (const talent of talents as any[]) {
+        const spell = spellMap.get(talent.spell)
+        const talentInfo = await getTalentBySpellId(talent.spell)
+
+        enrichedTalents.push({
+          guid: talent.guid,
+          spell: talent.spell,
+          specMask: talent.specMask,
+          spellName: spell?.name || `Spell ${talent.spell}`,
+          spellRank: spell?.rank || '',
+          talentId: talentInfo?.id,
+          tabId: talentInfo?.tab_id,
+          tier: talentInfo?.tier_id,
+          column: talentInfo?.column_index
+        })
       }
-    })
+    }
 
     // Get achievements
     const [achievements] = await charsPool.query(`

@@ -159,7 +159,9 @@ export type CharacterItem = {
   dmg_type1?: number
   icon?: string
   enchantments?: string
-  enchantmentNames?: string[]
+  enchantmentTexts?: string[]
+  enchantmentInfos?: any[]
+  randomPropertyId?: number
 }
 
 export type CharacterTalent = {
@@ -167,6 +169,11 @@ export type CharacterTalent = {
   spell: number
   specMask: number // 1 = first spec, 2 = second spec, 3 = both specs
   spellName?: string
+  spellRank?: string
+  talentId?: number
+  tabId?: number
+  tier?: number
+  column?: number
 }
 
 export type CharacterDetailResponse = {

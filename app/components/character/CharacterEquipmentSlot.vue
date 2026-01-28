@@ -35,9 +35,9 @@
           </div>
 
           <!-- Enchantments -->
-          <div v-if="item.enchantmentNames && item.enchantmentNames.length > 0" class="enchantments">
-            <div v-for="(enchant, idx) in item.enchantmentNames" :key="idx" class="enchant-line">
-              {{ enchant }}
+          <div v-if="item.enchantmentTexts && item.enchantmentTexts.length > 0" class="enchantments">
+            <div v-for="(enchant, idx) in item.enchantmentTexts" :key="idx" class="enchant-line">
+              <span class="enchant-icon">✨</span> {{ enchant }}
             </div>
           </div>
 
@@ -297,6 +297,10 @@ function getStatName(statType: number): string {
   font-size: 0.875rem;
   margin: 0.25rem 0;
   font-style: italic;
+}
+
+.enchant-icon {
+  margin-right: 0.25rem;
 }
 
 .required-level {

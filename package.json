@@ -14,7 +14,8 @@
     "build:production": "NODE_ENV=production nuxt build",
     "preview": "nuxt preview",
     "generate": "nuxt generate",
-    "postinstall": "nuxt prepare"
+    "postinstall": "nuxt prepare",
+    "import-dbc": "node scripts/import-dbc-to-sqlite.js"
   },
   "dependencies": {
     "@azerothcore/ac-nodejs-srp6": "^1.0.8",

@@ -62,7 +62,7 @@
           <!-- Talents -->
           <div class="talents-section section-card">
             <h2>Talents</h2>
-            <CharacterTalents
+            <CharacterTalentTree
               :talents="data.talents"
               :character-class="data.character.class"
               :active-spec="data.character.activeSpec"
@@ -116,6 +116,7 @@
 import type { CharacterDetailResponse } from '~/types'
 import CharacterEquipmentSlot from '~/components/character/CharacterEquipmentSlot.vue'
 import CharacterTalents from '~/components/character/CharacterTalents.vue'
+import CharacterTalentTree from '~/components/character/CharacterTalentTree.vue'
 
 const route = useRoute()
 const guid = computed(() => parseInt(route.params.guid as string))
