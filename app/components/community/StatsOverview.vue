@@ -81,6 +81,7 @@ function getFactionPercentage(faction: 'alliance' | 'horde'): string {
 </script>
 
 <style scoped lang="scss">
+@use 'sass:color';
 @use "~/styles/variables" as *;
 @use "~/styles/mixins" as *;
 
@@ -140,12 +141,12 @@ function getFactionPercentage(faction: 'alliance' | 'horde'): string {
 
   &.alliance {
     background: rgba($color-info, 0.2);
-    color: lighten($color-info, 10%);
+    color: color.adjust($color-info, $lightness: 10%);
   }
 
   &.horde {
     background: rgba($color-danger, 0.2);
-    color: lighten($color-danger, 10%);
+    color: color.adjust($color-danger, $lightness: 10%);
   }
 }
 </style>

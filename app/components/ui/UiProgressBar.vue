@@ -36,6 +36,7 @@ const percentage = computed(() => Math.min(100, Math.max(0, (props.value / props
 </template>
 
 <style scoped lang="scss">
+@use 'sass:color';
 @use '~/styles/variables' as *;
 
 .ui-progress {
@@ -72,15 +73,15 @@ const percentage = computed(() => Math.min(100, Math.max(0, (props.value / props
   }
 
   &--success &__fill {
-    background: linear-gradient(135deg, $success 0%, darken($success, 10%) 100%);
+    background: linear-gradient(135deg, $success 0%, color.adjust($success, $lightness: -10%) 100%);
   }
 
   &--warning &__fill {
-    background: linear-gradient(135deg, $warning 0%, darken($warning, 10%) 100%);
+    background: linear-gradient(135deg, $warning 0%, color.adjust($warning, $lightness: -10%) 100%);
   }
 
   &--error &__fill {
-    background: linear-gradient(135deg, $error 0%, darken($error, 10%) 100%);
+    background: linear-gradient(135deg, $error 0%, color.adjust($error, $lightness: -10%) 100%);
   }
 
   &__label {
