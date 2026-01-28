@@ -112,6 +112,7 @@ function formatMetricValue(player: TopPlayer): string {
 
 .metric-selector {
   display: flex;
+  flex-wrap: wrap;
   gap: $spacing-sm;
 
   button {
@@ -121,6 +122,7 @@ function formatMetricValue(player: TopPlayer): string {
     border-color: $border-primary;
     color: $text-secondary;
     font-size: $font-sm;
+    white-space: nowrap;
 
     &:hover {
       border-color: $color-info;
@@ -233,19 +235,102 @@ function formatMetricValue(player: TopPlayer): string {
   @include stat-label;
 }
 
-@include respond-to('tablet') {
-  .metric-selector {
-    flex-direction: column;
+// Tablet and below (max-width: 768px)
+@media (max-width: $breakpoint-md) {
+  .leaderboard-item {
+    flex-wrap: wrap;
+    gap: $spacing-md;
+    padding: $spacing-md;
   }
 
-  .leaderboard-item {
-    flex-direction: column;
-    align-items: flex-start;
-    text-align: left;
+  .rank {
+    min-width: 2.5rem;
+  }
+
+  .player-details {
+    flex: 1 1 0;
+    min-width: 120px;
+  }
+
+  .player-name-level {
+    flex-wrap: wrap;
+
+    h3 {
+      font-size: $font-lg;
+    }
   }
 
   .player-metric {
+    flex: 0 0 auto;
+    align-items: flex-end;
+  }
+
+  .metric-value {
+    font-size: 1.25rem;
+  }
+}
+
+// Mobile (max-width: 640px)
+@media (max-width: $breakpoint-xs) {
+  .section-header {
+    flex-direction: column;
     align-items: flex-start;
+  }
+
+  .metric-selector {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .leaderboard-item {
+    flex-wrap: wrap;
+    gap: $spacing-sm;
+    padding: $spacing-sm $spacing-md;
+  }
+
+  .rank {
+    min-width: 2rem;
+  }
+
+  .rank-number {
+    font-size: 1.25rem;
+
+    &.gold {
+      font-size: 1.5rem;
+    }
+
+    &.silver,
+    &.bronze {
+      font-size: 1.35rem;
+    }
+  }
+
+  .player-details {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .player-name-level {
+    flex-wrap: wrap;
+    gap: $spacing-xs;
+
+    h3 {
+      font-size: $font-md;
+    }
+  }
+
+  .player-metric {
+    flex: 0 0 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: $spacing-xs;
+    padding-top: $spacing-sm;
+    border-top: 1px solid $border-primary;
+  }
+
+  .metric-value {
+    font-size: 1.1rem;
   }
 }
 </style>
