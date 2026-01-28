@@ -93,6 +93,9 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref, watchEffect } from 'vue'
+import { useAuthStore } from '~/stores/auth'
+
 const authStore = useAuthStore()
 
 // Check if user has GM access

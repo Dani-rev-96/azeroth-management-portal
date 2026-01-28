@@ -94,6 +94,9 @@ import { ref } from 'vue'
 import { useAuthStore } from '~/stores/auth'
 import { useAccountsStore } from '~/stores/accounts'
 import type { ManagedAccount } from '~/types'
+import { computed, watchEffect } from 'vue'
+import CreateAccountForm from '~/components/CreateAccountForm.vue'
+import LinkAccountForm from '~/components/LinkAccountForm.vue'
 
 definePageMeta({
   layout: 'default',

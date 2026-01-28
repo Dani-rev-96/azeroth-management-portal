@@ -155,7 +155,7 @@ export async function updateAccountPassword(
 export async function createAccount(
   username: string,
   password: string,
-  email?: string
+  email: string = ""
 ): Promise<AzerothCoreAccount> {
   const pool = await getAuthDbPool()
 
@@ -179,7 +179,7 @@ export async function createAccount(
       username.toUpperCase(), // AzerothCore stores usernames in uppercase
       salt,
       verifier,
-      email || null,
+      email,
       2, // WotLK expansion (0=Classic, 1=TBC, 2=WotLK)
     ]
   )

@@ -1,96 +1,118 @@
 import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
 import type { ManagedAccount, AccountMapping } from '~/types'
 
-interface AccountsState {
-  accounts: ManagedAccount[]
-  currentAccountId?: number
-  loading: boolean
-  error?: string
-}
+export const useAccountsStore = defineStore('accounts', () => {
+  // State
+  const accounts = ref<ManagedAccount[]>([])
+  const currentAccountId = ref<number | undefined>(undefined)
+  const loading = ref(false)
+  const error = ref<string | undefined>(undefined)
 
-export const useAccountsStore = defineStore('accounts', {
-  state: (): AccountsState => ({
-    accounts: [],
-    currentAccountId: undefined,
-    loading: false,
-    error: undefined,
-  }),
+  // Getters
+  const allAccounts = computed(() => accounts.value)
 
-  getters: {
-    allAccounts: (state) => state.accounts,
-    
-    currentAccount: (state) => 
-      state.currentAccountId 
-        ? state.accounts.find(acc => acc.mapping.wowAccountId === state.currentAccountId)
-        : undefined,
-    
-    hasAccounts: (state) => state.accounts.length > 0,
-  },
+  const currentAccount = computed(() =>
+    currentAccountId.value
+      ? accounts.value.find(acc => acc.mapping.wowAccountId === currentAccountId.value)
+      : undefined
+  )
 
-  actions: {
-    // Fetch all accounts for current Keycloak user
-    async loadAccounts(keycloakId: string) {
-      this.loading = true
-      this.error = undefined
+  const hasAccounts = computed(() => accounts.value.length > 0)
 
-      try {
-        const response = await $fetch<ManagedAccount[]>(
-          `/api/accounts/user/${keycloakId}`,
-          { method: 'GET' }
-        )
+  const accountCount = computed(() => accounts.value.length)
 
-        this.accounts = response
-      } catch (err) {
-        this.error = err instanceof Error ? err.message : 'Failed to load accounts'
-        console.error('Load accounts error:', err)
-      } finally {
-        this.loading = false
-      }
-    },
+  // Actions
+  async function loadAccounts(keycloakId: string) {
+    loading.value = true
+    error.value = undefined
 
-    // Create new mapping between Keycloak account and WoW account
-    async createAccountMapping(
-      keycloakId: string,
-      wowAccountName: string,
-      wowAccountPassword: string
-    ) {
-      try {
-        const data = await $fetch<ManagedAccount>('/api/accounts/map', {
-          method: 'POST',
-          body: {
-            keycloakId,
-            wowAccountName,
-            wowAccountPassword,
-          },
-        })
+    try {
+      const response = await $fetch<ManagedAccount[]>(
+        `/api/accounts/user/${keycloakId}`,
+        { method: 'GET' }
+      )
 
-        this.accounts.push(data)
-        return data
-      } catch (err) {
-        this.error = err instanceof Error ? err.message : 'Failed to create mapping'
-        throw err
-      }
-    },
+      accounts.value = response
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to load accounts'
+      console.error('Load accounts error:', err)
+    } finally {
+      loading.value = false
+    }
+  }
 
-    // Remove account mapping
-    async removeAccountMapping(mappingId: AccountMapping) {
-      try {
-        await $fetch(
-          `/api/accounts/map/${mappingId.keycloakId}/${mappingId.wowAccountId}`,
-          { method: 'DELETE' }
-        )
+  async function createAccountMapping(
+    keycloakId: string,
+    wowAccountName: string,
+    wowAccountPassword: string
+  ) {
+    try {
+      const data = await $fetch<ManagedAccount>('/api/accounts/map', {
+        method: 'POST',
+        body: {
+          keycloakId,
+          wowAccountName,
+          wowAccountPassword,
+        },
+      })
 
-        this.accounts = this.accounts.filter(
-          acc => acc.mapping.wowAccountId !== mappingId.wowAccountId
-        )
-      } catch (err) {
-        this.error = err instanceof Error ? err.message : 'Failed to remove mapping'
-        throw err
-      }
-    },
+      accounts.value.push(data)
+      return data
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to create mapping'
+      throw err
+    }
+  }
 
-    selectAccount(accountId: number) {
-      this.currentAccountId = accountId
-    },
-  },
+  async function removeAccountMapping(mappingId: AccountMapping) {
+    try {
+      await $fetch(
+        `/api/accounts/map/${mappingId.keycloakId}/${mappingId.wowAccountId}`,
+        { method: 'DELETE' }
+      )
+
+      accounts.value = accounts.value.filter(
+        acc => acc.mapping.wowAccountId !== mappingId.wowAccountId
+      )
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to remove mapping'
+      throw err
+    }
+  }
+
+  function selectAccount(accountId: number) {
+    currentAccountId.value = accountId
+  }
+
+  function clearError() {
+    error.value = undefined
+  }
+
+  function $reset() {
+    accounts.value = []
+    currentAccountId.value = undefined
+    loading.value = false
+    error.value = undefined
+  }
+
+  return {
+    // State
+    accounts,
+    currentAccountId,
+    loading,
+    error,
+    // Getters
+    allAccounts,
+    currentAccount,
+    hasAccounts,
+    accountCount,
+    // Actions
+    loadAccounts,
+    createAccountMapping,
+    removeAccountMapping,
+    selectAccount,
+    clearError,
+    $reset,
+  }
 })

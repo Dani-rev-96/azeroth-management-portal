@@ -1,7 +1,7 @@
 <template>
-  <section class="content-section">
+  <section class="leaderboard-section">
     <div class="section-header">
-      <h2>🏆 Top Players</h2>
+      <UiSectionHeader title="🏆 Top Players" />
       <div class="metric-selector">
         <button
           v-for="metric in metrics"
@@ -14,9 +14,7 @@
       </div>
     </div>
 
-    <div v-if="loading" class="loading">
-      <p>Loading top players...</p>
-    </div>
+    <UiLoadingState v-if="loading" text="Loading top players..." />
 
     <div v-else class="leaderboard">
       <NuxtLink
@@ -33,7 +31,7 @@
         <div class="player-details">
           <div class="player-name-level">
             <h3>{{ player.name }}</h3>
-            <span class="level-badge">{{ player.level }}</span>
+            <UiBadge variant="info" size="sm">{{ player.level }}</UiBadge>
           </div>
           <p class="player-class-race">{{ getRaceName(player.race) }} {{ getClassName(player.class) }}</p>
           <p class="player-realm">{{ player.realm }}</p>
@@ -48,6 +46,11 @@
 </template>
 
 <script setup lang="ts">
+import { getRaceName, getClassName, formatPlaytime } from '~/utils/wow'
+import UiSectionHeader from '~/components/ui/UiSectionHeader.vue'
+import UiLoadingState from '~/components/ui/UiLoadingState.vue'
+import UiBadge from '~/components/ui/UiBadge.vue'
+
 interface TopPlayer {
   guid: number
   name: string
@@ -78,31 +81,6 @@ const metrics = [
   { label: '🏆 Achievements', value: 'achievements' },
 ]
 
-function getRaceName(raceId: number): string {
-  const races: Record<number, string> = {
-    1: 'Human', 2: 'Orc', 3: 'Dwarf', 4: 'Night Elf',
-    5: 'Undead', 6: 'Tauren', 7: 'Gnome', 8: 'Troll',
-    10: 'Blood Elf', 11: 'Draenei'
-  }
-  return races[raceId] || `Race ${raceId}`
-}
-
-function getClassName(classId: number): string {
-  const classes: Record<number, string> = {
-    1: 'Warrior', 2: 'Paladin', 3: 'Hunter', 4: 'Rogue',
-    5: 'Priest', 6: 'Death Knight', 7: 'Shaman', 8: 'Mage',
-    9: 'Warlock', 11: 'Druid'
-  }
-  return classes[classId] || `Class ${classId}`
-}
-
-function formatPlaytime(seconds: number): string {
-  const hours = Math.floor(seconds / 3600)
-  const days = Math.floor(hours / 24)
-  if (days > 0) return `${days}d ${hours % 24}h`
-  return `${hours}h`
-}
-
 function formatMetricValue(player: TopPlayer): string {
   switch (props.selectedMetric) {
     case 'playtime':
@@ -116,59 +94,68 @@ function formatMetricValue(player: TopPlayer): string {
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use "~/styles/variables" as *;
+@use "~/styles/mixins" as *;
+
+.leaderboard-section {
+  @include section-container;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: $spacing-md;
+}
+
 .metric-selector {
   display: flex;
-  gap: 0.5rem;
-}
+  gap: $spacing-sm;
 
-.metric-selector button {
-  padding: 0.5rem 1rem;
-  background: rgba(59, 130, 246, 0.1);
-  border: 1px solid #334155;
-  color: #94a3b8;
-  border-radius: 0.375rem;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: all 0.2s;
-}
+  button {
+    @include button-base;
+    padding: $spacing-sm $spacing-md;
+    background: rgba($color-info, 0.1);
+    border-color: $border-primary;
+    color: $text-secondary;
+    font-size: $font-sm;
 
-.metric-selector button:hover {
-  border-color: #3b82f6;
-  color: #60a5fa;
-}
+    &:hover {
+      border-color: $color-info;
+      color: $color-info;
+    }
 
-.metric-selector button.active {
-  background: rgba(59, 130, 246, 0.2);
-  border-color: #3b82f6;
-  color: #60a5fa;
+    &.active {
+      background: rgba($color-info, 0.2);
+      border-color: $color-info;
+      color: $color-info;
+    }
+  }
 }
 
 .leaderboard {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  margin-top: 1.5rem;
+  gap: $spacing-md;
+  margin-top: $spacing-lg;
 }
 
 .leaderboard-item {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 0.75rem;
-  padding: 1.5rem;
+  @include card-base;
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  transition: all 0.2s;
+  gap: $spacing-lg;
   text-decoration: none;
   color: inherit;
   cursor: pointer;
-}
 
-.leaderboard-item:hover {
-  border-color: #3b82f6;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+  &:hover {
+    border-color: $color-info;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba($color-info, 0.2);
+  }
 }
 
 .rank {
@@ -181,22 +168,22 @@ function formatMetricValue(player: TopPlayer): string {
 .rank-number {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #64748b;
-}
+  color: $text-muted;
 
-.rank-number.gold {
-  color: #fbbf24;
-  font-size: 2rem;
-}
+  &.gold {
+    color: $color-warning;
+    font-size: 2rem;
+  }
 
-.rank-number.silver {
-  color: #cbd5e1;
-  font-size: 1.75rem;
-}
+  &.silver {
+    color: #cbd5e1;
+    font-size: 1.75rem;
+  }
 
-.rank-number.bronze {
-  color: #fb923c;
-  font-size: 1.75rem;
+  &.bronze {
+    color: #fb923c;
+    font-size: 1.75rem;
+  }
 }
 
 .player-details {
@@ -207,25 +194,25 @@ function formatMetricValue(player: TopPlayer): string {
 .player-name-level {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-}
+  gap: $spacing-sm;
+  margin-bottom: $spacing-sm;
 
-.player-name-level h3 {
-  color: #60a5fa;
-  font-size: 1.25rem;
-  margin: 0;
+  h3 {
+    color: $color-info;
+    font-size: $font-xl;
+    margin: 0;
+  }
 }
 
 .player-class-race {
-  color: #94a3b8;
-  font-size: 0.9rem;
-  margin: 0.25rem 0;
+  color: $text-secondary;
+  font-size: $font-sm;
+  margin: $spacing-xs 0;
 }
 
 .player-realm {
-  color: #64748b;
-  font-size: 0.85rem;
+  color: $text-muted;
+  font-size: $font-xs;
   margin: 0;
 }
 
@@ -233,29 +220,20 @@ function formatMetricValue(player: TopPlayer): string {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.25rem;
+  gap: $spacing-xs;
 }
 
 .metric-value {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #a78bfa;
+  color: $color-accent;
 }
 
 .metric-label {
-  font-size: 0.8rem;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  @include stat-label;
 }
 
-.loading {
-  text-align: center;
-  padding: 3rem;
-  color: #94a3b8;
-}
-
-@media (max-width: 768px) {
+@include respond-to('tablet') {
   .metric-selector {
     flex-direction: column;
   }

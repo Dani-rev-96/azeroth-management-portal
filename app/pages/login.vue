@@ -2,10 +2,10 @@
   <div class="login-page">
     <div class="login-card">
       <h1>WoW Management</h1>
-      
+
       <div class="info-box">
         <p>
-          This application requires authentication through Keycloak. 
+          This application requires authentication through Keycloak.
           <br>
           <br>
           In production, you will be authenticated via OAuth-Proxy and can access your management dashboard.
@@ -29,6 +29,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useAuthStore } from '~/stores/auth'
+import { onMounted } from 'vue'
 
 definePageMeta({
   layout: false,

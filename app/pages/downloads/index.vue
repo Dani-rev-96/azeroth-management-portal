@@ -64,6 +64,8 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
+
 interface FileInfo {
   name: string
   size: number

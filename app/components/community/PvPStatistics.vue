@@ -1,33 +1,28 @@
 <template>
-  <section class="content-section">
-    <h2>⚔️ PvP Statistics</h2>
+  <section class="pvp-section">
+    <UiSectionHeader title="⚔️ PvP Statistics" />
 
-    <div v-if="loading" class="loading">
-      <p>Loading PvP statistics...</p>
-    </div>
+    <UiLoadingState v-if="loading" text="Loading PvP statistics..." />
 
     <div v-else>
       <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-icon">🏟️</div>
-          <div class="stat-content">
-            <h3>Battlegrounds</h3>
-            <p class="stat-value">{{ stats.battlegrounds?.total || 0 }}</p>
-            <p class="stat-subtext">Total matches played</p>
-          </div>
-        </div>
+        <UiStatCard
+          icon="🏟️"
+          label="Battlegrounds"
+          :value="stats.battlegrounds?.total || 0"
+          subtitle="Total matches played"
+        />
 
-        <div class="stat-card">
-          <div class="stat-icon">🎯</div>
-          <div class="stat-content">
-            <h3>Arena Matches</h3>
-            <p class="stat-value">{{ stats.arenas?.total || 0 }}</p>
-            <p class="stat-subtext">Total arena fights</p>
-          </div>
-        </div>
+        <UiStatCard
+          icon="🎯"
+          label="Arena Matches"
+          :value="stats.arenas?.total || 0"
+          subtitle="Total arena fights"
+        />
       </div>
 
-      <h3 style="margin-top: 2rem; margin-bottom: 1rem;">🏅 Top PvP Players</h3>
+      <UiSectionHeader title="🏅 Top PvP Players" class="mt-lg" />
+
       <div class="leaderboard">
         <div v-for="(player, index) in stats.topPlayers" :key="`${player.realm}-${player.name}`" class="leaderboard-item">
           <div class="rank">
@@ -38,12 +33,12 @@
           <div class="player-details">
             <div class="player-name-level">
               <h3>{{ player.name }}</h3>
-              <span class="level-badge">{{ player.level }}</span>
+              <UiBadge variant="info" size="sm">{{ player.level }}</UiBadge>
             </div>
             <p class="player-class-race">{{ getRaceName(player.race) }} {{ getClassName(player.class) }}</p>
           </div>
           <div class="player-metric">
-            <span class="metric-value">{{ formatLargeNumber(player.honorPoints) }}</span>
+            <span class="metric-value">{{ formatNumber(player.honorPoints) }}</span>
             <span class="metric-label">Honor Points</span>
           </div>
         </div>
@@ -53,6 +48,12 @@
 </template>
 
 <script setup lang="ts">
+import { getRaceName, getClassName } from '~/utils/wow'
+import { formatNumber } from '~/utils/format'
+import UiBadge from '~/components/ui/UiBadge.vue'
+import UiSectionHeader from '~/components/ui/UiSectionHeader.vue'
+import UiLoadingState from '~/components/ui/UiLoadingState.vue'
+
 interface PvPStats {
   battlegrounds?: { total: number }
   arenas?: { total: number }
@@ -73,107 +74,44 @@ defineProps<{
   stats: PvPStats
   loading: boolean
 }>()
-
-function getRaceName(raceId: number): string {
-  const races: Record<number, string> = {
-    1: 'Human', 2: 'Orc', 3: 'Dwarf', 4: 'Night Elf',
-    5: 'Undead', 6: 'Tauren', 7: 'Gnome', 8: 'Troll',
-    10: 'Blood Elf', 11: 'Draenei'
-  }
-  return races[raceId] || `Race ${raceId}`
-}
-
-function getClassName(classId: number): string {
-  const classes: Record<number, string> = {
-    1: 'Warrior', 2: 'Paladin', 3: 'Hunter', 4: 'Rogue',
-    5: 'Priest', 6: 'Death Knight', 7: 'Shaman', 8: 'Mage',
-    9: 'Warlock', 11: 'Druid'
-  }
-  return classes[classId] || `Class ${classId}`
-}
-
-function formatLargeNumber(num: number): string {
-  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M'
-  if (num >= 1000) return (num / 1000).toFixed(1) + 'K'
-  return num.toString()
-}
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use "~/styles/variables" as *;
+@use "~/styles/mixins" as *;
+
+.pvp-section {
+  @include section-container;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
-  margin-top: 1.5rem;
+  gap: $spacing-lg;
+  margin-top: $spacing-lg;
 }
 
-.stat-card {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 0.75rem;
-  padding: 1.5rem;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  transition: all 0.2s;
-}
-
-.stat-card:hover {
-  border-color: #475569;
-  transform: translateY(-2px);
-}
-
-.stat-icon {
-  font-size: 2.5rem;
-  opacity: 0.8;
-}
-
-.stat-content {
-  flex: 1;
-}
-
-.stat-content h3 {
-  font-size: 0.9rem;
-  color: #94a3b8;
-  margin: 0 0 0.5rem 0;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.stat-value {
-  font-size: 2rem;
-  font-weight: 700;
-  color: #60a5fa;
-  margin: 0;
-  line-height: 1;
-}
-
-.stat-subtext {
-  font-size: 0.85rem;
-  color: #64748b;
-  margin: 0.5rem 0 0 0;
+.mt-lg {
+  margin-top: $spacing-xl;
 }
 
 .leaderboard {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: $spacing-md;
+  margin-top: $spacing-md;
 }
 
 .leaderboard-item {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 0.75rem;
-  padding: 1.5rem;
+  @include card-base;
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  transition: all 0.2s;
-}
+  gap: $spacing-lg;
 
-.leaderboard-item:hover {
-  border-color: #475569;
-  transform: translateX(4px);
+  &:hover {
+    @include card-hover;
+    transform: translateX(4px);
+  }
 }
 
 .rank {
@@ -186,22 +124,22 @@ function formatLargeNumber(num: number): string {
 .rank-number {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #64748b;
-}
+  color: $text-muted;
 
-.rank-number.gold {
-  color: #fbbf24;
-  font-size: 2rem;
-}
+  &.gold {
+    color: $color-warning;
+    font-size: 2rem;
+  }
 
-.rank-number.silver {
-  color: #cbd5e1;
-  font-size: 1.75rem;
-}
+  &.silver {
+    color: #cbd5e1;
+    font-size: 1.75rem;
+  }
 
-.rank-number.bronze {
-  color: #fb923c;
-  font-size: 1.75rem;
+  &.bronze {
+    color: #fb923c;
+    font-size: 1.75rem;
+  }
 }
 
 .player-details {
@@ -212,49 +150,40 @@ function formatLargeNumber(num: number): string {
 .player-name-level {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-}
+  gap: $spacing-sm;
+  margin-bottom: $spacing-sm;
 
-.player-name-level h3 {
-  color: #60a5fa;
-  font-size: 1.25rem;
-  margin: 0;
+  h3 {
+    color: $color-info;
+    font-size: $font-xl;
+    margin: 0;
+  }
 }
 
 .player-class-race {
-  color: #94a3b8;
-  font-size: 0.9rem;
-  margin: 0.25rem 0;
+  color: $text-secondary;
+  font-size: $font-sm;
+  margin: $spacing-xs 0;
 }
 
 .player-metric {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.25rem;
+  gap: $spacing-xs;
 }
 
 .metric-value {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #a78bfa;
+  color: $color-accent;
 }
 
 .metric-label {
-  font-size: 0.8rem;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  @include stat-label;
 }
 
-.loading {
-  text-align: center;
-  padding: 3rem;
-  color: #94a3b8;
-}
-
-@media (max-width: 768px) {
+@include respond-to('tablet') {
   .stats-grid {
     grid-template-columns: 1fr;
   }

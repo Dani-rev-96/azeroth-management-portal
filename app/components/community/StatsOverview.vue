@@ -1,46 +1,33 @@
 <template>
-  <section class="content-section">
-    <div class="section-header">
-      <h2>📊 Server Statistics</h2>
-    </div>
+  <section class="stats-overview">
+    <UiSectionHeader title="📊 Server Statistics" />
 
-    <div v-if="loading" class="loading">
-      <p>Loading statistics...</p>
-    </div>
+    <UiLoadingState v-if="loading" text="Loading statistics..." />
 
     <div v-else class="stats-grid">
-      <!-- Accounts Card -->
-      <div class="stat-card">
-        <div class="stat-icon">👥</div>
-        <div class="stat-content">
-          <h3>Total Accounts</h3>
-          <p class="stat-value">{{ stats.accounts?.total || 0 }}</p>
-          <p class="stat-subtext">{{ stats.accounts?.online || 0 }} online now</p>
-        </div>
-      </div>
+      <UiStatCard
+        icon="👥"
+        label="Total Accounts"
+        :value="stats.accounts?.total || 0"
+        :subtitle="`${stats.accounts?.online || 0} online now`"
+      />
 
-      <!-- Characters Card -->
-      <div class="stat-card">
-        <div class="stat-icon">🎭</div>
-        <div class="stat-content">
-          <h3>Total Characters</h3>
-          <p class="stat-value">{{ stats.characters?.total || 0 }}</p>
-          <p class="stat-subtext">{{ stats.characters?.maxLevel || 0 }} at max level</p>
-        </div>
-      </div>
+      <UiStatCard
+        icon="🎭"
+        label="Total Characters"
+        :value="stats.characters?.total || 0"
+        :subtitle="`${stats.characters?.maxLevel || 0} at max level`"
+      />
 
-      <!-- Playtime Card -->
-      <div class="stat-card">
-        <div class="stat-icon">⏰</div>
-        <div class="stat-content">
-          <h3>Total Playtime</h3>
-          <p class="stat-value">{{ formatLargeNumber(stats.playtime?.totalHours || 0) }} hours</p>
-          <p class="stat-subtext">{{ stats.playtime?.totalDays || 0 }} days</p>
-        </div>
-      </div>
+      <UiStatCard
+        icon="⏰"
+        label="Total Playtime"
+        :value="formatNumber(stats.playtime?.totalHours || 0) + ' hours'"
+        :subtitle="`${stats.playtime?.totalDays || 0} days`"
+      />
 
       <!-- Faction Balance Card -->
-      <div class="stat-card">
+      <div class="stat-card faction-card">
         <div class="stat-icon">⚔️</div>
         <div class="stat-content">
           <h3>Faction Balance</h3>
@@ -61,6 +48,11 @@
 </template>
 
 <script setup lang="ts">
+import { formatNumber } from '~/utils/format'
+import UiSectionHeader from '~/components/ui/UiSectionHeader.vue'
+import UiStatCard from '~/components/ui/UiStatCard.vue'
+import UiLoadingState from '~/components/ui/UiLoadingState.vue'
+
 interface GeneralStats {
   accounts?: { total: number; online: number }
   characters?: { total: number; maxLevel: number }
@@ -86,98 +78,74 @@ function getFactionPercentage(faction: 'alliance' | 'horde'): string {
 
   return (factions[faction] / total * 100).toFixed(1)
 }
-
-function formatLargeNumber(num: number): string {
-  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M'
-  if (num >= 1000) return (num / 1000).toFixed(1) + 'K'
-  return num.toString()
-}
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use "~/styles/variables" as *;
+@use "~/styles/mixins" as *;
+
+.stats-overview {
+  @include section-container;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
-  margin-top: 1.5rem;
+  gap: $spacing-lg;
+  margin-top: $spacing-lg;
 }
 
 .stat-card {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 0.75rem;
-  padding: 1.5rem;
+  @include card-base;
   display: flex;
   align-items: center;
-  gap: 1rem;
-  transition: all 0.2s;
+  gap: $spacing-md;
+
+  &:hover {
+    @include card-hover;
+    transform: translateY(-2px);
+  }
 }
 
-.stat-card:hover {
-  border-color: #475569;
-  transform: translateY(-2px);
-}
+.faction-card {
+  .stat-icon {
+    font-size: 2.5rem;
+    opacity: 0.8;
+  }
 
-.stat-icon {
-  font-size: 2.5rem;
-  opacity: 0.8;
-}
+  .stat-content {
+    flex: 1;
 
-.stat-content {
-  flex: 1;
-}
-
-.stat-content h3 {
-  font-size: 0.9rem;
-  color: #94a3b8;
-  margin: 0 0 0.5rem 0;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.stat-value {
-  font-size: 2rem;
-  font-weight: 700;
-  color: #60a5fa;
-  margin: 0;
-  line-height: 1;
-}
-
-.stat-subtext {
-  font-size: 0.85rem;
-  color: #64748b;
-  margin: 0.5rem 0 0 0;
+    h3 {
+      @include stat-label;
+      margin: 0 0 $spacing-sm 0;
+    }
+  }
 }
 
 .faction-bars {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: $spacing-sm;
 }
 
 .faction-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.5rem;
-  border-radius: 0.375rem;
-  font-size: 0.9rem;
+  padding: $spacing-sm;
+  border-radius: $radius-sm;
+  font-size: $font-sm;
   font-weight: 600;
-}
 
-.faction-bar.alliance {
-  background: rgba(59, 130, 246, 0.2);
-  color: #60a5fa;
-}
+  &.alliance {
+    background: rgba($color-info, 0.2);
+    color: lighten($color-info, 10%);
+  }
 
-.faction-bar.horde {
-  background: rgba(239, 68, 68, 0.2);
-  color: #f87171;
-}
-
-.loading {
-  text-align: center;
-  padding: 3rem;
-  color: #94a3b8;
+  &.horde {
+    background: rgba($color-danger, 0.2);
+    color: lighten($color-danger, 10%);
+  }
 }
 </style>
