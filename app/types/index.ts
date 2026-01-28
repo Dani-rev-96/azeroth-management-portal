@@ -179,6 +179,40 @@ export type CharacterTalent = {
   maxRank: number
 }
 
+export type CharacterStats = {
+  guid: number
+  maxhealth: number
+  maxpower1?: number
+  maxpower2?: number
+  maxpower3?: number
+  maxpower4?: number
+  maxpower5?: number
+  maxpower6?: number
+  maxpower7?: number
+  strength: number
+  agility: number
+  stamina: number
+  intellect: number
+  spirit: number
+  armor: number
+  resHoly?: number
+  resFire?: number
+  resNature?: number
+  resFrost?: number
+  resShadow?: number
+  resArcane?: number
+  blockPct?: number
+  dodgePct?: number
+  parryPct?: number
+  critPct?: number
+  rangedCritPct?: number
+  spellCritPct?: number
+  attackPower?: number
+  rangedAttackPower?: number
+  spellPower?: number
+  resilience?: number
+}
+
 export type CharacterDetailResponse = {
   character: {
     guid: number
@@ -206,6 +240,6 @@ export type CharacterDetailResponse = {
   items: CharacterItem[]
   talents: CharacterTalent[]
   achievements: any[]
-  stats: any[]
+  stats: CharacterStats[]
   realmId: string
 }

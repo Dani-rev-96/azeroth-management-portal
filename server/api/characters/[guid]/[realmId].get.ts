@@ -344,17 +344,27 @@ export default defineEventHandler(async (event) => {
     `, [guid])
 
     // Get statistics
-    const [stats] = await charsPool.query(`
-      SELECT
-        guid, maxhealth,
-        maxpower1, maxpower2, maxpower3, maxpower4, maxpower5, maxpower6, maxpower7,
-        strength, agility, stamina, intellect, spirit, armor,
-        resHoly, resFire, resNature, resFrost, resShadow, resArcane,
-        blockPct, dodgePct, parryPct, critPct, rangedCritPct, spellCritPct,
-        attackPower, rangedAttackPower, spellPower, resilience
-      FROM character_stats
-      WHERE guid = ?
-    `, [guid])
+    console.log('[Character Stats] Querying for guid:', guid)
+    let stats: any[] = []
+    try {
+      const [statsResult] = await charsPool.query(`
+        SELECT
+          guid, maxhealth,
+          maxpower1, maxpower2, maxpower3, maxpower4, maxpower5, maxpower6, maxpower7,
+          strength, agility, stamina, intellect, spirit, armor,
+          resHoly, resFire, resNature, resFrost, resShadow, resArcane,
+          blockPct, dodgePct, parryPct, critPct, rangedCritPct, spellCritPct,
+          attackPower, rangedAttackPower, spellPower, resilience
+        FROM character_stats
+        WHERE guid = ?
+      `, [guid])
+      stats = statsResult as any[]
+      console.log('[Character Stats] Found stats:', stats.length, stats)
+    } catch (error) {
+      console.error('[Character Stats] Error querying character_stats:', error)
+      // Table might not exist, continue without stats
+      stats = []
+    }
 
     return {
       character: {

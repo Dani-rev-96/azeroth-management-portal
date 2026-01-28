@@ -69,25 +69,141 @@
             />
           </div>
 
-          <!-- Core Stats -->
+          <!-- Resources -->
           <div class="core-stats section-card">
-            <h2>Core Stats</h2>
+            <h2>Resources</h2>
             <div class="stats-grid">
               <div class="stat-item">
                 <span class="stat-label">❤️ Health</span>
-                <span class="stat-value">{{ data.character.health }}</span>
+                <span class="stat-value">{{ data.character.health }} / {{ stats?.maxhealth || data.character.health }}</span>
               </div>
-              <div class="stat-item" v-if="data.character.mana">
+              <div class="stat-item" v-if="showsResource(data.character.class, 'mana') && data.character.mana">
                 <span class="stat-label">💧 Mana</span>
-                <span class="stat-value">{{ data.character.mana }}</span>
+                <span class="stat-value">{{ data.character.mana }} / {{ stats?.maxpower1 || data.character.mana }}</span>
               </div>
-              <div class="stat-item" v-if="data.character.energy">
-                <span class="stat-label">⚡ Energy</span>
-                <span class="stat-value">{{ data.character.energy }}</span>
-              </div>
-              <div class="stat-item" v-if="data.character.rage">
+              <div class="stat-item" v-if="showsResource(data.character.class, 'rage') && data.character.rage !== undefined">
                 <span class="stat-label">🔥 Rage</span>
-                <span class="stat-value">{{ data.character.rage }}</span>
+                <span class="stat-value">{{ data.character.rage }} / {{ stats?.maxpower2 || 100 }}</span>
+              </div>
+              <div class="stat-item" v-if="showsResource(data.character.class, 'energy') && data.character.energy !== undefined">
+                <span class="stat-label">⚡ Energy</span>
+                <span class="stat-value">{{ data.character.energy }} / {{ stats?.maxpower4 || 100 }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Attributes -->
+          <div class="attributes-section section-card" v-if="stats">
+            <h2>Attributes</h2>
+            <div class="stats-grid">
+              <div class="stat-item">
+                <span class="stat-label">💪 Strength</span>
+                <span class="stat-value">{{ stats.strength }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">🏃 Agility</span>
+                <span class="stat-value">{{ stats.agility }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">🛡️ Stamina</span>
+                <span class="stat-value">{{ stats.stamina }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">🧠 Intellect</span>
+                <span class="stat-value">{{ stats.intellect }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">✨ Spirit</span>
+                <span class="stat-value">{{ stats.spirit }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">🛡️ Armor</span>
+                <span class="stat-value">{{ stats.armor }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Combat Stats -->
+          <div class="combat-section section-card" v-if="stats">
+            <h2>Combat Stats</h2>
+            <div class="stats-grid">
+              <div class="stat-item" v-if="stats.attackPower">
+                <span class="stat-label">⚔️ Attack Power</span>
+                <span class="stat-value">{{ stats.attackPower }}</span>
+              </div>
+              <div class="stat-item" v-if="stats.rangedAttackPower">
+                <span class="stat-label">🏹 Ranged AP</span>
+                <span class="stat-value">{{ stats.rangedAttackPower }}</span>
+              </div>
+              <div class="stat-item" v-if="stats.spellPower">
+                <span class="stat-label">🔮 Spell Power</span>
+                <span class="stat-value">{{ stats.spellPower }}</span>
+              </div>
+              <div class="stat-item" v-if="stats.critPct !== undefined">
+                <span class="stat-label">💥 Melee Crit</span>
+                <span class="stat-value">{{ stats.critPct.toFixed(2) }}%</span>
+              </div>
+              <div class="stat-item" v-if="stats.rangedCritPct !== undefined">
+                <span class="stat-label">🎯 Ranged Crit</span>
+                <span class="stat-value">{{ stats.rangedCritPct.toFixed(2) }}%</span>
+              </div>
+              <div class="stat-item" v-if="stats.spellCritPct !== undefined">
+                <span class="stat-label">✨ Spell Crit</span>
+                <span class="stat-value">{{ stats.spellCritPct.toFixed(2) }}%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Defensive Stats -->
+          <div class="defensive-section section-card" v-if="stats && (stats.dodgePct || stats.parryPct || stats.blockPct)">
+            <h2>Defense</h2>
+            <div class="stats-grid">
+              <div class="stat-item" v-if="stats.dodgePct !== undefined">
+                <span class="stat-label">🌀 Dodge</span>
+                <span class="stat-value">{{ stats.dodgePct.toFixed(2) }}%</span>
+              </div>
+              <div class="stat-item" v-if="stats.parryPct !== undefined">
+                <span class="stat-label">🛡️ Parry</span>
+                <span class="stat-value">{{ stats.parryPct.toFixed(2) }}%</span>
+              </div>
+              <div class="stat-item" v-if="stats.blockPct !== undefined">
+                <span class="stat-label">🚫 Block</span>
+                <span class="stat-value">{{ stats.blockPct.toFixed(2) }}%</span>
+              </div>
+              <div class="stat-item" v-if="stats.resilience">
+                <span class="stat-label">💎 Resilience</span>
+                <span class="stat-value">{{ stats.resilience }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Resistances -->
+          <div class="resistances-section section-card" v-if="stats && (stats.resHoly || stats.resFire || stats.resNature || stats.resFrost || stats.resShadow || stats.resArcane)">
+            <h2>Resistances</h2>
+            <div class="stats-grid">
+              <div class="stat-item" v-if="stats.resHoly">
+                <span class="stat-label">✝️ Holy</span>
+                <span class="stat-value">{{ stats.resHoly }}</span>
+              </div>
+              <div class="stat-item" v-if="stats.resFire">
+                <span class="stat-label">🔥 Fire</span>
+                <span class="stat-value">{{ stats.resFire }}</span>
+              </div>
+              <div class="stat-item" v-if="stats.resNature">
+                <span class="stat-label">🌿 Nature</span>
+                <span class="stat-value">{{ stats.resNature }}</span>
+              </div>
+              <div class="stat-item" v-if="stats.resFrost">
+                <span class="stat-label">❄️ Frost</span>
+                <span class="stat-value">{{ stats.resFrost }}</span>
+              </div>
+              <div class="stat-item" v-if="stats.resShadow">
+                <span class="stat-label">🌑 Shadow</span>
+                <span class="stat-value">{{ stats.resShadow }}</span>
+              </div>
+              <div class="stat-item" v-if="stats.resArcane">
+                <span class="stat-label">🔮 Arcane</span>
+                <span class="stat-value">{{ stats.resArcane }}</span>
               </div>
             </div>
           </div>
@@ -125,6 +241,31 @@ const realmId = computed(() => route.params.realmId as string)
 const { data, pending, error } = await useFetch<CharacterDetailResponse>(
   `/api/characters/${guid.value}/${realmId.value}`
 )
+
+// Get stats object
+const stats = computed(() => {
+  return data.value?.stats && data.value.stats.length > 0 ? data.value.stats[0] : null
+})
+
+// Helper to determine which resource to show based on class
+// 1=Warrior (Rage), 2=Paladin (Mana), 3=Hunter (Mana), 4=Rogue (Energy),
+// 5=Priest (Mana), 6=DK (Runic Power), 7=Shaman (Mana), 8=Mage (Mana),
+// 9=Warlock (Mana), 11=Druid (Mana)
+function showsResource(classId: number, resourceType: 'mana' | 'rage' | 'energy' | 'focus') {
+  if (resourceType === 'mana') {
+    return [2, 3, 5, 7, 8, 9, 11].includes(classId)
+  }
+  if (resourceType === 'rage') {
+    return [1].includes(classId) // Warriors, Druids use it in bear form but we show mana as primary
+  }
+  if (resourceType === 'energy') {
+    return [4].includes(classId) // Rogues, Druids use it in cat form but we show mana as primary
+  }
+  if (resourceType === 'focus') {
+    return [3].includes(classId) // Hunters (though they use mana in WotLK)
+  }
+  return false
+}
 
 // Equipment slot definitions
 const equipmentSlots = [
@@ -350,10 +491,21 @@ function formatPlaytime(seconds: number) {
 .currency-item {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   padding: 0.75rem;
   background: rgba(59, 130, 246, 0.05);
   border: 1px solid #334155;
   border-radius: 0.375rem;
+  gap: 0.5rem;
+}
+
+@media (max-width: 640px) {
+  .stat-item,
+  .currency-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
 }
 
 .stat-label,

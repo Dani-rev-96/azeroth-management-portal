@@ -123,6 +123,11 @@ export function parseEnchantmentsField(enchantmentsString: string): ParsedEnchan
   const enchantments: ParsedEnchantment[] = []
 
   for (let slot = 0; slot < 12; slot++) {
+    // Skip slots 7-11 (random properties/suffix) as these are handled separately via randomPropertyId
+    if (slot >= 7 && slot <= 11) {
+      continue
+    }
+
     const idx = slot * 3
     const enchantId = numbers[idx] ?? 0
     const duration = numbers[idx + 1] ?? 0
