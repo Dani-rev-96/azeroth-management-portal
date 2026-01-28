@@ -7,6 +7,8 @@ export type KeycloakUser = {
   given_name?: string
   family_name?: string
   email_verified: boolean
+  isGM?: boolean
+  gmLevel?: number
 }
 
 // WoW Server Realm Configuration

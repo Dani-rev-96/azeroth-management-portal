@@ -46,20 +46,48 @@
     <!-- Stats Section (if authenticated) -->
     <section v-if="authStore.isAuthenticated && stats" class="stats-preview">
       <h2>Server Status</h2>
-      <div class="stats-grid">
+
+      <!-- Primary Stats - Real Players -->
+      <div class="stats-grid primary-stats">
         <div class="stat-item">
           <span class="stat-value">{{ stats.onlinePlayers }}</span>
           <span class="stat-label">Players Online</span>
         </div>
         <div class="stat-item">
           <span class="stat-value">{{ stats.totalAccounts }}</span>
-          <span class="stat-label">Total Accounts</span>
+          <span class="stat-label">Accounts</span>
         </div>
         <div class="stat-item">
           <span class="stat-value">{{ stats.totalCharacters }}</span>
-          <span class="stat-label">Characters Created</span>
+          <span class="stat-label">Characters</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">{{ stats.totalGuilds }}</span>
+          <span class="stat-label">Guilds</span>
         </div>
       </div>
+
+      <!-- Secondary Stats Grid -->
+      <div class="stats-grid secondary-stats">
+        <div class="stat-item">
+          <span class="stat-value small">{{ stats.activeRealms }}</span>
+          <span class="stat-label">Active Realms</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value small">{{ stats.maxLevelCharacters }}</span>
+          <span class="stat-label">Level 80 Characters</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value small">{{ stats.averageLevel }}</span>
+          <span class="stat-label">Average Level</span>
+        </div>
+        <div class="stat-item bot-stat">
+          <span class="stat-value small bot">{{ stats.onlineBots }}</span>
+          <span class="stat-label">Bots Online</span>
+        </div>
+      </div>
+
+      <p class="stats-note">* Statistics exclude bot accounts (RNDBOT)</p>
     </section>
   </div>
 </template>
@@ -73,6 +101,13 @@ const stats = ref<{
   onlinePlayers: number
   totalAccounts: number
   totalCharacters: number
+  onlineBots: number
+  totalBotAccounts: number
+  totalBotCharacters: number
+  totalGuilds: number
+  activeRealms: number
+  maxLevelCharacters: number
+  averageLevel: number
 } | null>(null)
 
 // Load stats when authenticated
@@ -80,7 +115,9 @@ watchEffect(async () => {
   if (authStore.isAuthenticated && !stats.value) {
     try {
       const { data } = await useFetch('/api/stats/overview')
-      stats.value = data.value
+      if (data.value) {
+        stats.value = data.value as any
+      }
     } catch (error) {
       console.error('Failed to load stats:', error)
     }
@@ -111,6 +148,7 @@ watchEffect(async () => {
   margin-bottom: 1rem;
   background: linear-gradient(to right, #60a5fa, #a78bfa);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
@@ -157,6 +195,16 @@ watchEffect(async () => {
   gap: 2rem;
 }
 
+.primary-stats {
+  margin-bottom: 2rem;
+  padding-bottom: 2rem;
+  border-bottom: 1px solid #334155;
+}
+
+.secondary-stats {
+  margin-bottom: 1rem;
+}
+
 .stat-item {
   display: flex;
   flex-direction: column;
@@ -168,6 +216,18 @@ watchEffect(async () => {
   font-weight: 700;
   background: linear-gradient(to right, #60a5fa, #a78bfa);
   -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.stat-value.small {
+  font-size: 2rem;
+}
+
+.stat-value.bot {
+  background: linear-gradient(to right, #94a3b8, #64748b);
+  -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
@@ -176,5 +236,18 @@ watchEffect(async () => {
   font-size: 0.9rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.bot-stat {
+  opacity: 0.7;
+}
+
+.stats-note {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #334155;
+  color: #64748b;
+  font-size: 0.875rem;
+  font-style: italic;
 }
 </style>

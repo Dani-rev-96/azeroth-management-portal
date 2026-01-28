@@ -140,7 +140,164 @@
       <main v-if="activeTab === 'gms'" class="tab-content">
         <section class="content-section">
           <h2>GM Management</h2>
-          <p>Coming soon: Manage GM access levels and permissions</p>
+
+          <!-- Set GM Level Section -->
+          <div class="gm-section">
+            <h3>Set GM Access Level</h3>
+            <form @submit.prevent="setGMLevel" class="gm-form">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="gmAccountId">Account ID</label>
+                  <input
+                    id="gmAccountId"
+                    v-model.number="gmForm.accountId"
+                    type="number"
+                    placeholder="Enter account ID"
+                    class="form-input"
+                    required
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="gmLevel">GM Level (0-10)</label>
+                  <input
+                    id="gmLevel"
+                    v-model.number="gmForm.gmLevel"
+                    type="number"
+                    min="0"
+                    max="10"
+                    placeholder="0"
+                    class="form-input"
+                    required
+                  />
+                  <small class="form-hint">0 = Remove GM access, 1-3 = Standard levels</small>
+                </div>
+                <div class="form-group">
+                  <label for="gmRealmId">Realm</label>
+                  <select
+                    id="gmRealmId"
+                    v-model.number="gmForm.realmId"
+                    class="form-input"
+                  >
+                    <option :value="-1">All Realms</option>
+                    <option v-for="realm in realmsList" :key="realm.realmId" :value="realm.realmId">
+                      {{ realm.name }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="gmComment">Comment (Optional)</label>
+                <input
+                  id="gmComment"
+                  v-model="gmForm.comment"
+                  type="text"
+                  placeholder="Reason for GM access"
+                  class="form-input"
+                />
+              </div>
+              <button
+                type="submit"
+                :disabled="settingGMLevel"
+                class="btn-primary"
+              >
+                {{ settingGMLevel ? '⏳ Setting...' : '🛡️ Set GM Level' }}
+              </button>
+              <p v-if="gmError" class="error-message">{{ gmError }}</p>
+              <p v-if="gmSuccess" class="success-message">{{ gmSuccess }}</p>
+            </form>
+          </div>
+
+          <!-- Send Item via Mail Section -->
+          <div class="gm-section">
+            <h3>Send Item via Mail</h3>
+            <form @submit.prevent="sendItemMail" class="gm-form">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="mailCharacterName">Character Name</label>
+                  <input
+                    id="mailCharacterName"
+                    v-model="mailForm.characterName"
+                    type="text"
+                    placeholder="Enter character name"
+                    class="form-input"
+                    required
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="mailRealmId">Realm</label>
+                  <select
+                    id="mailRealmId"
+                    v-model="mailForm.realmId"
+                    class="form-input"
+                    required
+                  >
+                    <option value="">Select realm</option>
+                    <option v-for="realm in realmsList" :key="realm.id" :value="realm.id">
+                      {{ realm.name }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="mailItemId">Item ID</label>
+                  <input
+                    id="mailItemId"
+                    v-model.number="mailForm.itemId"
+                    type="number"
+                    placeholder="e.g., 25 for Worn Shortsword"
+                    class="form-input"
+                    required
+                  />
+                  <small class="form-hint">Enter the item entry ID from item_template</small>
+                </div>
+                <div class="form-group">
+                  <label for="mailItemCount">Item Count</label>
+                  <input
+                    id="mailItemCount"
+                    v-model.number="mailForm.itemCount"
+                    type="number"
+                    min="1"
+                    max="1000"
+                    placeholder="1"
+                    class="form-input"
+                    required
+                  />
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="mailSubject">Mail Subject</label>
+                <input
+                  id="mailSubject"
+                  v-model="mailForm.subject"
+                  type="text"
+                  placeholder="GM Mail"
+                  maxlength="128"
+                  class="form-input"
+                />
+              </div>
+              <div class="form-group">
+                <label for="mailBody">Mail Body</label>
+                <textarea
+                  id="mailBody"
+                  v-model="mailForm.body"
+                  placeholder="Message to player..."
+                  maxlength="8000"
+                  rows="4"
+                  class="form-input"
+                ></textarea>
+              </div>
+              <button
+                type="submit"
+                :disabled="sendingMail"
+                class="btn-primary"
+              >
+                {{ sendingMail ? '⏳ Sending...' : '📧 Send Item' }}
+              </button>
+              <p v-if="mailError" class="error-message">{{ mailError }}</p>
+              <p v-if="mailSuccess" class="success-message">{{ mailSuccess }}</p>
+            </form>
+          </div>
         </section>
       </main>
 
@@ -261,19 +418,58 @@ const selectedFile = ref<File | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const deleting = ref('')
 
+// GM Management
+const settingGMLevel = ref(false)
+const gmError = ref('')
+const gmSuccess = ref('')
+const gmForm = ref({
+  accountId: null as number | null,
+  gmLevel: 0,
+  realmId: -1,
+  comment: '',
+})
+
+// Mail System
+const sendingMail = ref(false)
+const mailError = ref('')
+const mailSuccess = ref('')
+const mailForm = ref({
+  characterName: '',
+  itemId: null as number | null,
+  itemCount: 1,
+  subject: 'GM Mail',
+  body: '',
+  realmId: '',
+})
+
+// Realms list
+const realmsList = ref<any[]>([])
+
 // Load data when authenticated as GM
 watchEffect(async () => {
   if (authStore.isAuthenticated && isGM.value) {
     await Promise.all([
       fetchAccounts(),
       fetchMappings(),
-      fetchFiles()
+      fetchFiles(),
+      loadRealms()
     ])
   } else if (authStore.isAuthenticated && !isGM.value) {
     // Not a GM, redirect
     navigateTo('/')
   }
 })
+
+async function loadRealms() {
+  try {
+    const { data } = await useFetch('/api/realms')
+    if (data.value) {
+      realmsList.value = Object.values(data.value)
+    }
+  } catch (error) {
+    console.error('Failed to load realms:', error)
+  }
+}
 
 async function fetchAccounts() {
   loadingAccounts.value = true
@@ -329,7 +525,7 @@ async function fetchFiles() {
 function handleFileSelect(event: Event) {
   const target = event.target as HTMLInputElement
   if (target.files && target.files.length > 0) {
-    selectedFile.value = target.files[0]
+    selectedFile.value = target.files[0] || null
     uploadError.value = ''
     uploadSuccess.value = ''
   }
@@ -428,6 +624,89 @@ function formatDate(dateString: string | null): string {
   if (!dateString) return '-'
   return new Date(dateString).toLocaleDateString()
 }
+
+async function setGMLevel() {
+  if (!gmForm.value.accountId) {
+    gmError.value = 'Please enter an account ID'
+    return
+  }
+
+  settingGMLevel.value = true
+  gmError.value = ''
+  gmSuccess.value = ''
+
+  try {
+    const response = await $fetch('/api/admin/gm/set-level', {
+      method: 'POST',
+      body: {
+        accountId: gmForm.value.accountId,
+        gmLevel: gmForm.value.gmLevel,
+        realmId: gmForm.value.realmId,
+        comment: gmForm.value.comment || null,
+      },
+    })
+
+    gmSuccess.value = response.message
+
+    // Reset form
+    gmForm.value = {
+      accountId: null,
+      gmLevel: 0,
+      realmId: -1,
+      comment: '',
+    }
+
+    // Refresh accounts list
+    await fetchAccounts()
+  } catch (error: any) {
+    console.error('Failed to set GM level:', error)
+    gmError.value = error.data?.statusMessage || error.message || 'Failed to set GM level'
+  } finally {
+    settingGMLevel.value = false
+  }
+}
+
+async function sendItemMail() {
+  if (!mailForm.value.characterName || !mailForm.value.itemId || !mailForm.value.realmId) {
+    mailError.value = 'Please fill in all required fields'
+    return
+  }
+
+  sendingMail.value = true
+  mailError.value = ''
+  mailSuccess.value = ''
+
+  try {
+    const response = await $fetch('/api/admin/mail/send-item', {
+      method: 'POST',
+      body: {
+        characterName: mailForm.value.characterName,
+        itemId: mailForm.value.itemId,
+        itemCount: mailForm.value.itemCount,
+        subject: mailForm.value.subject,
+        body: mailForm.value.body,
+        realmId: mailForm.value.realmId,
+      },
+    })
+
+    mailSuccess.value = response.message
+
+    // Reset form
+    mailForm.value = {
+      characterName: '',
+      itemId: null,
+      itemCount: 1,
+      subject: 'GM Mail',
+      body: '',
+      realmId: '',
+    }
+  } catch (error: any) {
+    console.error('Failed to send item via mail:', error)
+    mailError.value = error.data?.detail || error.data?.statusMessage || error.message || 'Failed to send item via mail'
+  } finally {
+    sendingMail.value = false
+  }
+}
 </script>
 
 <style scoped lang="scss">
@@ -443,6 +722,7 @@ function formatDate(dateString: string | null): string {
 .page-header h1 {
   background: linear-gradient(to right, #f59e0b, #d97706);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
@@ -533,4 +813,76 @@ function formatDate(dateString: string | null): string {
   color: #94a3b8;
   font-size: 0.875rem;
 }
+
+/* GM Management Section */
+.gm-section {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 0.75rem;
+}
+
+.gm-section h3 {
+  color: #e2e8f0;
+  font-size: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.gm-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-group label {
+  color: #cbd5e1;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.form-input {
+  padding: 0.625rem 0.875rem;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 0.375rem;
+  color: #e2e8f0;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-input::placeholder {
+  color: #64748b;
+}
+
+.form-hint {
+  color: #94a3b8;
+  font-size: 0.75rem;
+  margin-top: -0.25rem;
+}
+
+textarea.form-input {
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+}
+
 </style>
