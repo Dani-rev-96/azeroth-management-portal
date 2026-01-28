@@ -1,213 +1,210 @@
 <template>
   <div class="shop-page">
-    <header class="page-header">
-      <div class="header-content">
-        <h1>🛒 Shop</h1>
-        <p class="subtitle">Purchase crafting materials, trade goods, and mounts</p>
+    <UiPageHeader
+      title="Shop"
+      subtitle="Purchase crafting materials, trade goods, and mounts"
+    />
+
+    <!-- Character Selection -->
+    <section class="character-select-section" v-if="!selectedCharacter">
+      <div class="section-header">
+        <h2>Select a Character</h2>
+        <p>Choose which character will receive your purchases</p>
       </div>
-    </header>
 
-    <main class="content-section">
-      <!-- Character Selection -->
-      <section class="character-select-section" v-if="!selectedCharacter">
-        <div class="section-header">
-          <h2>Select a Character</h2>
-          <p>Choose which character will receive your purchases</p>
-        </div>
+      <div v-if="loadingCharacters" class="loading">
+        <p>Loading your characters...</p>
+      </div>
 
-        <div v-if="loadingCharacters" class="loading">
-          <p>Loading your characters...</p>
-        </div>
+      <div v-else-if="characterError" class="error-state">
+        <p>{{ characterError }}</p>
+      </div>
 
-        <div v-else-if="characterError" class="error-state">
-          <p>{{ characterError }}</p>
-        </div>
+      <div v-else-if="allCharacters.length === 0" class="empty-state">
+        <p>No characters found. Create a character in-game first.</p>
+      </div>
 
-        <div v-else-if="allCharacters.length === 0" class="empty-state">
-          <p>No characters found. Create a character in-game first.</p>
-        </div>
-
-        <div v-else class="character-grid">
-          <button
-            v-for="char in allCharacters"
-            :key="`${char.realmId}-${char.guid}`"
-            class="character-card"
-            @click="selectCharacter(char)"
-          >
-            <div class="char-avatar" :class="`class-${char.class}`">
-              {{ getClassIcon(char.class) }}
-            </div>
-            <div class="char-info">
-              <h3>{{ char.name }}</h3>
-              <p class="char-details">
-                Level {{ char.level }} {{ getClassName(char.class) }}
-              </p>
-              <p class="char-realm">{{ char.realmName }}</p>
-              <p class="char-gold">💰 {{ formatMoney(char.money) }}</p>
-            </div>
-          </button>
-        </div>
-      </section>
-
-      <!-- Shop Content -->
-      <template v-else>
-        <!-- Selected Character Header -->
-        <div class="selected-character-bar">
-          <div class="selected-char-info">
-            <span class="char-avatar small" :class="`class-${selectedCharacter.class}`">
-              {{ getClassIcon(selectedCharacter.class) }}
-            </span>
-            <span class="char-name">{{ selectedCharacter.name }}</span>
-            <span class="char-balance">💰 {{ formatMoney(selectedCharacter.money) }}</span>
+      <div v-else class="character-grid">
+        <button
+          v-for="char in allCharacters"
+          :key="`${char.realmId}-${char.guid}`"
+          class="character-card"
+          @click="selectCharacter(char)"
+        >
+          <div class="char-avatar" :class="`class-${char.class}`">
+            {{ getClassIcon(char.class) }}
           </div>
-          <button class="btn-change-char" @click="selectedCharacter = null">
-            Change Character
-          </button>
-        </div>
+          <div class="char-info">
+            <h3>{{ char.name }}</h3>
+            <p class="char-details">
+              Level {{ char.level }} {{ getClassName(char.class) }}
+            </p>
+            <p class="char-realm">{{ char.realmName }}</p>
+            <p class="char-gold">💰 {{ formatMoney(char.money) }}</p>
+          </div>
+        </button>
+      </div>
+    </section>
 
-        <!-- Category Tabs -->
-        <div class="category-tabs">
-          <button
-            v-for="cat in categories"
-            :key="cat.id"
-            class="category-tab"
-            :class="{ active: selectedCategory === cat.id }"
-            @click="selectCategory(cat.id)"
-          >
-            <span class="cat-icon">{{ cat.icon }}</span>
-            <span class="cat-name">{{ cat.name }}</span>
-          </button>
+    <!-- Shop Content -->
+    <template v-else>
+      <!-- Selected Character Header -->
+      <div class="selected-character-bar">
+        <div class="selected-char-info">
+          <span class="char-avatar small" :class="`class-${selectedCharacter.class}`">
+            {{ getClassIcon(selectedCharacter.class) }}
+          </span>
+          <span class="char-name">{{ selectedCharacter.name }}</span>
+          <span class="char-balance">💰 {{ formatMoney(selectedCharacter.money) }}</span>
         </div>
+        <button class="btn-change-char" @click="selectedCharacter = null">
+          Change Character
+        </button>
+      </div>
 
-        <!-- Search and Filters -->
-        <div class="shop-controls">
-          <div class="search-box">
-            <input
-              v-model="searchQuery"
-              type="text"
-              placeholder="Search items..."
-              @input="debouncedSearch"
+      <!-- Category Tabs -->
+      <div class="category-tabs">
+        <button
+          v-for="cat in categories"
+          :key="cat.id"
+          class="category-tab"
+          :class="{ active: selectedCategory === cat.id }"
+          @click="selectCategory(cat.id)"
+        >
+          <span class="cat-icon">{{ cat.icon }}</span>
+          <span class="cat-name">{{ cat.name }}</span>
+        </button>
+      </div>
+
+      <!-- Search and Filters -->
+      <div class="shop-controls">
+        <div class="search-box">
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Search items..."
+            @input="debouncedSearch"
+          />
+          <span class="search-icon">🔍</span>
+        </div>
+        <div class="markup-info">
+          <span class="info-icon">ℹ️</span>
+          <span>Prices include {{ shopConfig?.priceMarkupPercent }}% markup</span>
+        </div>
+      </div>
+
+      <!-- Items Grid -->
+      <div v-if="loadingItems" class="loading">
+        <p>Loading items...</p>
+      </div>
+
+      <div v-else-if="itemsError" class="error-state">
+        <p>{{ itemsError }}</p>
+      </div>
+
+      <div v-else-if="items.length === 0" class="empty-state">
+        <p>No items found in this category</p>
+      </div>
+
+      <div v-else class="items-grid">
+        <div
+          v-for="item in items"
+          :key="item.entry"
+          class="item-card"
+          :class="`quality-${item.quality}`"
+        >
+          <div class="item-icon">
+            <img
+              v-if="item.icon"
+              :src="getIconUrl(item.icon)"
+              :alt="item.name"
+              @error="onIconError"
             />
-            <span class="search-icon">🔍</span>
+            <span v-else class="icon-placeholder">📦</span>
           </div>
-          <div class="markup-info">
-            <span class="info-icon">ℹ️</span>
-            <span>Prices include {{ shopConfig?.priceMarkupPercent }}% markup</span>
+          <div class="item-info">
+            <h3 :class="`quality-text-${item.quality}`">{{ item.name }}</h3>
+            <p v-if="item.description" class="item-desc">{{ item.description }}</p>
+            <div class="item-meta">
+              <span v-if="item.requiredLevel > 1" class="req-level">
+                Requires Level {{ item.requiredLevel }}
+              </span>
+              <span class="item-level">iLvl {{ item.itemLevel }}</span>
+            </div>
+            <div class="item-price">
+              <span class="price-label">Price:</span>
+              <span class="price-value">{{ formatMoney(item.shopPrice) }}</span>
+            </div>
           </div>
-        </div>
-
-        <!-- Items Grid -->
-        <div v-if="loadingItems" class="loading">
-          <p>Loading items...</p>
-        </div>
-
-        <div v-else-if="itemsError" class="error-state">
-          <p>{{ itemsError }}</p>
-        </div>
-
-        <div v-else-if="items.length === 0" class="empty-state">
-          <p>No items found in this category</p>
-        </div>
-
-        <div v-else class="items-grid">
-          <div
-            v-for="item in items"
-            :key="item.entry"
-            class="item-card"
-            :class="`quality-${item.quality}`"
-          >
-            <div class="item-icon">
-              <img
-                v-if="item.icon"
-                :src="getIconUrl(item.icon)"
-                :alt="item.name"
-                @error="onIconError"
-              />
-              <span v-else class="icon-placeholder">📦</span>
-            </div>
-            <div class="item-info">
-              <h3 :class="`quality-text-${item.quality}`">{{ item.name }}</h3>
-              <p v-if="item.description" class="item-desc">{{ item.description }}</p>
-              <div class="item-meta">
-                <span v-if="item.requiredLevel > 1" class="req-level">
-                  Requires Level {{ item.requiredLevel }}
-                </span>
-                <span class="item-level">iLvl {{ item.itemLevel }}</span>
-              </div>
-              <div class="item-price">
-                <span class="price-label">Price:</span>
-                <span class="price-value">{{ formatMoney(item.shopPrice) }}</span>
-              </div>
-            </div>
-            <div class="item-actions">
-              <div class="quantity-control">
-                <button
-                  class="qty-btn"
-                  @click="decrementQuantity(item)"
-                  :disabled="getQuantity(item) <= 1"
-                >
-                  -
-                </button>
-                <input
-                  type="number"
-                  :value="getQuantity(item)"
-                  min="1"
-                  :max="item.maxStackSize * 10"
-                  @change="setQuantity(item, $event)"
-                />
-                <button class="qty-btn" @click="incrementQuantity(item)">
-                  +
-                </button>
-              </div>
+          <div class="item-actions">
+            <div class="quantity-control">
               <button
-                class="btn-buy"
-                :disabled="!canAfford(item) || purchasing === item.entry"
-                @click="purchaseItem(item)"
+                class="qty-btn"
+                @click="decrementQuantity(item)"
+                :disabled="getQuantity(item) <= 1"
               >
-                <span v-if="purchasing === item.entry">...</span>
-                <span v-else>Buy</span>
+                -
+              </button>
+              <input
+                type="number"
+                :value="getQuantity(item)"
+                min="1"
+                :max="item.maxStackSize * 10"
+                @change="setQuantity(item, $event)"
+              />
+              <button class="qty-btn" @click="incrementQuantity(item)">
+                +
               </button>
             </div>
+            <button
+              class="btn-buy"
+              :disabled="!canAfford(item) || purchasing === item.entry"
+              @click="purchaseItem(item)"
+            >
+              <span v-if="purchasing === item.entry">...</span>
+              <span v-else>Buy</span>
+            </button>
           </div>
         </div>
+      </div>
 
-        <!-- Pagination -->
-        <div v-if="pagination.totalPages > 1" class="pagination">
-          <button
-            class="page-btn"
-            :disabled="pagination.page <= 1"
-            @click="goToPage(pagination.page - 1)"
-          >
-            ← Prev
-          </button>
-          <span class="page-info">
-            Page {{ pagination.page }} of {{ pagination.totalPages }}
-          </span>
-          <button
-            class="page-btn"
-            :disabled="pagination.page >= pagination.totalPages"
-            @click="goToPage(pagination.page + 1)"
-          >
-            Next →
-          </button>
-        </div>
-      </template>
+      <!-- Pagination -->
+      <div v-if="pagination.totalPages > 1" class="pagination">
+        <button
+          class="page-btn"
+          :disabled="pagination.page <= 1"
+          @click="goToPage(pagination.page - 1)"
+        >
+          ← Prev
+        </button>
+        <span class="page-info">
+          Page {{ pagination.page }} of {{ pagination.totalPages }}
+        </span>
+        <button
+          class="page-btn"
+          :disabled="pagination.page >= pagination.totalPages"
+          @click="goToPage(pagination.page + 1)"
+        >
+          Next →
+        </button>
+      </div>
+    </template>
 
-      <!-- Purchase Notifications -->
-      <Teleport to="body">
-        <div v-if="notification" class="notification" :class="notification.type">
-          <span class="notification-icon">
-            {{ notification.type === 'success' ? '✅' : '❌' }}
-          </span>
-          <span class="notification-message">{{ notification.message }}</span>
-        </div>
-      </Teleport>
-    </main>
+    <!-- Purchase Notifications -->
+    <Teleport to="body">
+      <div v-if="notification" class="notification" :class="notification.type">
+        <span class="notification-icon">
+          {{ notification.type === 'success' ? '✅' : '❌' }}
+        </span>
+        <span class="notification-message">{{ notification.message }}</span>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import UiPageHeader from '~/components/ui/UiPageHeader.vue'
 import type { ShopItem, ShopCategory, ShopCategoryInfo, RealmId } from '~/types'
 
 // Auth
@@ -538,36 +535,7 @@ watch(selectedCategory, () => {
 @use '~/styles/mixins' as *;
 
 .shop-page {
-  min-height: 100vh;
-  background: $bg-primary;
-}
-
-.page-header {
-  background: linear-gradient(135deg, $bg-secondary 0%, rgba($color-accent, 0.1) 100%);
-  padding: 2rem;
-  border-bottom: 1px solid $border-primary;
-
-  .header-content {
-    max-width: 1200px;
-    margin: 0 auto;
-
-    h1 {
-      color: $text-primary;
-      font-size: 2rem;
-      margin: 0 0 0.5rem 0;
-    }
-
-    .subtitle {
-      color: $text-secondary;
-      margin: 0;
-    }
-  }
-}
-
-.content-section {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 2rem;
+  @include container;
 }
 
 // Character Selection
@@ -1108,10 +1076,6 @@ watch(selectedCategory, () => {
 
 // Responsive
 @media (max-width: 768px) {
-  .content-section {
-    padding: 1rem;
-  }
-
   .selected-character-bar {
     flex-direction: column;
     gap: 1rem;

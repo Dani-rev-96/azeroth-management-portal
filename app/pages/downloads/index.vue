@@ -1,70 +1,67 @@
 <template>
   <div class="downloads-page">
-    <header class="page-header">
-      <div class="header-content">
-        <h1>📦 Downloads</h1>
-        <p class="subtitle">Game client and patches</p>
+    <UiPageHeader
+      title="Downloads"
+      subtitle="Game client and patches"
+    />
+
+    <div class="info-banner">
+      <div class="info-icon">ℹ️</div>
+      <div class="info-content">
+        <strong>Resumable Downloads:</strong>
+        If your download is interrupted, you can resume it from where it left off.
+        Your browser will automatically continue the download when you click the download link again.
       </div>
-    </header>
+    </div>
 
-    <main class="content-section">
-      <div class="info-banner">
-        <div class="info-icon">ℹ️</div>
-        <div class="info-content">
-          <strong>Resumable Downloads:</strong>
-          If your download is interrupted, you can resume it from where it left off.
-          Your browser will automatically continue the download when you click the download link again.
-        </div>
+    <section class="downloads-list">
+      <div v-if="loading" class="loading">
+        <p>Loading available downloads...</p>
       </div>
 
-      <section class="downloads-list">
-        <div v-if="loading" class="loading">
-          <p>Loading available downloads...</p>
-        </div>
+      <div v-else-if="error" class="error-state">
+        <p>{{ error }}</p>
+      </div>
 
-        <div v-else-if="error" class="error-state">
-          <p>{{ error }}</p>
-        </div>
+      <div v-else-if="files.length === 0" class="empty-state">
+        <p>No downloads available at this time</p>
+      </div>
 
-        <div v-else-if="files.length === 0" class="empty-state">
-          <p>No downloads available at this time</p>
-        </div>
-
-        <div v-else class="files-grid">
-          <article v-for="file in files" :key="file.name" class="file-card">
-            <div class="file-icon">
-              <span v-if="file.name.endsWith('.7z') || file.name.endsWith('.zip')">📦</span>
-              <span v-else-if="file.name.endsWith('.exe')">⚙️</span>
-              <span v-else-if="file.name.endsWith('.pdf')">📄</span>
-              <span v-else>📁</span>
+      <div v-else class="files-grid">
+        <article v-for="file in files" :key="file.name" class="file-card">
+          <div class="file-icon">
+            <span v-if="file.name.endsWith('.7z') || file.name.endsWith('.zip')">📦</span>
+            <span v-else-if="file.name.endsWith('.exe')">⚙️</span>
+            <span v-else-if="file.name.endsWith('.pdf')">📄</span>
+            <span v-else>📁</span>
+          </div>
+          <div class="file-info">
+            <h3>{{ file.name }}</h3>
+            <div class="file-meta">
+              <span class="file-size">{{ formatFileSize(file.size) }}</span>
+              <span class="file-date">{{ formatDate(file.modified) }}</span>
             </div>
-            <div class="file-info">
-              <h3>{{ file.name }}</h3>
-              <div class="file-meta">
-                <span class="file-size">{{ formatFileSize(file.size) }}</span>
-                <span class="file-date">{{ formatDate(file.modified) }}</span>
-              </div>
-              <p v-if="getFileDescription(file.name)" class="file-description">
-                {{ getFileDescription(file.name) }}
-              </p>
-            </div>
-            <div class="file-actions">
-              <a
-                :href="`/api/downloads/${encodeURIComponent(file.name)}`"
-                class="download-btn"
-              >
-                ⬇️ Download
-              </a>
-            </div>
-          </article>
-        </div>
-      </section>
-    </main>
+            <p v-if="getFileDescription(file.name)" class="file-description">
+              {{ getFileDescription(file.name) }}
+            </p>
+          </div>
+          <div class="file-actions">
+            <a
+              :href="`/api/downloads/${encodeURIComponent(file.name)}`"
+              class="download-btn"
+            >
+              ⬇️ Download
+            </a>
+          </div>
+        </article>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import UiPageHeader from '~/components/ui/UiPageHeader.vue'
 
 interface FileInfo {
   name: string
@@ -132,22 +129,6 @@ onMounted(() => {
 
 .downloads-page {
   @include container;
-}
-
-.header-content h1 {
-  background: linear-gradient(to right, #60a5fa, #a78bfa);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.subtitle {
-  color: #94a3b8;
-  font-size: 1.1rem;
-  margin: 0;
-}
-
-.content-section {
-  margin-top: 2rem;
 }
 
 .info-banner {

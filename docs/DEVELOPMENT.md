@@ -32,21 +32,16 @@ cd azeroth-management-portal
 # Install dependencies
 pnpm install
 
-# Create local credentials
-cat > .db.local.json << 'EOF'
-{
-  "databases": {
-    "auth-db": { "host": "localhost", "port": 3306, "user": "acore", "password": "acore" },
-    "blizzlike-db": { "host": "localhost", "port": 3306, "user": "acore", "password": "acore" },
-    "ip-db": { "host": "localhost", "port": 3306, "user": "acore", "password": "acore" },
-    "ip-boosted-db": { "host": "localhost", "port": 3306, "user": "acore", "password": "acore" }
-  },
-  "env": { "authMode": "mock", "mockUser": "admin", "mockGMLevel": 3 }
-}
-EOF
+# Create local environment configuration
+cp .env.example .env.local
+
+# Edit .env.local with your database credentials
+# At minimum, configure:
+# - NUXT_DB_AUTH_* (auth database)
+# - NUXT_DB_REALM_0_* (at least one realm)
 
 # Start development server
-pnpm dev:local
+pnpm dev
 ```
 
 ### VS Code Extensions
@@ -70,7 +65,6 @@ Recommended extensions for development:
 | Command           | Description               |
 | ----------------- | ------------------------- |
 | `pnpm dev`        | Start dev server          |
-| `pnpm dev:local`  | Start with mock auth      |
 | `pnpm dev:ssl`    | Start with HTTPS          |
 | `pnpm build`      | Build for production      |
 | `pnpm preview`    | Preview production build  |

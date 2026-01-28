@@ -49,6 +49,7 @@ withDefaults(defineProps<Props>(), {
     font-weight: $font-weight-bold;
     margin: 0;
     color: $text-primary;
+		display: inline;
 
     @media (max-width: $breakpoint-md) {
       font-size: $font-size-3xl;

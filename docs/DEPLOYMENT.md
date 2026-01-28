@@ -69,11 +69,24 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - SOPS_AGE_KEY_FILE=/secrets/age.key
+      # Auth Database
+      - NUXT_DB_AUTH_HOST=db
+      - NUXT_DB_AUTH_PORT=3306
+      - NUXT_DB_AUTH_USER=acore
+      - NUXT_DB_AUTH_PASSWORD=${DB_PASSWORD}
+      # Realm 0
+      - NUXT_DB_REALM_0_ID=1
+      - NUXT_DB_REALM_0_NAME=Azeroth WotLK
+      - NUXT_DB_REALM_0_DESCRIPTION=Blizzlike
+      - NUXT_DB_REALM_0_HOST=db
+      - NUXT_DB_REALM_0_PORT=3306
+      - NUXT_DB_REALM_0_USER=acore
+      - NUXT_DB_REALM_0_PASSWORD=${DB_PASSWORD}
+      # Public settings
+      - NUXT_PUBLIC_AUTH_MODE=oauth-proxy
+      - NUXT_PUBLIC_APP_BASE_URL=https://portal.example.com
     volumes:
       - ./data:/app/data
-      - ./.db.production.enc.json:/app/.db.production.enc.json:ro
-      - ./secrets/age.key:/secrets/age.key:ro
     restart: unless-stopped
     depends_on:
       - oauth2-proxy
@@ -117,30 +130,54 @@ docker compose logs -f portal
 
 ## Kubernetes Deployment
 
-### Namespace and Secrets
+### ConfigMap for Non-Sensitive Settings
 
 ```yaml
 apiVersion: v1
-kind: Namespace
+kind: ConfigMap
 metadata:
-  name: azeroth-portal
----
+  name: wow-frontend-env
+  namespace: wow
+data:
+  # Auth Database
+  NUXT_DB_AUTH_HOST: "wow-acore-auth-db"
+  NUXT_DB_AUTH_PORT: "3306"
+  NUXT_DB_AUTH_USER: "acore"
+
+  # Realm 0
+  NUXT_DB_REALM_0_ID: "1"
+  NUXT_DB_REALM_0_NAME: "Azeroth WotLK"
+  NUXT_DB_REALM_0_DESCRIPTION: "Blizzlike"
+  NUXT_DB_REALM_0_HOST: "wow-acore-blizzlike-db"
+  NUXT_DB_REALM_0_PORT: "3306"
+  NUXT_DB_REALM_0_USER: "acore"
+
+  # Realm 1 (optional)
+  NUXT_DB_REALM_1_ID: "2"
+  NUXT_DB_REALM_1_NAME: "Individual IP"
+  NUXT_DB_REALM_1_DESCRIPTION: "Individual Progression Realm"
+  NUXT_DB_REALM_1_HOST: "wow-acore-ip-db"
+  NUXT_DB_REALM_1_PORT: "3306"
+  NUXT_DB_REALM_1_USER: "acore"
+
+  # Public settings
+  NUXT_PUBLIC_AUTH_MODE: "oauth-proxy"
+  NUXT_PUBLIC_APP_BASE_URL: "https://wow.example.com"
+  NUXT_PUBLIC_KEYCLOAK_URL: "https://keycloak.example.com"
+  NUXT_PUBLIC_KEYCLOAK_REALM: "wow"
+```
+
+### Secret for Passwords
+
+```yaml
 apiVersion: v1
 kind: Secret
 metadata:
-  name: portal-secrets
-  namespace: azeroth-portal
+  name: wow-frontend-secrets
+  namespace: wow
 type: Opaque
 stringData:
-  age-key: |
-    AGE-SECRET-KEY-1XXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-  db-credentials: |
-    {
-      "databases": {
-        "auth-db": { "host": "db.example.com", "port": 3306, "user": "portal", "password": "xxx" }
-      },
-      "env": { "authMode": "oauth-proxy" }
-    }
+  acore-password: "your-secure-password"
 ```
 
 ### Deployment
@@ -149,37 +186,49 @@ stringData:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: azeroth-portal
-  namespace: azeroth-portal
+  name: wow-frontend
+  namespace: wow
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: azeroth-portal
+      app: wow-frontend
   template:
     metadata:
       labels:
-        app: azeroth-portal
+        app: wow-frontend
     spec:
       containers:
-        - name: portal
-          image: your-registry/azeroth-portal:latest
+        - name: wow-frontend
+          image: your-registry/wow-frontend:latest
           ports:
-            - containerPort: 3000
+            - containerPort: 80
           env:
-            - name: NODE_ENV
-              value: "production"
-            - name: SOPS_AGE_KEY
+            - name: NITRO_PORT
+              value: "80"
+            # Passwords from secret
+            - name: NUXT_DB_AUTH_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: portal-secrets
-                  key: age-key
+                  name: wow-frontend-secrets
+                  key: acore-password
+            - name: NUXT_DB_REALM_0_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: wow-frontend-secrets
+                  key: acore-password
+            - name: NUXT_DB_REALM_1_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: wow-frontend-secrets
+                  key: acore-password
+          envFrom:
+            # Non-sensitive config from ConfigMap
+            - configMapRef:
+                name: wow-frontend-env
           volumeMounts:
-            - name: credentials
-              mountPath: /app/.db.production.enc.json
-              subPath: db-credentials
             - name: data
-              mountPath: /app/data
+              mountPath: /data
           resources:
             requests:
               memory: "256Mi"
@@ -189,14 +238,14 @@ spec:
               cpu: "500m"
           readinessProbe:
             httpGet:
-              path: /api/auth/me
-              port: 3000
+              path: /api/realms
+              port: 80
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /api/auth/me
-              port: 3000
+              path: /api/realms
+              port: 80
             initialDelaySeconds: 15
             periodSeconds: 20
       volumes:

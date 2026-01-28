@@ -121,56 +121,49 @@ cd azeroth-management-portal
 # Install dependencies
 pnpm install
 
-# Copy and configure credentials
-cp .db.example.json .db.local.json
-# Edit .db.local.json with your database credentials
+# Copy and configure environment
+cp .env.example .env.local
+# Edit .env.local with your database credentials
 ```
 
 ### Configuration
 
-Create `.db.local.json` with your database credentials:
+Create `.env.local` with your database credentials:
 
-```json
-{
-	"databases": {
-		"auth-db": {
-			"host": "localhost",
-			"port": 3306,
-			"user": "acore",
-			"password": "acore"
-		},
-		"blizzlike-db": {
-			"host": "localhost",
-			"port": 3306,
-			"user": "acore",
-			"password": "acore"
-		},
-		"ip-db": {
-			"host": "localhost",
-			"port": 3307,
-			"user": "acore",
-			"password": "acore"
-		},
-		"ip-boosted-db": {
-			"host": "localhost",
-			"port": 3308,
-			"user": "acore",
-			"password": "acore"
-		}
-	},
-	"env": {
-		"authMode": "mock",
-		"mockUser": "admin",
-		"mockEmail": "admin@localhost"
-	}
-}
+```bash
+# Auth Database (shared across all realms)
+NUXT_DB_AUTH_HOST=localhost
+NUXT_DB_AUTH_PORT=3306
+NUXT_DB_AUTH_USER=acore
+NUXT_DB_AUTH_PASSWORD=acore
+
+# Realm 0 - Primary realm
+NUXT_DB_REALM_0_ID=1
+NUXT_DB_REALM_0_NAME=Azeroth WotLK
+NUXT_DB_REALM_0_DESCRIPTION=Classical WOTLK with PlayerBots
+NUXT_DB_REALM_0_HOST=localhost
+NUXT_DB_REALM_0_PORT=3306
+NUXT_DB_REALM_0_USER=acore
+NUXT_DB_REALM_0_PASSWORD=acore
+
+# Realm 1 - Secondary realm (optional)
+NUXT_DB_REALM_1_ID=2
+NUXT_DB_REALM_1_NAME=Azeroth IP
+NUXT_DB_REALM_1_HOST=localhost
+NUXT_DB_REALM_1_PORT=3307
+NUXT_DB_REALM_1_USER=acore
+NUXT_DB_REALM_1_PASSWORD=acore
+
+# Public settings
+NUXT_PUBLIC_AUTH_MODE=mock
+NUXT_PUBLIC_APP_BASE_URL=http://localhost:3000
 ```
 
 ### Development
 
 ```bash
 # Start development server with mock authentication
-pnpm dev:local
+pnpm dev
 
 # Open http://localhost:3000
 ```

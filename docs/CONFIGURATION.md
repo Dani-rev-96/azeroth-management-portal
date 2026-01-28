@@ -4,106 +4,164 @@ Complete reference for all configuration options in the Azeroth Management Porta
 
 ## Table of Contents
 
-- [Configuration Files](#configuration-files)
-- [Credentials Configuration](#credentials-configuration)
-- [Realm Configuration](#realm-configuration)
-- [Runtime Configuration](#runtime-configuration)
 - [Environment Variables](#environment-variables)
+- [Database Configuration](#database-configuration)
+- [Realm Configuration](#realm-configuration)
+- [Public Configuration](#public-configuration)
+- [Adding a New Realm](#adding-a-new-realm)
 
-## Configuration Files
+## Environment Variables
 
-### File Overview
+All configuration is done via environment variables. This makes the application portable and Kubernetes-friendly.
 
-| File                       | Purpose                                     | Location               |
-| -------------------------- | ------------------------------------------- | ---------------------- |
-| `.db.{env}.json`           | Database credentials & environment settings | Project root           |
-| `shared/utils/config/*.ts` | Realm definitions                           | `shared/utils/config/` |
-| `nuxt.config.ts`           | Nuxt framework configuration                | Project root           |
+### Configuration Files
 
-### Credential File Loading
+| File           | Purpose                         | Git       |
+| -------------- | ------------------------------- | --------- |
+| `.env.example` | Template with all options       | Committed |
+| `.env.local`   | Local development configuration | Ignored   |
+| `.env`         | Production configuration        | Ignored   |
 
-The application loads credentials at startup based on `NODE_ENV`:
+For local development, copy `.env.example` to `.env.local`:
 
-```
-NODE_ENV=development  →  .db.local.json
-NODE_ENV=staging      →  .db.staging.enc.json (SOPS decrypted)
-NODE_ENV=production   →  .db.production.enc.json (SOPS decrypted)
-```
-
-Startup logs show which file was loaded:
-
-```
-[✓] Loaded credentials from .db.local.json
-# or
-[✓] Decrypted credentials from .db.production.enc.json
+```bash
+cp .env.example .env.local
 ```
 
-## Credentials Configuration
+For Kubernetes deployments, set environment variables via ConfigMaps and Secrets.
 
-### Full Schema
+## Database Configuration
 
-```json
-{
-	"databases": {
-		"auth-db": {
-			"host": "string",
-			"port": "number",
-			"user": "string",
-			"password": "string"
-		},
-		"blizzlike-db": {
-			/* same structure */
-		},
-		"ip-db": {
-			/* same structure */
-		},
-		"ip-boosted-db": {
-			/* same structure */
-		}
-	},
-	"env": {
-		"authMode": "mock | oauth-proxy | keycloak",
-		"mockUser": "string",
-		"mockEmail": "string",
-		"mockGMLevel": "number",
-		"keycloakUrl": "string",
-		"keycloakRealm": "string",
-		"directusUrl": "string",
-		"appBaseUrl": "string"
-	}
-}
+### Auth Database
+
+The auth database (acore_auth) is shared across all realms:
+
+| Variable                | Description       | Default     |
+| ----------------------- | ----------------- | ----------- |
+| `NUXT_DB_AUTH_HOST`     | Database hostname | `localhost` |
+| `NUXT_DB_AUTH_PORT`     | Database port     | `3306`      |
+| `NUXT_DB_AUTH_USER`     | Database username | `acore`     |
+| `NUXT_DB_AUTH_PASSWORD` | Database password | `acore`     |
+
+### Realm Databases
+
+Each realm has its own database configuration. You can configure up to 10 realms (0-9):
+
+| Variable                        | Description             | Default     |
+| ------------------------------- | ----------------------- | ----------- |
+| `NUXT_DB_REALM_{n}_ID`          | Unique realm identifier | (required)  |
+| `NUXT_DB_REALM_{n}_NAME`        | Display name            | (required)  |
+| `NUXT_DB_REALM_{n}_DESCRIPTION` | Short description       | `""`        |
+| `NUXT_DB_REALM_{n}_HOST`        | Database hostname       | `localhost` |
+| `NUXT_DB_REALM_{n}_PORT`        | Database port           | `3306`      |
+| `NUXT_DB_REALM_{n}_USER`        | Database username       | `acore`     |
+| `NUXT_DB_REALM_{n}_PASSWORD`    | Database password       | `acore`     |
+
+Where `{n}` is 0, 1, 2, etc.
+
+### Example: Single Realm
+
+```bash
+# Auth Database
+NUXT_DB_AUTH_HOST=localhost
+NUXT_DB_AUTH_PORT=3306
+NUXT_DB_AUTH_USER=acore
+NUXT_DB_AUTH_PASSWORD=acore
+
+# Realm 0
+NUXT_DB_REALM_0_ID=1
+NUXT_DB_REALM_0_NAME=Azeroth WotLK
+NUXT_DB_REALM_0_DESCRIPTION=Classical WOTLK with PlayerBots
+NUXT_DB_REALM_0_HOST=localhost
+NUXT_DB_REALM_0_PORT=3306
+NUXT_DB_REALM_0_USER=acore
+NUXT_DB_REALM_0_PASSWORD=acore
 ```
 
-### Database Configuration
+### Example: Multiple Realms
 
-| Property   | Type   | Required | Description                  |
-| ---------- | ------ | -------- | ---------------------------- |
-| `host`     | string | Yes      | Database hostname or IP      |
-| `port`     | number | Yes      | Database port (usually 3306) |
-| `user`     | string | Yes      | Database username            |
-| `password` | string | Yes      | Database password            |
+```bash
+# Auth Database
+NUXT_DB_AUTH_HOST=db-auth.example.com
+NUXT_DB_AUTH_PORT=3306
+NUXT_DB_AUTH_USER=portal
+NUXT_DB_AUTH_PASSWORD=secretpassword
 
-### Database Keys
+# Realm 0 - Blizzlike
+NUXT_DB_REALM_0_ID=1
+NUXT_DB_REALM_0_NAME=Azeroth WotLK
+NUXT_DB_REALM_0_DESCRIPTION=Blizzlike Experience
+NUXT_DB_REALM_0_HOST=db-realm1.example.com
+NUXT_DB_REALM_0_PORT=3306
+NUXT_DB_REALM_0_USER=portal
+NUXT_DB_REALM_0_PASSWORD=secretpassword
 
-| Key             | Description                  | AzerothCore Database          |
-| --------------- | ---------------------------- | ----------------------------- |
-| `auth-db`       | Authentication database      | `acore_auth`                  |
-| `blizzlike-db`  | Default/blizzlike realm      | `acore_characters`            |
-| `ip-db`         | Individual Progression realm | `acore_characters` (separate) |
-| `ip-boosted-db` | Boosted IP realm             | `acore_characters` (separate) |
+# Realm 1 - Individual Progression
+NUXT_DB_REALM_1_ID=2
+NUXT_DB_REALM_1_NAME=Individual IP
+NUXT_DB_REALM_1_DESCRIPTION=Individual Progression Realm
+NUXT_DB_REALM_1_HOST=db-realm2.example.com
+NUXT_DB_REALM_1_PORT=3306
+NUXT_DB_REALM_1_USER=portal
+NUXT_DB_REALM_1_PASSWORD=secretpassword
 
-### Environment Settings
+# Realm 2 - Boosted
+NUXT_DB_REALM_2_ID=3
+NUXT_DB_REALM_2_NAME=Individual IP Boosted
+NUXT_DB_REALM_2_DESCRIPTION=Individual Progression with Boosted Rates
+NUXT_DB_REALM_2_HOST=db-realm3.example.com
+NUXT_DB_REALM_2_PORT=3306
+NUXT_DB_REALM_2_USER=portal
+NUXT_DB_REALM_2_PASSWORD=secretpassword
+```
 
-| Property        | Type   | Default                   | Description                 |
-| --------------- | ------ | ------------------------- | --------------------------- |
-| `authMode`      | string | `"mock"`                  | Authentication mode         |
-| `mockUser`      | string | `"admin"`                 | Username for mock auth      |
-| `mockEmail`     | string | `"admin@localhost"`       | Email for mock auth         |
-| `mockGMLevel`   | number | `3`                       | GM level for mock auth      |
-| `keycloakUrl`   | string | `"http://localhost:8080"` | Keycloak server URL         |
-| `keycloakRealm` | string | `"wow"`                   | Keycloak realm name         |
-| `directusUrl`   | string | `"http://localhost:8055"` | Directus CMS URL (optional) |
-| `appBaseUrl`    | string | `"http://localhost:3000"` | Application base URL        |
+## Realm Configuration
+
+Realms are dynamically configured via environment variables at runtime. The realm ID is used as the key for database pool management and API queries.
+
+### Realm Type Definition
+
+```typescript
+type RealmId = string; // Dynamic - any string identifier
+
+type RealmConfig = {
+	id: string; // Unique identifier (from NUXT_DB_REALM_*_ID)
+	name: string; // Display name
+	description: string; // Short description
+	dbHost: string; // Database hostname
+	dbPort: number; // Database port
+	dbUser: string; // Database username
+	dbPassword: string; // Database password
+};
+```
+
+### How Realm Loading Works
+
+At runtime, the server reads `NUXT_DB_REALM_0_*` through `NUXT_DB_REALM_9_*` environment variables and creates realm configurations. Only realms with both `ID` and `NAME` set are loaded.
+
+Startup logs show which realms were detected:
+
+```
+[Config] Loaded 3 realm(s) from environment variables
+  [0] 1: "Azeroth WotLK" @ db-realm1:3306
+  [1] 2: "Individual IP" @ db-realm2:3306
+  [2] 3: "Individual IP Boosted" @ db-realm3:3306
+```
+
+## Public Configuration
+
+These settings are accessible in the browser via `useRuntimeConfig().public`:
+
+| Variable                     | Description                 | Default                 |
+| ---------------------------- | --------------------------- | ----------------------- |
+| `NUXT_PUBLIC_AUTH_MODE`      | Authentication mode         | `mock`                  |
+| `NUXT_PUBLIC_MOCK_USER`      | Mock username               | `admin`                 |
+| `NUXT_PUBLIC_MOCK_EMAIL`     | Mock email                  | `admin@localhost`       |
+| `NUXT_PUBLIC_MOCK_GM_LEVEL`  | Mock GM level               | `3`                     |
+| `NUXT_PUBLIC_KEYCLOAK_URL`   | Keycloak server URL         | `http://localhost:8080` |
+| `NUXT_PUBLIC_KEYCLOAK_REALM` | Keycloak realm name         | `wow`                   |
+| `NUXT_PUBLIC_DIRECTUS_URL`   | Directus CMS URL (optional) | `http://localhost:8055` |
+| `NUXT_PUBLIC_APP_BASE_URL`   | Application base URL        | `http://localhost:3000` |
 
 ### Auth Modes
 
@@ -113,180 +171,100 @@ Startup logs show which file was loaded:
 | `oauth-proxy` | Reads headers from OAuth-Proxy | Kubernetes with oauth2-proxy |
 | `keycloak`    | Direct Keycloak integration    | Staging environments         |
 
-## Realm Configuration
+## Adding a New Realm
 
-Realms are defined in TypeScript files under `shared/utils/config/`.
+Adding a new realm is simple - just add environment variables:
 
-### Realm Type Definition
+1. **Add realm environment variables**:
 
-```typescript
-type RealmId = "wotlk" | "wotlk-ip" | "wotlk-ip-boosted";
-
-type RealmConfig = {
-	id: RealmId; // Unique identifier
-	realmId: number; // Numeric ID from realmlist table
-	name: string; // Display name
-	description: string; // Short description
-	version: string; // Game version (e.g., "WOTLK")
-	worldPort: number; // World server port
-	soapPort: number; // SOAP port for commands
-	database: string; // Character database name
-	databaseHost: string; // Database hostname
-	databaseKey: string; // Key in credentials file
-};
-```
-
-### Example Configuration
-
-```typescript
-// shared/utils/config/local.ts
-export const realms: Record<RealmId, RealmConfig> = {
-	wotlk: {
-		id: "wotlk",
-		realmId: 1,
-		name: "Azeroth WoTLK",
-		description: "Classical WOTLK with PlayerBots",
-		version: "WOTLK",
-		worldPort: 8085,
-		soapPort: 7878,
-		database: "acore_characters",
-		databaseHost: "localhost",
-		databaseKey: "blizzlike-db",
-	},
-	"wotlk-ip": {
-		id: "wotlk-ip",
-		realmId: 2,
-		name: "Azeroth IP",
-		description: "Individual Progression Mode",
-		version: "WOTLK",
-		worldPort: 8086,
-		soapPort: 7879,
-		database: "acore_characters",
-		databaseHost: "localhost",
-		databaseKey: "ip-db",
-	},
-	"wotlk-ip-boosted": {
-		id: "wotlk-ip-boosted",
-		realmId: 3,
-		name: "Azeroth IP Boosted",
-		description: "Individual Progression with boosted rates",
-		version: "WOTLK",
-		worldPort: 8087,
-		soapPort: 7880,
-		database: "acore_characters",
-		databaseHost: "localhost",
-		databaseKey: "ip-boosted-db",
-	},
-};
-
-export const authServerConfig = {
-	host: "localhost",
-	port: 3724,
-};
-```
-
-### Adding a New Realm
-
-1. **Update the RealmId type** in `app/types/index.ts`:
-
-   ```typescript
-   export type RealmId = "wotlk" | "wotlk-ip" | "wotlk-ip-boosted" | "new-realm";
+   ```bash
+   # In .env.local or Kubernetes ConfigMap
+   NUXT_DB_REALM_3_ID=4
+   NUXT_DB_REALM_3_NAME=New Realm
+   NUXT_DB_REALM_3_DESCRIPTION=My new realm
+   NUXT_DB_REALM_3_HOST=db-realm4.example.com
+   NUXT_DB_REALM_3_PORT=3306
+   NUXT_DB_REALM_3_USER=portal
+   NUXT_DB_REALM_3_PASSWORD=secretpassword
    ```
 
-2. **Add realm to config files**:
-   - `shared/utils/config/local.ts`
-   - `shared/utils/config/production.ts`
+2. **Restart the application** - realms are loaded at startup.
 
-3. **Add database credentials** to `.db.*.json`:
-   ```json
-   {
-   	"databases": {
-   		"new-realm-db": {
-   			"host": "localhost",
-   			"port": 3306,
-   			"user": "portal",
-   			"password": "password"
-   		}
-   	}
-   }
-   ```
+3. **Verify** - Check the startup logs or call `/api/realms` to confirm the realm is loaded.
 
-## Runtime Configuration
+## Kubernetes Configuration
 
-Runtime config is set in `nuxt.config.ts` and loaded from credentials files.
+### ConfigMap for Non-Sensitive Settings
 
-### Server-Only Configuration
-
-These values are only accessible server-side:
-
-```typescript
-// Access in API routes
-const config = useRuntimeConfig();
-config.db.authUser; // Auth database user
-config.db.authPassword; // Auth database password
-config.db.authHost; // Auth database host
-config.db.authPort; // Auth database port
-// ... similar for other databases
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wow-frontend-env
+  namespace: wow
+data:
+  NUXT_DB_AUTH_HOST: "wow-acore-auth-db"
+  NUXT_DB_AUTH_PORT: "3306"
+  NUXT_DB_AUTH_USER: "acore"
+  NUXT_DB_REALM_0_ID: "1"
+  NUXT_DB_REALM_0_NAME: "Azeroth WotLK"
+  NUXT_DB_REALM_0_DESCRIPTION: "Blizzlike"
+  NUXT_DB_REALM_0_HOST: "wow-acore-blizzlike-db"
+  NUXT_DB_REALM_0_PORT: "3306"
+  NUXT_DB_REALM_0_USER: "acore"
+  NUXT_PUBLIC_AUTH_MODE: "oauth-proxy"
+  NUXT_PUBLIC_APP_BASE_URL: "https://wow.example.com"
 ```
 
-### Public Configuration
+### Secret for Passwords
 
-These values are accessible client-side:
-
-```typescript
-// Access anywhere
-const config = useRuntimeConfig();
-config.public.authMode; // 'mock' | 'oauth-proxy' | 'keycloak'
-config.public.mockUser; // Mock username
-config.public.keycloakUrl; // Keycloak URL
-config.public.keycloakRealm; // Keycloak realm
-config.public.appBaseUrl; // Application URL
-config.public.publicPath; // Path for public files
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: wow-frontend-secrets
+  namespace: wow
+type: Opaque
+stringData:
+  NUXT_DB_AUTH_PASSWORD: "your-auth-password"
+  NUXT_DB_REALM_0_PASSWORD: "your-realm-password"
 ```
 
-## Environment Variables
+### Deployment Reference
 
-### Build-time Variables
-
-| Variable   | Description       | Default       |
-| ---------- | ----------------- | ------------- |
-| `NODE_ENV` | Build environment | `development` |
-
-### Runtime Variables
-
-| Variable            | Description          | Default            |
-| ------------------- | -------------------- | ------------------ |
-| `HOST`              | Server bind address  | `localhost`        |
-| `PORT`              | Server port          | `3000`             |
-| `SOPS_AGE_KEY_FILE` | Path to age key      | -                  |
-| `PUBLIC_PATH`       | Public file storage  | `data/public`      |
-| `DB_PATH`           | SQLite database path | `data/mappings.db` |
-
-### SOPS Variables
-
-For decrypting encrypted credentials:
-
-| Variable                | Description                  |
-| ----------------------- | ---------------------------- |
-| `SOPS_AGE_KEY_FILE`     | Path to age private key file |
-| `SOPS_AGE_KEY`          | Age private key (inline)     |
-| `AWS_PROFILE`           | AWS profile for KMS          |
-| `AWS_ACCESS_KEY_ID`     | AWS access key for KMS       |
-| `AWS_SECRET_ACCESS_KEY` | AWS secret key for KMS       |
-
-### Example Startup Commands
-
-```bash
-# Local development
-NODE_ENV=development pnpm dev
-
-# Staging with age key
-NODE_ENV=staging SOPS_AGE_KEY_FILE=~/.age/keys.txt pnpm dev
-
-# Production with environment variable
-NODE_ENV=production \
-  HOST=0.0.0.0 \
-  PORT=3000 \
-  SOPS_AGE_KEY_FILE=/secrets/age.key \
-  node .output/server/index.mjs
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wow-frontend
+spec:
+  template:
+    spec:
+      containers:
+        - name: wow-frontend
+          envFrom:
+            - configMapRef:
+                name: wow-frontend-env
+          env:
+            - name: NUXT_DB_AUTH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: wow-frontend-secrets
+                  key: NUXT_DB_AUTH_PASSWORD
+            - name: NUXT_DB_REALM_0_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: wow-frontend-secrets
+                  key: NUXT_DB_REALM_0_PASSWORD
 ```
+
+## Runtime Variables
+
+These are additional runtime configuration options:
+
+| Variable     | Description          | Default            |
+| ------------ | -------------------- | ------------------ |
+| `HOST`       | Server bind address  | `localhost`        |
+| `NITRO_PORT` | Server port          | `3000`             |
+| `DB_PATH`    | SQLite database path | `data/mappings.db` |
+| `NODE_ENV`   | Environment mode     | `development`      |

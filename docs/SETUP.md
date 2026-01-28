@@ -127,215 +127,104 @@ FLUSH PRIVILEGES;
 
 ## Credentials Configuration
 
-The portal uses JSON configuration files for database credentials and environment settings.
+The portal uses environment variables for database credentials and settings. This makes configuration portable across different deployment environments.
 
-### File Naming Convention
+### Configuration Files
 
-| File                      | Environment | Encryption       | Git       |
-| ------------------------- | ----------- | ---------------- | --------- |
-| `.db.local.json`          | Development | None (plaintext) | Ignored   |
-| `.db.staging.enc.json`    | Staging     | SOPS encrypted   | Committed |
-| `.db.production.enc.json` | Production  | SOPS encrypted   | Committed |
-
-### Credential File Structure
-
-```json
-{
-	"databases": {
-		"auth-db": {
-			"host": "localhost",
-			"port": 3306,
-			"user": "portal",
-			"password": "your_password"
-		},
-		"blizzlike-db": {
-			"host": "localhost",
-			"port": 3306,
-			"user": "portal",
-			"password": "your_password"
-		},
-		"ip-db": {
-			"host": "localhost",
-			"port": 3307,
-			"user": "portal",
-			"password": "your_password"
-		},
-		"ip-boosted-db": {
-			"host": "localhost",
-			"port": 3308,
-			"user": "portal",
-			"password": "your_password"
-		}
-	},
-	"env": {
-		"authMode": "mock",
-		"mockUser": "admin",
-		"mockEmail": "admin@localhost",
-		"mockGMLevel": 3,
-		"keycloakUrl": "https://keycloak.example.com",
-		"keycloakRealm": "wow",
-		"appBaseUrl": "https://portal.example.com"
-	}
-}
-```
-
-### Database Keys Explained
-
-| Key             | Description                            |
-| --------------- | -------------------------------------- |
-| `auth-db`       | AzerothCore auth database (acore_auth) |
-| `blizzlike-db`  | Default/blizzlike realm database       |
-| `ip-db`         | Individual Progression realm database  |
-| `ip-boosted-db` | Boosted IP realm database              |
+| File           | Environment | Git Status |
+| -------------- | ----------- | ---------- |
+| `.env.example` | Template    | Committed  |
+| `.env.local`   | Development | Ignored    |
+| `.env`         | Production  | Ignored    |
 
 ### Local Development Setup
 
 ```bash
-# Create local credentials file
-cat > .db.local.json << 'EOF'
-{
-  "databases": {
-    "auth-db": {
-      "host": "localhost",
-      "port": 3306,
-      "user": "acore",
-      "password": "acore"
-    },
-    "blizzlike-db": {
-      "host": "localhost",
-      "port": 3306,
-      "user": "acore",
-      "password": "acore"
-    },
-    "ip-db": {
-      "host": "localhost",
-      "port": 3306,
-      "user": "acore",
-      "password": "acore"
-    },
-    "ip-boosted-db": {
-      "host": "localhost",
-      "port": 3306,
-      "user": "acore",
-      "password": "acore"
-    }
-  },
-  "env": {
-    "authMode": "mock",
-    "mockUser": "admin",
-    "mockEmail": "admin@localhost",
-    "mockGMLevel": 3
-  }
-}
-EOF
+# Copy the example configuration
+cp .env.example .env.local
+
+# Edit with your database credentials
+nano .env.local
 ```
 
-### Production Setup with SOPS
-
-For production, encrypt credentials with SOPS:
+### Environment Variable Structure
 
 ```bash
-# Install SOPS and age
-brew install sops age  # macOS
-# or: apt install sops age  # Linux
+# ===========================================
+# Auth Database Configuration
+# ===========================================
+NUXT_DB_AUTH_HOST=localhost
+NUXT_DB_AUTH_PORT=3306
+NUXT_DB_AUTH_USER=portal
+NUXT_DB_AUTH_PASSWORD=your_password
 
-# Generate age key (one-time)
-mkdir -p ~/.age
-age-keygen -o ~/.age/keys.txt
+# ===========================================
+# Realm Configuration (up to 10 realms: 0-9)
+# ===========================================
 
-# Create .sops.yaml configuration
-cat > .sops.yaml << 'EOF'
-creation_rules:
-  - path_regex: \.enc\.json$
-    age: age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-EOF
+# Realm 0 - Primary Realm
+NUXT_DB_REALM_0_ID=1
+NUXT_DB_REALM_0_NAME=Azeroth WotLK
+NUXT_DB_REALM_0_DESCRIPTION=Classical WOTLK with PlayerBots
+NUXT_DB_REALM_0_HOST=localhost
+NUXT_DB_REALM_0_PORT=3306
+NUXT_DB_REALM_0_USER=portal
+NUXT_DB_REALM_0_PASSWORD=your_password
 
-# Create production credentials
-cat > .db.production.json << 'EOF'
-{
-  "databases": {
-    "auth-db": {
-      "host": "db.example.com",
-      "port": 3306,
-      "user": "portal_prod",
-      "password": "SECURE_PASSWORD"
-    }
-    // ... other databases
-  },
-  "env": {
-    "authMode": "oauth-proxy",
-    "keycloakUrl": "https://keycloak.example.com",
-    "keycloakRealm": "wow",
-    "appBaseUrl": "https://portal.example.com"
-  }
-}
-EOF
+# Realm 1 - Secondary Realm (optional)
+NUXT_DB_REALM_1_ID=2
+NUXT_DB_REALM_1_NAME=Azeroth IP
+NUXT_DB_REALM_1_DESCRIPTION=Individual Progression Mode
+NUXT_DB_REALM_1_HOST=localhost
+NUXT_DB_REALM_1_PORT=3307
+NUXT_DB_REALM_1_USER=portal
+NUXT_DB_REALM_1_PASSWORD=your_password
 
-# Encrypt the file
-sops -e .db.production.json > .db.production.enc.json
-
-# Delete plaintext
-rm .db.production.json
-
-# Commit encrypted file
-git add .db.production.enc.json
-git commit -m "Add encrypted production credentials"
+# ===========================================
+# Public Configuration
+# ===========================================
+NUXT_PUBLIC_AUTH_MODE=mock
+NUXT_PUBLIC_MOCK_USER=admin
+NUXT_PUBLIC_MOCK_EMAIL=admin@localhost
+NUXT_PUBLIC_MOCK_GM_LEVEL=3
+NUXT_PUBLIC_APP_BASE_URL=http://localhost:3000
 ```
+
+### Environment Variable Reference
+
+| Variable                     | Description             | Default     |
+| ---------------------------- | ----------------------- | ----------- |
+| `NUXT_DB_AUTH_HOST`          | Auth database hostname  | `localhost` |
+| `NUXT_DB_AUTH_PORT`          | Auth database port      | `3306`      |
+| `NUXT_DB_AUTH_USER`          | Auth database username  | `acore`     |
+| `NUXT_DB_AUTH_PASSWORD`      | Auth database password  | `acore`     |
+| `NUXT_DB_REALM_{n}_ID`       | Realm unique identifier | (required)  |
+| `NUXT_DB_REALM_{n}_NAME`     | Realm display name      | (required)  |
+| `NUXT_DB_REALM_{n}_HOST`     | Realm database hostname | `localhost` |
+| `NUXT_DB_REALM_{n}_PORT`     | Realm database port     | `3306`      |
+| `NUXT_DB_REALM_{n}_USER`     | Realm database username | `acore`     |
+| `NUXT_DB_REALM_{n}_PASSWORD` | Realm database password | `acore`     |
 
 ## Realm Configuration
 
-Realms are configured in `shared/utils/config/local.ts` (development) and `shared/utils/config/production.ts` (production).
-
-### Realm Configuration Example
-
-```typescript
-// shared/utils/config/local.ts
-import type { RealmConfig, RealmId } from "~/types";
-
-export const realms: Record<RealmId, RealmConfig> = {
-	wotlk: {
-		id: "wotlk",
-		realmId: 1, // ID from realmlist table
-		name: "Azeroth WoTLK",
-		description: "Classical WOTLK experience",
-		version: "WOTLK",
-		worldPort: 8085,
-		soapPort: 7878,
-		database: "acore_characters",
-		databaseHost: "localhost",
-		databaseKey: "blizzlike-db", // References credentials file
-	},
-	"wotlk-ip": {
-		id: "wotlk-ip",
-		realmId: 2,
-		name: "Azeroth IP",
-		description: "Individual Progression Mode",
-		version: "WOTLK",
-		worldPort: 8086,
-		soapPort: 7879,
-		database: "acore_characters",
-		databaseHost: "localhost",
-		databaseKey: "ip-db",
-	},
-};
-
-export const authServerConfig = {
-	host: "localhost",
-	port: 3724,
-};
-```
+Realms are configured entirely via environment variables. See [CONFIGURATION.md](CONFIGURATION.md) for the complete reference.
 
 ### Adding a New Realm
 
-1. Add the realm to the `RealmId` type in `app/types/index.ts`:
+Simply add environment variables for the new realm:
 
-   ```typescript
-   export type RealmId = "wotlk" | "wotlk-ip" | "wotlk-ip-boosted" | "your-new-realm";
-   ```
+```bash
+# In .env.local or your deployment environment
+NUXT_DB_REALM_3_ID=4
+NUXT_DB_REALM_3_NAME=My New Realm
+NUXT_DB_REALM_3_DESCRIPTION=A new realm
+NUXT_DB_REALM_3_HOST=localhost
+NUXT_DB_REALM_3_PORT=3310
+NUXT_DB_REALM_3_USER=acore
+NUXT_DB_REALM_3_PASSWORD=acore
+```
 
-2. Add realm configuration in `shared/utils/config/local.ts` (and production.ts)
-
-3. Add database credentials to your `.db.*.json` file
+Restart the application - realms are loaded at startup.
 
 ## DBC Data Setup
 
