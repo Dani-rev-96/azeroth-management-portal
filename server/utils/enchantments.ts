@@ -72,6 +72,43 @@ export const STAT_TYPES: Record<number, string> = {
 }
 
 /**
+ * Reverse mapping: stat name to type ID
+ */
+export const STAT_NAME_TO_TYPE: Record<string, number> = {
+  'Mana': 0,
+  'Health': 1,
+  'Agility': 3,
+  'Strength': 4,
+  'Intellect': 5,
+  'Spirit': 6,
+  'Stamina': 7,
+  'Defense Rating': 12,
+  'Dodge Rating': 13,
+  'Parry Rating': 14,
+  'Block Rating': 15,
+  'Melee Hit Rating': 16,
+  'Ranged Hit Rating': 17,
+  'Spell Hit Rating': 18,
+  'Melee Critical Strike Rating': 19,
+  'Ranged Critical Strike Rating': 20,
+  'Spell Critical Strike Rating': 21,
+  'Melee Haste Rating': 28,
+  'Ranged Haste Rating': 29,
+  'Spell Haste Rating': 30,
+  'Hit Rating': 31,
+  'Critical Strike Rating': 32,
+  'Resilience Rating': 35,
+  'Haste Rating': 36,
+  'Expertise Rating': 37,
+  'Attack Power': 38,
+  'Ranged Attack Power': 39,
+  'Mana Regeneration': 43,
+  'Armor Penetration Rating': 44,
+  'Spell Power': 45,
+  'Spell Penetration': 47
+}
+
+/**
  * Parsed enchantment from item_instance.enchantments field
  */
 export interface ParsedEnchantment {

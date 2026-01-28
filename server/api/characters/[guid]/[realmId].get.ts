@@ -6,6 +6,7 @@ import {
   getEnchantmentInfo,
   getRandomEnchantments,
   formatEnchantmentEffect,
+  STAT_NAME_TO_TYPE,
   type EnchantmentInfo
 } from '#server/utils/enchantments'
 import { getSpellBatch, getTalentBySpellId, getSpellIconBatch } from '#server/utils/dbc-db'
@@ -213,23 +214,48 @@ export default defineEventHandler(async (event) => {
 
       // Now enrich all items with full enchantment data
       for (const item of enrichedItems) {
-        const allEnchantInfos: EnchantmentInfo[] = []
+        const enchantInfos: EnchantmentInfo[] = []
 
-        // Get regular enchantments
+        // Get regular enchantments (these are shown with ✨)
         if (item.parsedEnchants && item.parsedEnchants.length > 0) {
-          const enchantInfos = await getEnchantmentInfo(item.parsedEnchants)
-          allEnchantInfos.push(...enchantInfos)
+          const regularEnchants = await getEnchantmentInfo(item.parsedEnchants)
+          enchantInfos.push(...regularEnchants)
         }
 
-        // Get random property/suffix enchantments
+        // Get random property/suffix stats (these are added to base stats, NOT shown as enchantments)
         if (item.randomPropertyId && item.randomPropertyId !== 0) {
           const randomEnchants = await getRandomEnchantments(item.randomPropertyId, item.itemLevel)
-          allEnchantInfos.push(...randomEnchants)
+
+          // Add random property stats to item's stat fields
+          for (const enchantInfo of randomEnchants) {
+            for (const effect of enchantInfo.effects) {
+              if (effect.stat && effect.value) {
+                // Special case: Armor is added to the base armor value, not as a stat
+                if (effect.stat === 'Armor') {
+                  item.armor = (item.armor || 0) + effect.value
+                  continue
+                }
+
+                // Find the stat type ID for this stat name
+                const statTypeId = STAT_NAME_TO_TYPE[effect.stat]
+                if (statTypeId !== undefined) {
+                  // Add to next available stat slot
+                  const currentStatCount = item.statsCount || 0
+                  if (currentStatCount < 10) {
+                    const nextSlot = currentStatCount + 1
+                    item[`stat_type${nextSlot}` as keyof typeof item] = statTypeId as any
+                    item[`stat_value${nextSlot}` as keyof typeof item] = effect.value as any
+                    item.statsCount = nextSlot
+                  }
+                }
+              }
+            }
+          }
         }
 
-        // Format enchantments for display
-        item.enchantmentInfos = allEnchantInfos
-        item.enchantmentTexts = allEnchantInfos.flatMap(info =>
+        // Format enchantments for display (only regular enchantments, not random properties)
+        item.enchantmentInfos = enchantInfos
+        item.enchantmentTexts = enchantInfos.flatMap(info =>
           info.effects.map(effect => formatEnchantmentEffect(effect))
         )
       }
@@ -359,7 +385,6 @@ export default defineEventHandler(async (event) => {
         WHERE guid = ?
       `, [guid])
       stats = statsResult as any[]
-      console.log('[Character Stats] Found stats:', stats.length, stats)
     } catch (error) {
       console.error('[Character Stats] Error querying character_stats:', error)
       // Table might not exist, continue without stats

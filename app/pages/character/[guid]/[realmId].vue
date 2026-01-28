@@ -42,33 +42,46 @@
         </div>
       </div>
 
-      <!-- Main Content Grid -->
-      <div class="content-grid">
-        <!-- Left Column: Equipment -->
-        <div class="equipment-section">
-          <h2>Equipped Items</h2>
-          <div class="equipment-grid">
-            <CharacterEquipmentSlot
-              v-for="slot in equipmentSlots"
-              :key="slot.id"
-              :slot="slot"
-              :item="getItemInSlot(slot.id)"
-            />
+      <!-- Equipment Section - Full Width -->
+      <div class="equipment-section">
+        <h2>Equipped Items</h2>
+        <div class="equipment-paperdoll">
+          <!-- Left Column -->
+          <div class="equipment-column left-column">
+            <CharacterEquipmentSlot :slot="getSlotDefinition(0)" :item="getItemInSlot(0)" />
+            <CharacterEquipmentSlot :slot="getSlotDefinition(1)" :item="getItemInSlot(1)" />
+            <CharacterEquipmentSlot :slot="getSlotDefinition(2)" :item="getItemInSlot(2)" />
+            <CharacterEquipmentSlot :slot="getSlotDefinition(15)" :item="getItemInSlot(15)" />
+            <CharacterEquipmentSlot :slot="getSlotDefinition(4)" :item="getItemInSlot(4)" />
+            <CharacterEquipmentSlot :slot="getSlotDefinition(8)" :item="getItemInSlot(8)" />
+            <CharacterEquipmentSlot :slot="getSlotDefinition(9)" :item="getItemInSlot(9)" />
+          </div>
+
+          <!-- Center Column -->
+          <div class="equipment-column center-column">
+            <CharacterEquipmentSlot :slot="getSlotDefinition(5)" :item="getItemInSlot(5)" />
+            <CharacterEquipmentSlot :slot="getSlotDefinition(6)" :item="getItemInSlot(6)" />
+            <CharacterEquipmentSlot :slot="getSlotDefinition(7)" :item="getItemInSlot(7)" />
+            <CharacterEquipmentSlot :slot="getSlotDefinition(10)" :item="getItemInSlot(10)" />
+            <CharacterEquipmentSlot :slot="getSlotDefinition(11)" :item="getItemInSlot(11)" />
+            <CharacterEquipmentSlot :slot="getSlotDefinition(12)" :item="getItemInSlot(12)" />
+            <CharacterEquipmentSlot :slot="getSlotDefinition(13)" :item="getItemInSlot(13)" />
+          </div>
+
+          <!-- Right Column -->
+          <div class="equipment-column right-column">
+            <CharacterEquipmentSlot :slot="getSlotDefinition(14)" :item="getItemInSlot(14)" />
+            <CharacterEquipmentSlot :slot="getSlotDefinition(16)" :item="getItemInSlot(16)" />
+            <CharacterEquipmentSlot :slot="getSlotDefinition(17)" :item="getItemInSlot(17)" />
+            <CharacterEquipmentSlot :slot="getSlotDefinition(18)" :item="getItemInSlot(18)" />
           </div>
         </div>
+      </div>
 
-        <!-- Right Column: Talents & Stats -->
-        <div class="info-section">
-          <!-- Talents -->
-          <div class="talents-section section-card">
-            <h2>Talents</h2>
-            <CharacterTalentTree
-              :talents="data.talents"
-              :character-class="data.character.class"
-              :active-spec="data.character.activeSpec"
-            />
-          </div>
-
+      <!-- Stats and Talents Grid -->
+      <div class="content-grid">
+        <!-- Stats Column -->
+        <div class="stats-section">
           <!-- Resources -->
           <div class="core-stats section-card">
             <h2>Resources</h2>
@@ -223,6 +236,16 @@
             </div>
           </div>
         </div>
+
+        <!-- Talents Column -->
+        <div class="talents-section section-card">
+          <h2>Talents</h2>
+          <CharacterTalentTree
+            :talents="data.talents"
+            :character-class="data.character.class"
+            :active-spec="data.character.activeSpec"
+          />
+        </div>
       </div>
     </div>
   </div>
@@ -288,6 +311,10 @@ const equipmentSlots = [
   { id: 16, name: 'Off Hand', icon: '🛡️' },
   { id: 17, name: 'Ranged', icon: '🏹' }
 ]
+
+function getSlotDefinition(slotId: number) {
+  return equipmentSlots.find(slot => slot.id === slotId) || { id: slotId, name: 'Unknown', icon: '❓' }
+}
 
 function getItemInSlot(slotId: number) {
   return data.value?.items.find(item => item.slot === slotId)
@@ -441,6 +468,7 @@ function formatPlaytime(seconds: number) {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 2rem;
+  margin-top: 2rem;
 }
 
 @media (max-width: 1024px) {
@@ -449,10 +477,52 @@ function formatPlaytime(seconds: number) {
   }
 }
 
-.equipment-section h2,
-.info-section h2 {
+.equipment-section {
+  margin-bottom: 2rem;
+}
+
+.equipment-section h2 {
   color: #f1f5f9;
   margin-bottom: 1.5rem;
+  font-size: 1.5rem;
+}
+
+.equipment-paperdoll {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 1rem;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.5), rgba(15, 23, 42, 0.5));
+  border-radius: 1rem;
+  border: 1px solid #334155;
+}
+
+@media (max-width: 768px) {
+  .equipment-paperdoll {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
+.equipment-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.stats-section,
+.talents-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.stats-section h2,
+.talents-section h2 {
+  color: #f1f5f9;
+  margin-bottom: 1rem;
   font-size: 1.5rem;
 }
 
