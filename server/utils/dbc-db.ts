@@ -157,6 +157,34 @@ export interface Spell {
   tooltip: string
   school_mask: number
   spell_icon_id: number
+  // Effect values for description parsing
+  duration_index: number
+  effect_base_points_1: number
+  effect_base_points_2: number
+  effect_base_points_3: number
+  effect_die_sides_1: number
+  effect_die_sides_2: number
+  effect_die_sides_3: number
+  effect_misc_value_1: number
+  effect_misc_value_2: number
+  effect_misc_value_3: number
+  effect_aura_period_1: number
+  effect_aura_period_2: number
+  effect_aura_period_3: number
+  effect_amplitude_1: number
+  effect_amplitude_2: number
+  effect_amplitude_3: number
+  effect_chain_targets_1: number
+  effect_chain_targets_2: number
+  effect_chain_targets_3: number
+  effect_points_per_combo_1: number
+  effect_points_per_combo_2: number
+  effect_points_per_combo_3: number
+  effect_radius_index_1: number
+  effect_radius_index_2: number
+  effect_radius_index_3: number
+  proc_chance: number
+  proc_charges: number
 }
 
 export async function getSpell(spellId: number): Promise<Spell | undefined> {

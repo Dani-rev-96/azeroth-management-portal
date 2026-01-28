@@ -104,12 +104,12 @@
           Tier {{ tooltipTalent.tier + 1 }} Talent
         </div>
         <div v-if="getCurrentRankInfo(tooltipTalent)" class="tooltip-description">
-          {{ formatDescription(getCurrentRankInfo(tooltipTalent)!.description) }}
+          {{ formatDescription(getCurrentRankInfo(tooltipTalent)!.description, getCurrentRankInfo(tooltipTalent)) }}
         </div>
         <div v-if="getNextRankInfo(tooltipTalent)" class="tooltip-next-rank">
           <div class="next-rank-header">Next Rank:</div>
           <div class="next-rank-description">
-            {{ formatDescription(getNextRankInfo(tooltipTalent)!.description) }}
+            {{ formatDescription(getNextRankInfo(tooltipTalent)!.description, getNextRankInfo(tooltipTalent)) }}
           </div>
         </div>
         <div v-if="tooltipTalent.prereqTalent" class="tooltip-prereq">
@@ -122,7 +122,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import type { TalentTreeResponse, TalentTreeTab, TalentTreeNode, TalentRankInfo, CharacterTalent } from '~/types'
+import type { TalentTreeResponse, TalentTreeTab, TalentTreeNode, TalentRankInfo, CharacterTalent, SpellEffectValues } from '~/types'
 
 const props = defineProps<{
   talents: CharacterTalent[]
@@ -202,14 +202,105 @@ function getNextRankInfo(talent: TalentTreeNode): TalentRankInfo | null {
   return talent.ranks[rank] || null
 }
 
-// Format description (basic cleanup)
-function formatDescription(desc: string): string {
+/**
+ * Parse and format WoW spell description, replacing placeholders with actual values
+ * Handles patterns like:
+ * - $s1, $s2, $s3 - Spell effect values (base points + 1)
+ * - $m1, $m2, $m3 - Misc values
+ * - $t1, $t2, $t3 - Duration/period in seconds
+ * - $a1, $a2, $a3 - Amplitude values
+ * - $n - Chain targets
+ * - $h - Proc chance
+ * - $d - Duration (not available, simplified)
+ * - ${expression} - Lua-like expressions
+ */
+function formatDescription(desc: string, rankInfo?: TalentRankInfo | null): string {
   if (!desc) return ''
-  // Remove $1, $2 type placeholders and simplify
-  return desc
-    .replace(/\$\d+/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
+
+  const effectValues = rankInfo?.effectValues
+
+  let result = desc
+
+  if (effectValues) {
+    // Replace simple placeholders with their values
+    // $s1, $s2, $s3 - spell effect values
+    result = result.replace(/\$s1/gi, String(effectValues.s1))
+    result = result.replace(/\$s2/gi, String(effectValues.s2))
+    result = result.replace(/\$s3/gi, String(effectValues.s3))
+
+    // $m1, $m2, $m3 - misc values (often used for percentages)
+    result = result.replace(/\$m1/gi, String(Math.abs(effectValues.m1)))
+    result = result.replace(/\$m2/gi, String(Math.abs(effectValues.m2)))
+    result = result.replace(/\$m3/gi, String(Math.abs(effectValues.m3)))
+
+    // $t1, $t2, $t3 - period/tick time in seconds
+    result = result.replace(/\$t1/gi, String(effectValues.t1))
+    result = result.replace(/\$t2/gi, String(effectValues.t2))
+    result = result.replace(/\$t3/gi, String(effectValues.t3))
+
+    // $a1, $a2, $a3 - amplitude/multiple values
+    result = result.replace(/\$a1/gi, String(effectValues.a1))
+    result = result.replace(/\$a2/gi, String(effectValues.a2))
+    result = result.replace(/\$a3/gi, String(effectValues.a3))
+
+    // $n - chain targets
+    result = result.replace(/\$n/gi, String(effectValues.n))
+
+    // $h - proc chance
+    result = result.replace(/\$h/gi, String(effectValues.h))
+
+    // $q - proc charges
+    result = result.replace(/\$q/gi, String(effectValues.q))
+
+    // $x1, $x2, $x3 - chain targets per effect
+    result = result.replace(/\$x1/gi, String(effectValues.x1))
+    result = result.replace(/\$x2/gi, String(effectValues.x2))
+    result = result.replace(/\$x3/gi, String(effectValues.x3))
+
+    // Handle ${$m2/-1000}.1 type expressions (division with formatting)
+    result = result.replace(/\$\{\s*\$([a-z])(\d)\s*\/\s*(-?\d+)\s*\}\.?(\d)?/gi, (match, varType, varNum, divisor, decimals) => {
+      const key = `${varType.toLowerCase()}${varNum}` as keyof SpellEffectValues
+      const value = effectValues[key] as number || 0
+      const divValue = parseFloat(divisor)
+      const calculated = Math.abs(value / divValue)
+      const decimalPlaces = decimals ? parseInt(decimals) : 0
+      return calculated.toFixed(decimalPlaces)
+    })
+
+    // Handle ${$s1*X} type expressions (multiplication)
+    result = result.replace(/\$\{\s*\$([a-z])(\d)\s*\*\s*(-?\d+(?:\.\d+)?)\s*\}/gi, (match, varType, varNum, multiplier) => {
+      const key = `${varType.toLowerCase()}${varNum}` as keyof SpellEffectValues
+      const value = effectValues[key] as number || 0
+      const multValue = parseFloat(multiplier)
+      return String(Math.round(Math.abs(value * multValue)))
+    })
+
+    // Handle simple ${$s1} expressions
+    result = result.replace(/\$\{\s*\$([a-z])(\d)\s*\}/gi, (match, varType, varNum) => {
+      const key = `${varType.toLowerCase()}${varNum}` as keyof SpellEffectValues
+      const value = effectValues[key] as number || 0
+      return String(Math.abs(value))
+    })
+  }
+
+  // $d - duration (we don't have duration data readily available, approximate or leave)
+  // For now, replace with placeholder text if still present
+  result = result.replace(/\$d/gi, '[duration]')
+
+  // Clean up any remaining unresolved placeholders
+  // Remove ${...} expressions that weren't handled
+  result = result.replace(/\$\{[^}]+\}/g, '')
+
+  // Remove any remaining $X patterns that weren't substituted
+  result = result.replace(/\$[a-z]\d*/gi, '')
+
+  // Clean up multiple spaces and trim
+  result = result.replace(/\s+/g, ' ').trim()
+
+  // Remove orphaned % signs with nothing before them
+  result = result.replace(/^\s*%\s*/g, '')
+
+  return result
 }
 
 // Get CSS classes for talent node

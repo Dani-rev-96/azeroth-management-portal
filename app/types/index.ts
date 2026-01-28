@@ -182,12 +182,34 @@ export type CharacterTalent = {
 }
 
 // Complete talent tree types
+export type SpellEffectValues = {
+  s1: number
+  s2: number
+  s3: number
+  m1: number
+  m2: number
+  m3: number
+  t1: number
+  t2: number
+  t3: number
+  a1: number
+  a2: number
+  a3: number
+  n: number
+  h: number
+  q: number
+  x1: number
+  x2: number
+  x3: number
+}
+
 export type TalentRankInfo = {
   rank: number
   spellId: number
   spellName: string
   description: string
   tooltip: string
+  effectValues: SpellEffectValues
 }
 
 export type TalentTreeNode = {

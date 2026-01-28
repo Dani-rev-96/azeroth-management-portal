@@ -21,6 +21,27 @@ interface TalentTreeNode {
     spellName: string
     description: string
     tooltip: string
+    // Effect values for description parsing
+    effectValues: {
+      s1: number
+      s2: number
+      s3: number
+      m1: number
+      m2: number
+      m3: number
+      t1: number
+      t2: number
+      t3: number
+      a1: number
+      a2: number
+      a3: number
+      n: number
+      h: number
+      q: number
+      x1: number
+      x2: number
+      x3: number
+    }
   }>
   maxRank: number
   iconTexture: string
@@ -137,12 +158,44 @@ export default defineEventHandler(async (event) => {
 
         const ranks = rankIds.map((spellId, index) => {
           const spell = spellMap.get(spellId)
+
+          // Calculate spell effect values
+          // $s1, $s2, $s3 = base points + 1 (or + die_sides for variable)
+          // $m1, $m2, $m3 = misc values
+          // $t1, $t2, $t3 = aura period / 1000 (in seconds)
+          // $a1, $a2, $a3 = amplitude/multiple value
+          // $n = chain targets
+          // $h = proc chance
+          // $q = proc charges
+          // $x1, $x2, $x3 = chain targets per effect
+          const effectValues = {
+            s1: spell ? Math.abs(spell.effect_base_points_1) + 1 : 0,
+            s2: spell ? Math.abs(spell.effect_base_points_2) + 1 : 0,
+            s3: spell ? Math.abs(spell.effect_base_points_3) + 1 : 0,
+            m1: spell?.effect_misc_value_1 || 0,
+            m2: spell?.effect_misc_value_2 || 0,
+            m3: spell?.effect_misc_value_3 || 0,
+            t1: spell ? (spell.effect_aura_period_1 / 1000) : 0,
+            t2: spell ? (spell.effect_aura_period_2 / 1000) : 0,
+            t3: spell ? (spell.effect_aura_period_3 / 1000) : 0,
+            a1: spell?.effect_amplitude_1 || 0,
+            a2: spell?.effect_amplitude_2 || 0,
+            a3: spell?.effect_amplitude_3 || 0,
+            n: spell?.effect_chain_targets_1 || 0,
+            h: spell?.proc_chance || 0,
+            q: spell?.proc_charges || 0,
+            x1: spell?.effect_chain_targets_1 || 0,
+            x2: spell?.effect_chain_targets_2 || 0,
+            x3: spell?.effect_chain_targets_3 || 0
+          }
+
           return {
             rank: index + 1,
             spellId,
             spellName: spell?.name || `Unknown Spell ${spellId}`,
             description: spell?.description || '',
-            tooltip: spell?.tooltip || ''
+            tooltip: spell?.tooltip || '',
+            effectValues
           }
         })
 
