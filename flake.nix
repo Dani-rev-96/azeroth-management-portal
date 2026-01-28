@@ -34,7 +34,7 @@
         ];
 
         name = package-json.name;
-        version = "${package-json.version}";
+        version = "${package-json.version}-1";
         src = ./.;
 
         prod-package = pkgs.buildNpmPackage {
