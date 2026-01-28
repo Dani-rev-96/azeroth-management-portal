@@ -170,10 +170,13 @@ export type CharacterTalent = {
   specMask: number // 1 = first spec, 2 = second spec, 3 = both specs
   spellName?: string
   spellRank?: string
+  spellIconTexture?: string
   talentId?: number
   tabId?: number
   tier?: number
   column?: number
+  currentRank: number
+  maxRank: number
 }
 
 export type CharacterDetailResponse = {

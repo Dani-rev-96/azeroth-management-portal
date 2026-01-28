@@ -115,7 +115,6 @@
 <script setup lang="ts">
 import type { CharacterDetailResponse } from '~/types'
 import CharacterEquipmentSlot from '~/components/character/CharacterEquipmentSlot.vue'
-import CharacterTalents from '~/components/character/CharacterTalents.vue'
 import CharacterTalentTree from '~/components/character/CharacterTalentTree.vue'
 
 const route = useRoute()

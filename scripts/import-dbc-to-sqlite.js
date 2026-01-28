@@ -325,6 +325,23 @@ const dbcConfigs = {
       enchantment_4: row.Enchantment_4,
       enchantment_5: row.Enchantment_5
     })
+  },
+
+  SpellIcon: {
+    jsonFile: 'SpellIcon.json',
+    dbFile: 'spell_icon.db',
+    tableName: 'spell_icon',
+    schema: `
+      CREATE TABLE spell_icon (
+        id INTEGER PRIMARY KEY,
+        texture_filename TEXT
+      );
+      CREATE INDEX idx_texture ON spell_icon(texture_filename);
+    `,
+    mapping: (row) => ({
+      id: row.ID,
+      texture_filename: row.TextureFilename || ''
+    })
   }
 }
 

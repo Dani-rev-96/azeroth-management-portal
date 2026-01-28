@@ -8,7 +8,7 @@ import {
   formatEnchantmentEffect,
   type EnchantmentInfo
 } from '#server/utils/enchantments'
-import { getSpellBatch, getTalentBySpellId } from '#server/utils/dbc-db'
+import { getSpellBatch, getTalentBySpellId, getSpellIconBatch } from '#server/utils/dbc-db'
 
 /**
  * GET /api/characters/[guid]/[realmId]
@@ -243,16 +243,79 @@ export default defineEventHandler(async (event) => {
       ORDER BY specMask, spell
     `, [guid])
 
-    // Enrich talents with spell names and talent tree info
+    // Enrich talents with spell names, icons, and correct rank calculation
     const enrichedTalents = []
     if ((talents as any[]).length > 0) {
       const spellIds = (talents as any[]).map((t: any) => t.spell)
       const spells = await getSpellBatch(spellIds)
       const spellMap = new Map(spells.map(s => [s.id, s]))
 
+      // Get spell icons
+      const iconIds = spells.map(s => s.spell_icon_id).filter(id => id > 0)
+      const icons = await getSpellIconBatch(iconIds)
+      const iconMap = new Map(icons.map(i => [i.id, i]))
+
+      // Group talents by talentId to calculate ranks
+      const talentGroups = new Map<number, any[]>()
+
+      for (const talent of talents as any[]) {
+        const talentInfo = await getTalentBySpellId(talent.spell)
+        if (!talentInfo) continue
+
+        if (!talentGroups.has(talentInfo.id)) {
+          talentGroups.set(talentInfo.id, [])
+        }
+        talentGroups.get(talentInfo.id)!.push({
+          ...talent,
+          talentInfo
+        })
+      }
+
+      // Now process each talent with correct rank calculation
       for (const talent of talents as any[]) {
         const spell = spellMap.get(talent.spell)
         const talentInfo = await getTalentBySpellId(talent.spell)
+
+        if (!talentInfo) {
+          enrichedTalents.push({
+            guid: talent.guid,
+            spell: talent.spell,
+            specMask: talent.specMask,
+            spellName: spell?.name || `Spell ${talent.spell}`,
+            spellRank: spell?.rank || '',
+            spellIconTexture: '',
+            talentId: undefined,
+            tabId: undefined,
+            tier: undefined,
+            column: undefined,
+            currentRank: 1,
+            maxRank: 1
+          })
+          continue
+        }
+
+        // Calculate max rank from talent data
+        const rankIds = [
+          talentInfo.rank_id_1,
+          talentInfo.rank_id_2,
+          talentInfo.rank_id_3,
+          talentInfo.rank_id_4,
+          talentInfo.rank_id_5
+        ]
+        const maxRank = rankIds.filter(id => id > 0).length
+
+        // Find which rank this spell is
+        let currentRank = 1
+        for (let i = 0; i < rankIds.length; i++) {
+          if (rankIds[i] === talent.spell) {
+            currentRank = i + 1
+            break
+          }
+        }
+
+        // Get icon texture
+        const icon = spell?.spell_icon_id ? iconMap.get(spell.spell_icon_id) : undefined
+        const iconTexture = icon?.texture_filename || ''
 
         enrichedTalents.push({
           guid: talent.guid,
@@ -260,10 +323,13 @@ export default defineEventHandler(async (event) => {
           specMask: talent.specMask,
           spellName: spell?.name || `Spell ${talent.spell}`,
           spellRank: spell?.rank || '',
-          talentId: talentInfo?.id,
-          tabId: talentInfo?.tab_id,
-          tier: talentInfo?.tier_id,
-          column: talentInfo?.column_index
+          spellIconTexture: iconTexture,
+          talentId: talentInfo.id,
+          tabId: talentInfo.tab_id,
+          tier: talentInfo.tier_id,
+          column: talentInfo.column_index,
+          currentRank,
+          maxRank
         })
       }
     }

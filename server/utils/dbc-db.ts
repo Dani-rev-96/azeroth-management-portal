@@ -285,3 +285,25 @@ export async function getItemRandomProperties(propId: number): Promise<ItemRando
   const stmt = db.prepare('SELECT * FROM item_random_properties WHERE id = ?')
   return stmt.get(propId) as ItemRandomProperties | undefined
 }
+
+// ==================== Spell Icon ====================
+
+export interface SpellIcon {
+  id: number
+  texture_filename: string
+}
+
+export async function getSpellIcon(iconId: number): Promise<SpellIcon | undefined> {
+  const db = await getDatabase('spell_icon.db')
+  const stmt = db.prepare('SELECT * FROM spell_icon WHERE id = ?')
+  return stmt.get(iconId) as SpellIcon | undefined
+}
+
+export async function getSpellIconBatch(iconIds: number[]): Promise<SpellIcon[]> {
+  if (iconIds.length === 0) return []
+
+  const db = await getDatabase('spell_icon.db')
+  const placeholders = iconIds.map(() => '?').join(',')
+  const stmt = db.prepare(`SELECT * FROM spell_icon WHERE id IN (${placeholders})`)
+  return stmt.all(...iconIds) as SpellIcon[]
+}

@@ -59,13 +59,14 @@ The system automatically detects the client's language from the `Accept-Language
 2. **Equipment Slot**: `/app/components/character/CharacterEquipmentSlot.vue`
    - Shows item icon, item level, quality border
    - Tooltip on hover with stats
-3. **Talents Display**: `/app/components/character/CharacterTalents.vue`
-   - Spec tabs for dual spec support
-   - Visual talent grid
+3. **Talent Tree Display**: `/app/components/character/CharacterTalentTree.vue`
+   - Interactive talent tree visualization with spell icons from Wowhead
+   - Responsive design for mobile and desktop
+   - Shows talent ranks, points spent per spec
 
 ### Icon Integration
 
-Item icons are determined by the `displayid` field from `item_template` and are fetched from the Zamimg CDN. The system uses a default icon (`inv_misc_questionmark`) when display information is not available.
+Item icons are determined by the `displayid` field from `item_template` and are fetched from the Zamimg CDN. Spell/talent icons are fetched from Wowhead using the spell ID. The system uses a default icon (`inv_misc_questionmark`) when display information is not available.
 
 ## Item Stats Mapping
 

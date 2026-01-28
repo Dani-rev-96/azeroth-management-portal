@@ -36,11 +36,16 @@
               }"
               :title="getTalentTooltip(getTalentAt(tier - 1, col - 1))"
             >
-              <div class="talent-icon">
-                <span class="icon-placeholder">🎯</span>
-              </div>
-              <div class="talent-rank">
-                {{ getTalentRank(getTalentAt(tier - 1, col - 1)) }}/{{ getMaxRank(getTalentAt(tier - 1, col - 1)) }}
+              <div class="talent-icon-wrapper">
+                <img
+                  :src="getSpellIconUrl(getTalentAt(tier - 1, col - 1))"
+                  :alt="getTalentName(getTalentAt(tier - 1, col - 1))"
+                  class="talent-icon"
+                  @error="onImageError"
+                />
+                <div class="talent-rank-overlay">
+                  {{ getTalentRank(getTalentAt(tier - 1, col - 1)) }}/{{ getMaxRank(getTalentAt(tier - 1, col - 1)) }}
+                </div>
               </div>
               <div class="talent-name">{{ getTalentName(getTalentAt(tier - 1, col - 1)) }}</div>
             </div>
@@ -69,6 +74,9 @@ interface TalentData {
   tabId?: number
   tier?: number
   column?: number
+  currentRank: number
+  maxRank: number
+  spellIconTexture?: string
 }
 
 interface TalentTreeNode {
@@ -77,6 +85,7 @@ interface TalentTreeNode {
   column: number
   spell: number
   spellName: string
+  spellIconTexture: string
   rank: number
   maxRank: number
 }
@@ -164,29 +173,25 @@ const tabs = computed<TalentTab[]>(() => {
     const tab = tabData[tabIdx]
     if (!tab) continue
 
-    // Determine rank from spell name/rank
-    const rankMatch = talent.spellRank?.match(/Rank (\d+)/)
-    const rank = rankMatch && rankMatch[1] ? parseInt(rankMatch[1], 10) : 1
-
-    // Get max rank by counting how many spells this talent has
-    // For simplicity, assume max rank = current rank if we don't have full data
-    const maxRank = rank // TODO: Could be improved with full DBC data
-
     const key = `${talent.tier}-${talent.column}`
     const existing = tab.talents.get(key)
 
-    if (!existing || rank > existing.rank) {
+    // Always use the highest rank spell for each talent position
+    if (!existing || talent.currentRank > existing.rank) {
       tab.talents.set(key, {
         talentId: talent.talentId!,
         tier: talent.tier,
         column: talent.column,
         spell: talent.spell,
         spellName: talent.spellName || `Spell ${talent.spell}`,
-        rank,
-        maxRank
+        spellIconTexture: talent.spellIconTexture || '',
+        rank: talent.currentRank,
+        maxRank: talent.maxRank
       })
-      tab.pointsSpent = Array.from(tab.talents.values()).reduce((sum, t) => sum + t.rank, 0)
     }
+
+    // Recalculate points spent
+    tab.pointsSpent = Array.from(tab.talents.values()).reduce((sum, t) => sum + t.rank, 0)
   }
 
   return tabData
@@ -229,42 +234,80 @@ function canLearnTalent(talent: TalentTreeNode | null): boolean {
   // Simplified: In real WoW, you need enough points in tree + prerequisites
   return true
 }
+
+function getSpellIconUrl(talent: TalentTreeNode | null): string {
+  if (!talent?.spellIconTexture) return 'https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg'
+
+  // Extract just the icon filename from the path
+  // Format: "Interface\\Icons\\Ability_BackStab" -> "ability_backstab"
+  const parts = talent.spellIconTexture.split('\\')
+  const filename = parts[parts.length - 1]
+  if (!filename) return 'https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg'
+
+  return `https://wow.zamimg.com/images/wow/icons/large/${filename.toLowerCase()}.jpg`
+}
+
+function onImageError(event: Event) {
+  const img = event.target as HTMLImageElement
+  img.src = 'https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg'
+}
 </script>
 
 <style scoped>
 .talent-tree-viewer {
   background: #1a1d2e;
   border-radius: 0.5rem;
-  padding: 1.5rem;
+  padding: 1rem;
   color: #e5e7eb;
+  width: 100%;
 }
 
 .tabs {
   display: flex;
   gap: 0.5rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
   border-bottom: 2px solid #374151;
   padding-bottom: 0.5rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #3b82f6 #1e293b;
+}
+
+.tabs::-webkit-scrollbar {
+  height: 6px;
+}
+
+.tabs::-webkit-scrollbar-track {
+  background: #1e293b;
+  border-radius: 3px;
+}
+
+.tabs::-webkit-scrollbar-thumb {
+  background: #3b82f6;
+  border-radius: 3px;
 }
 
 .tab-button {
-  padding: 0.75rem 1.5rem;
+  padding: 0.5rem 1rem;
   background: transparent;
   border: none;
   color: #9ca3af;
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 0.875rem;
   font-weight: 600;
   position: relative;
   transition: all 0.2s;
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .tab-button:hover {
   color: #60a5fa;
   background: rgba(96, 165, 250, 0.1);
+  border-radius: 0.25rem;
 }
 
 .tab-button.active {
@@ -276,27 +319,30 @@ function canLearnTalent(talent: TalentTreeNode | null): boolean {
   background: #3b82f6;
   color: white;
   border-radius: 9999px;
-  padding: 0.125rem 0.5rem;
-  font-size: 0.75rem;
+  padding: 0.125rem 0.375rem;
+  font-size: 0.625rem;
   font-weight: 700;
-  min-width: 1.5rem;
+  min-width: 1.25rem;
   text-align: center;
 }
 
 .talent-tree {
-  margin-top: 1rem;
+  margin-top: 0.5rem;
 }
 
 .tree-grid {
   display: grid;
   gap: 0.25rem;
   margin-bottom: 1rem;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .tier-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 0.5rem;
+  gap: 0.375rem;
+  min-width: 280px;
 }
 
 .talent-cell {
@@ -304,15 +350,16 @@ function canLearnTalent(talent: TalentTreeNode | null): boolean {
   display: flex;
   align-items: center;
   justify-content: center;
+  min-width: 0;
 }
 
 .talent-node {
   width: 100%;
   height: 100%;
-  background: rgba(30, 41, 59, 0.8);
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.9));
   border: 2px solid #475569;
   border-radius: 0.5rem;
-  padding: 0.5rem;
+  padding: 0.25rem;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -321,87 +368,303 @@ function canLearnTalent(talent: TalentTreeNode | null): boolean {
   justify-content: center;
   text-align: center;
   position: relative;
+  overflow: hidden;
+}
+
+.talent-node::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0), rgba(59, 130, 246, 0.1));
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.talent-node:hover::before {
+  opacity: 1;
 }
 
 .talent-node:hover {
   border-color: #60a5fa;
-  background: rgba(59, 130, 246, 0.2);
   transform: scale(1.05);
   z-index: 10;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
 .talent-node.active {
   border-color: #10b981;
-  background: rgba(16, 185, 129, 0.2);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.1));
 }
 
 .talent-node.maxed {
   border-color: #fbbf24;
-  background: rgba(251, 191, 36, 0.2);
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(245, 158, 11, 0.1));
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
 }
 
 .talent-node.disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
+  filter: grayscale(60%);
+}
+
+.talent-icon-wrapper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 0.375rem;
+  overflow: hidden;
+  margin-bottom: 0.25rem;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .talent-icon {
-  font-size: 2rem;
-  margin-bottom: 0.25rem;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.2s;
 }
 
-.icon-placeholder {
-  filter: grayscale(100%);
+.talent-node:hover .talent-icon {
+  transform: scale(1.1);
 }
 
-.talent-node.active .icon-placeholder {
-  filter: grayscale(0%);
+.talent-node.disabled .talent-icon {
+  filter: grayscale(100%) brightness(0.6);
 }
 
-.talent-rank {
-  font-size: 0.875rem;
-  font-weight: 700;
+.talent-rank-overlay {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  background: rgba(0, 0, 0, 0.8);
   color: #10b981;
-  margin-top: 0.25rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  line-height: 1;
+  border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
-.talent-node.maxed .talent-rank {
+.talent-node.maxed .talent-rank-overlay {
   color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.3);
 }
 
 .talent-name {
-  font-size: 0.7rem;
-  color: #9ca3af;
-  margin-top: 0.25rem;
+  font-size: 0.625rem;
+  color: #cbd5e1;
   line-height: 1.2;
   max-height: 2.4em;
   overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-weight: 500;
+}
+
+.talent-node.active .talent-name {
+  color: #f0fdf4;
+  font-weight: 600;
 }
 
 .tree-info {
-  background: rgba(59, 130, 246, 0.1);
-  border: 1px solid #3b82f6;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(37, 99, 235, 0.1));
+  border: 1px solid rgba(59, 130, 246, 0.3);
   border-radius: 0.375rem;
-  padding: 1rem;
+  padding: 0.75rem;
   margin-top: 1rem;
+  font-size: 0.875rem;
 }
 
 .tree-info p {
-  margin: 0.5rem 0;
+  margin: 0.25rem 0;
   color: #e5e7eb;
 }
 
 .tree-info strong {
   color: #60a5fa;
+  font-weight: 700;
 }
 
+/* Mobile Responsiveness */
 @media (max-width: 768px) {
+  .talent-tree-viewer {
+    padding: 0.5rem;
+  }
+
   .tabs {
-    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.25rem;
   }
 
   .tab-button {
-    justify-content: center;
+    padding: 0.375rem 0.625rem;
+    font-size: 0.6875rem;
+  }
+
+  .points-badge {
+    font-size: 0.5625rem;
+    padding: 0.0625rem 0.25rem;
+    min-width: 1rem;
+  }
+
+  .tier-row {
+    gap: 0.25rem;
+    min-width: 220px;
+  }
+
+  .talent-node {
+    padding: 0.125rem;
+    border-width: 1.5px;
+  }
+
+  .talent-rank-overlay {
+    font-size: 0.5rem;
+    padding: 0.0625rem 0.125rem;
+    bottom: 1px;
+    right: 1px;
+  }
+
+  .talent-name {
+    font-size: 0.5rem;
+    line-height: 1.1;
+  }
+
+  .tree-info {
+    padding: 0.5rem;
+    font-size: 0.75rem;
+    margin-top: 0.75rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .talent-tree-viewer {
+    padding: 0.375rem;
+  }
+
+  .tab-button {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.625rem;
+    gap: 0.25rem;
+  }
+
+  .points-badge {
+    font-size: 0.5rem;
+    padding: 0.0625rem 0.1875rem;
+  }
+
+  .tier-row {
+    min-width: 200px;
+    gap: 0.1875rem;
+  }
+
+  .talent-icon-wrapper {
+    margin-bottom: 0.0625rem;
+  }
+
+  .talent-name {
+    font-size: 0.4375rem;
+  }
+
+  .tree-info {
+    padding: 0.375rem;
+    font-size: 0.6875rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .talent-tree-viewer {
+    padding: 0.25rem;
+  }
+
+  .tabs {
+    padding-bottom: 0.1875rem;
+    margin-bottom: 0.375rem;
+  }
+
+  .tab-button {
+    padding: 0.1875rem 0.375rem;
+    font-size: 0.5625rem;
+  }
+
+  .tier-row {
+    min-width: 180px;
+    gap: 0.125rem;
+  }
+
+  .talent-node {
+    padding: 0.0625rem;
+    border-radius: 0.375rem;
+  }
+
+  .talent-rank-overlay {
+    font-size: 0.4375rem;
+    padding: 0.03125rem 0.09375rem;
+  }
+
+  .talent-name {
+    font-size: 0.375rem;
+    max-height: 1.8em;
+  }
+
+  .tree-info {
+    margin-top: 0.5rem;
+    padding: 0.25rem;
+    font-size: 0.625rem;
+  }
+
+  .tree-info p {
+    margin: 0.1875rem 0;
+  }
+}
+
+/* Ultra-small screens */
+@media (max-width: 360px) {
+  .tier-row {
+    min-width: 160px;
+    gap: 0.09375rem;
+  }
+
+  .talent-node {
+    border-width: 1px;
+  }
+
+  .talent-name {
+    display: none; /* Hide names on very small screens */
+  }
+
+  .talent-rank-overlay {
+    font-size: 0.375rem;
+  }
+}
+
+/* Smooth scrolling for tree grid on mobile */
+@media (max-width: 640px) {
+  .tree-grid {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: #3b82f6 #1e293b;
+  }
+
+  .tree-grid::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .tree-grid::-webkit-scrollbar-track {
+    background: #1e293b;
+    border-radius: 3px;
+  }
+
+  .tree-grid::-webkit-scrollbar-thumb {
+    background: #3b82f6;
+    border-radius: 3px;
   }
 }
 </style>
