@@ -56,10 +56,6 @@ export interface PvPStats {
 
 export type LeaderboardMetric = 'level' | 'playtime' | 'achievements'
 
-export interface ServerConfig {
-  realms: Record<string, { name: string }>
-}
-
 export const useCommunityStore = defineStore('community', () => {
   // State - Server Config
   const realms = ref<Record<string, { name: string }>>({})
@@ -108,8 +104,8 @@ export const useCommunityStore = defineStore('community', () => {
     realmsError.value = undefined
 
     try {
-      const data = await $fetch<ServerConfig>('/api/realms')
-      realms.value = data?.realms || {}
+      const data = await $fetch<Record<string, { name: string }>>('/api/realms')
+      realms.value = data || {}
     } catch (error) {
       realmsError.value = 'Failed to fetch realms'
       console.error('Failed to fetch realms:', error)
