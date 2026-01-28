@@ -335,3 +335,30 @@ export async function getSpellIconBatch(iconIds: number[]): Promise<SpellIcon[]>
   const stmt = db.prepare(`SELECT * FROM spell_icon WHERE id IN (${placeholders})`)
   return stmt.all(...iconIds) as SpellIcon[]
 }
+
+// ==================== Spell Duration ====================
+
+export interface SpellDuration {
+  id: number
+  duration: number // Duration in milliseconds
+  duration_per_level: number
+  max_duration: number
+}
+
+export async function getSpellDuration(durationId: number): Promise<SpellDuration | undefined> {
+  const db = await getDatabase('spell_duration.db')
+  const stmt = db.prepare('SELECT * FROM spell_duration WHERE id = ?')
+  return stmt.get(durationId) as SpellDuration | undefined
+}
+
+export async function getSpellDurationBatch(durationIds: number[]): Promise<SpellDuration[]> {
+  if (durationIds.length === 0) return []
+
+  const db = await getDatabase('spell_duration.db')
+  const uniqueIds = [...new Set(durationIds.filter(id => id > 0))]
+  if (uniqueIds.length === 0) return []
+
+  const placeholders = uniqueIds.map(() => '?').join(',')
+  const stmt = db.prepare(`SELECT * FROM spell_duration WHERE id IN (${placeholders})`)
+  return stmt.all(...uniqueIds) as SpellDuration[]
+}

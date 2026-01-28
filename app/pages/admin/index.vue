@@ -339,7 +339,6 @@ async function handleFileDelete(filename: string) {
 
 .admin-panel {
   @include container;
-  padding-block: $spacing-8;
 }
 
 :deep(.ui-page-header__title) {

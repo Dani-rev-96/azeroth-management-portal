@@ -127,13 +127,11 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-/* Downloads Page - Page-specific styles only */
-/* Shared styles are in ~/assets/css/shared.css */
+@use "~/styles/variables" as *;
+@use "~/styles/mixins" as *;
 
 .downloads-page {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 2rem;
+  @include container;
 }
 
 .header-content h1 {

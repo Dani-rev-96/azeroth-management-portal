@@ -452,7 +452,7 @@
   background: $bg-secondary;
   border: 1px solid $border-primary;
   border-radius: $radius-xl;
-	margin-bottom: 2rem;
+	margin-bottom: $spacing-8;
 }
 
 @mixin section-header {

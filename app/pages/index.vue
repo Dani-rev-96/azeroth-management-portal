@@ -128,14 +128,13 @@ watchEffect(async () => {
 })
 </script>
 
-<style scoped>
-/* Landing Page - Page-specific styles only */
-/* Shared styles are in ~/assets/css/shared.css */
+<style scoped lang="scss">
+@use "~/styles/variables" as *;
 
 .landing-page {
-  max-width: 1400px;
+  max-width: $container-2xl;
   margin: 0 auto;
-  padding: 2rem;
+  padding: $spacing-4;
 }
 
 .hero {

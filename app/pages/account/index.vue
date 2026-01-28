@@ -162,13 +162,11 @@ watchEffect(async () => {
 </script>
 
 <style scoped lang="scss">
-/* Account Index - Page-specific styles only */
-/* Shared styles are in ~/assets/css/shared.css */
+@use '~/styles/variables' as *;
+@use '~/styles/mixins' as *;
 
 .dashboard {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 2rem;
+  @include container;
 }
 
 .dashboard-content {

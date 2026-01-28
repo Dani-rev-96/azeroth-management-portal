@@ -396,6 +396,26 @@ const dbcConfigs = {
       id: row.ID,
       texture_filename: row.TextureFilename || ''
     })
+  },
+
+  SpellDuration: {
+    jsonFile: 'SpellDuration.json',
+    dbFile: 'spell_duration.db',
+    tableName: 'spell_duration',
+    schema: `
+      CREATE TABLE spell_duration (
+        id INTEGER PRIMARY KEY,
+        duration INTEGER,
+        duration_per_level INTEGER,
+        max_duration INTEGER
+      );
+    `,
+    mapping: (row) => ({
+      id: row.ID,
+      duration: row.Duration || 0,
+      duration_per_level: row.DurationPerLevel || 0,
+      max_duration: row.MaxDuration || 0
+    })
   }
 }
 

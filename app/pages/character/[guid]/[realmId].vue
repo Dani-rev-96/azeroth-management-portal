@@ -386,11 +386,11 @@ function formatPlaytime(seconds: number) {
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use "~/styles/mixins" as *;
+
 .character-showroom {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 2rem;
+  @include container;
 }
 
 .loading, .error {
@@ -605,7 +605,7 @@ function formatPlaytime(seconds: number) {
   background: #1e293b;
   border: 1px solid #334155;
   border-radius: 0.5rem;
-  padding: 1.5rem;
+  padding: 1rem;
 }
 
 .section-card h2 {

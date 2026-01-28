@@ -149,6 +149,5 @@ function getMetricLabel(): string {
 
 .community-page {
   @include container;
-  padding-block: $spacing-8;
 }
 </style>

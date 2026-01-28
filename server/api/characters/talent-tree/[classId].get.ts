@@ -3,6 +3,7 @@ import {
   getTalentsByTab,
   getSpellBatch,
   getSpellIconBatch,
+  getSpellDurationBatch,
   type Talent,
   type TalentTab
 } from '#server/utils/dbc-db'
@@ -41,6 +42,7 @@ interface TalentTreeNode {
       x1: number
       x2: number
       x3: number
+      d: number // Duration in milliseconds
     }
   }>
   maxRank: number
@@ -139,6 +141,11 @@ export default defineEventHandler(async (event) => {
       const icons = iconIds.length > 0 ? await getSpellIconBatch(iconIds) : []
       const iconMap = new Map(icons.map(i => [i.id, i]))
 
+      // Get spell durations
+      const durationIds = [...new Set(spells.map(s => s.duration_index).filter(id => id > 0))]
+      const durations = durationIds.length > 0 ? await getSpellDurationBatch(durationIds) : []
+      const durationMap = new Map(durations.map(d => [d.id, d]))
+
       // Also get the tab icon
       const tabIconIds = tab.spell_icon_id ? [tab.spell_icon_id] : []
       const tabIcons = tabIconIds.length > 0 ? await getSpellIconBatch(tabIconIds) : []
@@ -159,6 +166,10 @@ export default defineEventHandler(async (event) => {
         const ranks = rankIds.map((spellId, index) => {
           const spell = spellMap.get(spellId)
 
+          // Get duration for this spell
+          const durationData = spell?.duration_index ? durationMap.get(spell.duration_index) : undefined
+          const durationMs = durationData?.duration || 0
+
           // Calculate spell effect values
           // $s1, $s2, $s3 = base points + 1 (or + die_sides for variable)
           // $m1, $m2, $m3 = misc values
@@ -168,6 +179,7 @@ export default defineEventHandler(async (event) => {
           // $h = proc chance
           // $q = proc charges
           // $x1, $x2, $x3 = chain targets per effect
+          // $d = duration in milliseconds
           const effectValues = {
             s1: spell ? Math.abs(spell.effect_base_points_1) + 1 : 0,
             s2: spell ? Math.abs(spell.effect_base_points_2) + 1 : 0,
@@ -186,7 +198,8 @@ export default defineEventHandler(async (event) => {
             q: spell?.proc_charges || 0,
             x1: spell?.effect_chain_targets_1 || 0,
             x2: spell?.effect_chain_targets_2 || 0,
-            x3: spell?.effect_chain_targets_3 || 0
+            x3: spell?.effect_chain_targets_3 || 0,
+            d: durationMs
           }
 
           return {

@@ -203,6 +203,31 @@ function getNextRankInfo(talent: TalentTreeNode): TalentRankInfo | null {
 }
 
 /**
+ * Format duration from milliseconds to human-readable string
+ * Examples: "10 sec", "1 min", "2 min", "1 hour"
+ */
+function formatDuration(ms: number): string {
+  if (ms <= 0) return ''
+
+  const seconds = Math.round(ms / 1000)
+
+  if (seconds < 60) {
+    return `${seconds} sec`
+  }
+
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) {
+    return `${minutes} min`
+  }
+
+  const hours = Math.round(minutes / 60)
+  if (hours === 1) {
+    return `1 hour`
+  }
+  return `${hours} hours`
+}
+
+/**
  * Parse and format WoW spell description, replacing placeholders with actual values
  * Handles patterns like:
  * - $s1, $s2, $s3 - Spell effect values (base points + 1)
@@ -211,7 +236,7 @@ function getNextRankInfo(talent: TalentTreeNode): TalentRankInfo | null {
  * - $a1, $a2, $a3 - Amplitude values
  * - $n - Chain targets
  * - $h - Proc chance
- * - $d - Duration (not available, simplified)
+ * - $d - Duration in milliseconds (formatted to sec/min/hour)
  * - ${expression} - Lua-like expressions
  */
 function formatDescription(desc: string, rankInfo?: TalentRankInfo | null): string {
@@ -281,18 +306,65 @@ function formatDescription(desc: string, rankInfo?: TalentRankInfo | null): stri
       const value = effectValues[key] as number || 0
       return String(Math.abs(value))
     })
+
+    // Handle $/1000;s1 type patterns (division with semicolon: value/divisor;variable)
+    result = result.replace(/\$\/(-?\d+);([a-z])(\d)/gi, (match, divisor, varType, varNum) => {
+      const key = `${varType.toLowerCase()}${varNum}` as keyof SpellEffectValues
+      const value = effectValues[key] as number || 0
+      const divValue = parseFloat(divisor)
+      if (divValue === 0) return String(value)
+      const calculated = Math.abs(value / divValue)
+      // Return as integer if whole number, otherwise with 1 decimal
+      return calculated % 1 === 0 ? String(calculated) : calculated.toFixed(1)
+    })
+
+    // Handle $*1000;s1 type patterns (multiplication with semicolon)
+    result = result.replace(/\$\*(-?\d+);([a-z])(\d)/gi, (match, multiplier, varType, varNum) => {
+      const key = `${varType.toLowerCase()}${varNum}` as keyof SpellEffectValues
+      const value = effectValues[key] as number || 0
+      const multValue = parseFloat(multiplier)
+      return String(Math.round(Math.abs(value * multValue)))
+    })
+
+    // $d - duration (format from milliseconds to human readable)
+    result = result.replace(/\$d/gi, () => {
+      const durationMs = effectValues.d || 0
+      if (durationMs <= 0) return ''
+      return formatDuration(durationMs)
+    })
   }
 
-  // $d - duration (we don't have duration data readily available, approximate or leave)
-  // For now, replace with placeholder text if still present
-  result = result.replace(/\$d/gi, '[duration]')
+  // Handle $XXd patterns (reference to another spell's duration) - replace with generic duration text
+  // $67d means "duration of spell 67"
+  result = result.replace(/\$\d+d/gi, '[duration]')
+
+  // Handle $XXdsY patterns (spell duration combined with effect) - clean these up
+  result = result.replace(/\$\d+d[a-z]\d/gi, '[duration]')
+
+  // Handle $XXsY patterns (reference to another spell's effect value) - we can't resolve cross-spell refs
+  result = result.replace(/\$\d+s\d/gi, '[value]')
+
+  // Handle $XXmY patterns (reference to another spell's misc value)
+  result = result.replace(/\$\d+m\d/gi, '[value]')
+
+  // Handle $XXo patterns (reference to another spell's periodic effect)
+  result = result.replace(/\$\d+o\d?/gi, '[periodic]')
 
   // Clean up any remaining unresolved placeholders
   // Remove ${...} expressions that weren't handled
   result = result.replace(/\$\{[^}]+\}/g, '')
 
+  // Remove $/X;Y or $*X;Y patterns that weren't handled
+  result = result.replace(/\$[/*]-?\d+;[a-z]\d/gi, '')
+
+  // Remove any remaining $XXX patterns (spell references like $67d)
+  result = result.replace(/\$\d+[a-z]+\d*/gi, '')
+
   // Remove any remaining $X patterns that weren't substituted
   result = result.replace(/\$[a-z]\d*/gi, '')
+
+  // Remove any remaining $ followed by numbers
+  result = result.replace(/\$\d+/g, '')
 
   // Clean up multiple spaces and trim
   result = result.replace(/\s+/g, ' ').trim()
@@ -543,7 +615,6 @@ function hideTooltip() {
 }
 
 .talent-cell {
-  aspect-ratio: 1;
   display: flex;
   align-items: center;
   justify-content: center;

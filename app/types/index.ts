@@ -201,6 +201,7 @@ export type SpellEffectValues = {
   x1: number
   x2: number
   x3: number
+  d: number // Duration in milliseconds
 }
 
 export type TalentRankInfo = {
