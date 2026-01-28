@@ -1,6 +1,6 @@
 /**
- * useServerConfig composable
- * Fetches server/realm configuration
+ * Realm configuration composables
+ * Fetches server/realm configuration from the API
  */
 import type { RealmConfig } from '~/types'
 
@@ -8,7 +8,11 @@ interface ServerConfig {
   realms: Record<string, RealmConfig>
 }
 
-export async function useServerConfig(): Promise<ServerConfig> {
+/**
+ * Internal helper to fetch realm config from API
+ * Use useRealmOptions() for component usage
+ */
+async function fetchRealmConfig(): Promise<ServerConfig> {
   const { data } = await useFetch<ServerConfig>('/api/realms')
   return data.value || { realms: {} }
 }
@@ -27,7 +31,7 @@ export function useRealmOptions() {
     error.value = null
 
     try {
-      const config = await useServerConfig()
+      const config = await fetchRealmConfig()
       realms.value = config.realms
     } catch (err) {
       error.value = 'Failed to load realms'

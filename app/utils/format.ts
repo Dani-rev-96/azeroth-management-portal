@@ -1,8 +1,7 @@
 /**
  * Shared formatting utilities
+ * Note: formatDate, formatRelativeTime, formatFileSize are in wow.ts
  */
-
-export { formatDate, formatRelativeTime, formatFileSize } from './wow'
 
 /**
  * Capitalize first letter of a string

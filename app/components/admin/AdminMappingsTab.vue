@@ -2,7 +2,7 @@
 /**
  * AdminMappingsTab - Account mappings management
  */
-import { formatDate } from '~/utils/format'
+import { formatDate } from '~/utils/wow'
 import UiSectionHeader from '~/components/ui/UiSectionHeader.vue'
 import UiLoadingState from '~/components/ui/UiLoadingState.vue'
 import UiEmptyState from '~/components/ui/UiEmptyState.vue'

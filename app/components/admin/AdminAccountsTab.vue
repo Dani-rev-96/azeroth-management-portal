@@ -2,7 +2,7 @@
 /**
  * AdminAccountsTab - All WoW accounts management
  */
-import { formatDate } from '~/utils/format'
+import { formatDate } from '~/utils/wow'
 import UiSectionHeader from '~/components/ui/UiSectionHeader.vue'
 import UiInput from '~/components/ui/UiInput.vue'
 import UiLoadingState from '~/components/ui/UiLoadingState.vue'

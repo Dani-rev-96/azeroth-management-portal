@@ -1,6 +1,6 @@
 import { getAuthenticatedUser } from '#server/utils/auth'
 import { getCharactersDbPool, getWorldDbPool } from '#server/utils/mysql'
-import { getItemDisplayInfoBatch } from '#server/utils/items-db'
+import { getItemDisplayInfoBatch } from '#server/utils/dbc-db'
 import {
   parseEnchantmentsField,
   getEnchantmentInfo,

@@ -2,7 +2,7 @@
 /**
  * AdminFilesTab - File management tab
  */
-import { formatFileSize, formatDate } from '~/utils/format'
+import { formatFileSize, formatDate } from '~/utils/wow'
 import UiSectionHeader from '~/components/ui/UiSectionHeader.vue'
 import UiButton from '~/components/ui/UiButton.vue'
 import UiProgressBar from '~/components/ui/UiProgressBar.vue'

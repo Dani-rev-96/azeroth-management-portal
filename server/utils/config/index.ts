@@ -9,31 +9,49 @@
  */
 
 /**
- * Get database configurations (server-side only)
+ * Database configurations
+ * Credentials are loaded from .db.[env].json via runtimeConfig
  */
-export const useServerDatabaseConfig = async () => {
-  const env = process.env.NODE_ENV || 'development'
+export const getDatabaseConfigs = () => {
+  const config = useRuntimeConfig()
 
-  try {
-    let config
-    if (env === 'production') {
-      config = await import('./production')
-    } else {
-      config = await import('./local')
-    }
-
-    return {
-      databaseConfigs: config.getDatabaseConfigs(),
-    }
-  } catch (error) {
-    console.error(`Failed to load database config for environment: ${env}`, error)
-    // Fallback to local
-    const config = await import('./local')
-    return {
-      databaseConfigs: config.getDatabaseConfigs(),
-    }
+  return {
+    'auth-db': {
+      host: config.db.authHost,
+      port: config.db.authPort,
+      user: config.db.authUser,
+      password: config.db.authPassword,
+      databases: ['acore_auth'],
+    },
+    'blizzlike-db': {
+      host: config.db.blizzlikeWorldHost,
+      port: config.db.blizzlikeWorldPort,
+      user: config.db.blizzlikeWorldUser,
+      password: config.db.blizzlikeWorldPassword,
+      databases: ['acore_world', 'acore_characters'],
+    },
+    'ip-db': {
+      host: config.db.ipWorldHost,
+      port: config.db.ipWorldPort,
+      user: config.db.ipWorldUser,
+      password: config.db.ipWorldPassword,
+      databases: ['acore_world', 'acore_characters'],
+    },
+    'ip-boosted-db': {
+      host: config.db.ipBoostedWorldHost,
+      port: config.db.ipBoostedWorldPort,
+      user: config.db.ipBoostedWorldUser,
+      password: config.db.ipBoostedWorldPassword,
+      databases: ['acore_world', 'acore_characters'],
+    },
   }
 }
 
-// Direct conditional exports for server-side imports (API routes)
-export * from './local'
+/**
+ * Get database configurations (server-side only)
+ */
+export const useServerDatabaseConfig = async () => {
+  return {
+    databaseConfigs: getDatabaseConfigs(),
+  }
+}
