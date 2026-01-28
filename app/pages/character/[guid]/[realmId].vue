@@ -158,17 +158,15 @@
                 <span class="stat-label">🔮 Spell Power</span>
                 <span class="stat-value">{{ stats.spellPower }}</span>
               </div>
-              <div class="stat-item" v-if="stats.critPct !== undefined">
+              <!-- Show Melee Crit for melee classes -->
+              <div class="stat-item" v-if="stats.critPct !== undefined && isMeleeClass(data.character.class)">
                 <span class="stat-label">💥 Melee Crit</span>
                 <span class="stat-value">{{ stats.critPct.toFixed(2) }}%</span>
               </div>
+              <!-- Show Ranged Crit for Hunters, or Spell Crit for casters (using rangedCritPct) -->
               <div class="stat-item" v-if="stats.rangedCritPct !== undefined">
-                <span class="stat-label">🎯 Ranged Crit</span>
+                <span class="stat-label">{{ getCritLabel(data.character.class) }}</span>
                 <span class="stat-value">{{ stats.rangedCritPct.toFixed(2) }}%</span>
-              </div>
-              <div class="stat-item" v-if="stats.spellCritPct !== undefined">
-                <span class="stat-label">✨ Spell Crit</span>
-                <span class="stat-value">{{ stats.spellCritPct.toFixed(2) }}%</span>
               </div>
             </div>
           </div>
@@ -294,6 +292,27 @@ function showsResource(classId: number, resourceType: 'mana' | 'rage' | 'energy'
     return [3].includes(classId) // Hunters (though they use mana in WotLK)
   }
   return false
+}
+
+// Helper to determine if class is primarily melee
+function isMeleeClass(classId: number): boolean {
+  // Warriors, Rogues, Death Knights, Enhancement Shamans (all shamans for simplicity)
+  return [1, 4, 6].includes(classId)
+}
+
+// Helper to get the correct crit label based on class
+function getCritLabel(classId: number): string {
+  // Hunter uses Ranged Crit
+  if (classId === 3) {
+    return '🎯 Ranged Crit'
+  }
+  // Caster classes (Priest, Mage, Warlock, Druid, Shaman, Paladin) use Spell Crit
+  // Note: rangedCritPct actually stores spell crit for these classes in the DB
+  if ([2, 5, 7, 8, 9, 11].includes(classId)) {
+    return '✨ Spell Crit'
+  }
+  // Melee classes
+  return '🎯 Crit'
 }
 
 // Equipment slot definitions
