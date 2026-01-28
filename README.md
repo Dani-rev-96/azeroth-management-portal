@@ -1,82 +1,216 @@
-# Nuxt Minimal Starter
+# Azeroth Management Portal
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+A modern, CMS-independent management and community portal for [AzerothCore](https://www.azerothcore.org/) WoW servers. Built with Nuxt 4, featuring external authentication via Keycloak/OAuth-Proxy, multi-realm support, and comprehensive account/character management.
 
-## Setup
+<p align="center">
+  <img src="https://img.shields.io/badge/Nuxt-4.x-00DC82?logo=nuxt.js" alt="Nuxt 4" />
+  <img src="https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vue.js" alt="Vue 3" />
+  <img src="https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/AzerothCore-WOTLK-blue" alt="AzerothCore" />
+</p>
 
-Make sure to install dependencies:
+## ✨ Features
+
+### 👤 Account Management
+
+- **Account Linking** – Link your Keycloak identity to one or more WoW accounts
+- **Account Creation** – Create new WoW accounts directly from the portal
+- **Password Management** – Change passwords for linked accounts (SRP-6a compliant)
+- **Multi-Account Support** – Manage multiple WoW accounts from a single identity
+
+### 🎮 Character Management
+
+- **Character Overview** – View all characters across linked accounts and realms
+- **Character Details** – Inspect equipment, stats, talents, and achievements
+- **Character Actions** – Rename, unstuck, or restore deleted characters
+- **Equipment Viewer** – Display gear with proper icons and enchantment stats
+
+### 👥 Community Hub
+
+- **Online Players** – Real-time view of who's playing (auto-refreshes)
+- **Server Statistics** – Total accounts, characters, guilds, level distribution
+- **Top Players** – Leaderboards by level, playtime, and achievements
+- **PvP Statistics** – Arena and battleground rankings
+- **Realm Filtering** – View stats per realm or aggregated
+
+### 🛡️ Admin Panel (GM Tools)
+
+- **Account Management** – Search, view, and manage all accounts
+- **GM Level Management** – Assign or revoke GM privileges
+- **Account Mappings** – View all Keycloak-to-WoW account links
+- **Mass Mailing** – Send in-game mail to players or groups
+- **File Management** – Upload/manage downloadable files (game clients, patches)
+- **Data Export** – Export account and character data
+
+### 📦 Downloads
+
+- **File Repository** – Serve game clients and patches
+- **Resumable Downloads** – Interrupted downloads can be resumed
+- **File Descriptions** – Automatic descriptions for known file types
+
+### 🔐 Authentication
+
+- **Keycloak Integration** – OAuth 2.0 / OIDC via Keycloak
+- **OAuth-Proxy Support** – Header-based auth for Kubernetes deployments
+- **Mock Mode** – Local development without external auth
+- **GM Detection** – Automatic detection of GM status from game database
+
+## 🏗️ Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                         Users / Browser                          │
+└────────────────────────────────┬─────────────────────────────────┘
+                                 │
+                    ┌────────────▼────────────┐
+                    │    OAuth-Proxy / LB     │  (Production)
+                    │    or Direct Access     │  (Development)
+                    └────────────┬────────────┘
+                                 │
+┌────────────────────────────────▼─────────────────────────────────┐
+│                    Azeroth Management Portal                     │
+│  ┌─────────────────────────────────────────────────────────────┐ │
+│  │                     Nuxt 4 Application                      │ │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │ │
+│  │  │   Pages     │  │  Components │  │       Stores        │  │ │
+│  │  │  - Home     │  │  - Account  │  │  - Auth (Pinia)     │  │ │
+│  │  │  - Account  │  │  - Admin    │  │  - Accounts         │  │ │
+│  │  │  - Admin    │  │  - Character│  │  - Community        │  │ │
+│  │  │  - Community│  │  - Community│  │                     │  │ │
+│  │  │  - Downloads│  │  - UI       │  │                     │  │ │
+│  │  └─────────────┘  └─────────────┘  └─────────────────────┘  │ │
+│  └─────────────────────────────────────────────────────────────┘ │
+│  ┌─────────────────────────────────────────────────────────────┐ │
+│  │                   Nitro Server (API)                        │ │
+│  │  ┌──────────────────────────────────────────────────────┐   │ │
+│  │  │ /api/auth     - Authentication endpoints             │   │ │
+│  │  │ /api/accounts - Account & mapping management         │   │ │
+│  │  │ /api/characters - Character data & actions           │   │ │
+│  │  │ /api/admin    - GM tools & administration            │   │ │
+│  │  │ /api/community - Stats, online players, leaderboards │   │ │
+│  │  │ /api/downloads - File serving                        │   │ │
+│  │  └──────────────────────────────────────────────────────┘   │ │
+│  └─────────────────────────────────────────────────────────────┘ │
+└───────────┬──────────────────────────────────────────────────────┘
+            │
+  ┌─────────▼─────────┐                 ┌─────────────────────────┐
+  │   SQLite (Local)  │                 │   AzerothCore DBs       │
+  │  - Account Maps   │                 │  - acore_auth           │
+  │  - DBC Data       │                 │  - acore_characters     │
+  └───────────────────┘                 │  - acore_world          │
+                                        │  (per realm)            │
+                                        └─────────────────────────┘
+```
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- **Node.js** 18+ (20+ recommended)
+- **pnpm** (recommended) or npm
+- **AzerothCore** server with accessible MySQL databases
+- **Keycloak** instance (for production) or use mock mode for development
+
+### Installation
 
 ```bash
-# npm
-npm install
+# Clone the repository
+git clone https://github.com/your-org/azeroth-management-portal.git
+cd azeroth-management-portal
 
-# pnpm
+# Install dependencies
 pnpm install
 
-# yarn
-yarn install
-
-# bun
-bun install
+# Copy and configure credentials
+cp .db.example.json .db.local.json
+# Edit .db.local.json with your database credentials
 ```
 
-## Development Server
+### Configuration
 
-Start the development server on `http://localhost:3000`:
+Create `.db.local.json` with your database credentials:
 
-```bash
-# npm
-npm run dev
-
-# pnpm
-pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
+```json
+{
+	"databases": {
+		"auth-db": {
+			"host": "localhost",
+			"port": 3306,
+			"user": "acore",
+			"password": "acore"
+		},
+		"blizzlike-db": {
+			"host": "localhost",
+			"port": 3306,
+			"user": "acore",
+			"password": "acore"
+		},
+		"ip-db": {
+			"host": "localhost",
+			"port": 3307,
+			"user": "acore",
+			"password": "acore"
+		},
+		"ip-boosted-db": {
+			"host": "localhost",
+			"port": 3308,
+			"user": "acore",
+			"password": "acore"
+		}
+	},
+	"env": {
+		"authMode": "mock",
+		"mockUser": "admin",
+		"mockEmail": "admin@localhost"
+	}
+}
 ```
 
-## Production
-
-Build the application for production:
+### Development
 
 ```bash
-# npm
-npm run build
+# Start development server with mock authentication
+pnpm dev:local
 
-# pnpm
-pnpm build
-
-# yarn
-yarn build
-
-# bun
-bun run build
+# Open http://localhost:3000
 ```
 
-Locally preview production build:
+### Production Build
 
 ```bash
-# npm
-npm run preview
+# Build for production
+pnpm build:production
 
-# pnpm
+# Preview production build
 pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
 ```
 
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+## 📖 Documentation
 
-### certs for ssl development
+| Document                                 | Description                                   |
+| ---------------------------------------- | --------------------------------------------- |
+| [Setup Guide](docs/SETUP.md)             | Detailed installation and configuration       |
+| [Configuration](docs/CONFIGURATION.md)   | Environment variables and realm configuration |
+| [Authentication](docs/AUTHENTICATION.md) | Keycloak setup and auth modes                 |
+| [API Reference](docs/API.md)             | Backend API endpoints                         |
+| [Deployment](docs/DEPLOYMENT.md)         | Production deployment guide                   |
+| [Development](docs/DEVELOPMENT.md)       | Contributing and local development            |
 
-mkdir certs
-cd certs
+## 🔧 Tech Stack
 
-mkcert -cert-file localhost.pem -key-file localhost-key.pem localhost
+- **Frontend**: [Nuxt 4](https://nuxt.com/), [Vue 3](https://vuejs.org/), [Pinia](https://pinia.vuejs.org/)
+- **UI**: [PrimeVue](https://primevue.org/), SCSS
+- **Backend**: [Nitro](https://nitro.unjs.io/) (Nuxt's server engine)
+- **Databases**: MySQL (AzerothCore), SQLite (local data, DBC cache)
+- **Authentication**: Keycloak, OAuth-Proxy, or Mock
+- **Security**: SRP-6a password verification (AzerothCore compatible)
+
+## 📜 License
+
+This project is open source and available under the [MIT License](LICENSE).
+
+## 🙏 Acknowledgments
+
+- [AzerothCore](https://www.azerothcore.org/) – The open-source WoW emulator
+- [Nuxt](https://nuxt.com/) – The Vue framework for full-stack applications
+- [Keycloak](https://www.keycloak.org/) – Open-source identity management
