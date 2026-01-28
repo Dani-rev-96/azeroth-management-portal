@@ -21,6 +21,10 @@
             <span class="nav-icon">🎮</span>
             My Accounts
           </NuxtLink>
+          <NuxtLink to="/shop" class="nav-link">
+            <span class="nav-icon">🛒</span>
+            Shop
+          </NuxtLink>
           <NuxtLink to="/downloads" class="nav-link">
             <span class="nav-icon">📦</span>
             Downloads
@@ -72,6 +76,10 @@
         <NuxtLink to="/account" class="mobile-nav-link" @click="mobileMenuOpen = false">
           <span class="nav-icon">🎮</span>
           My Accounts
+        </NuxtLink>
+        <NuxtLink to="/shop" class="mobile-nav-link" @click="mobileMenuOpen = false">
+          <span class="nav-icon">🛒</span>
+          Shop
         </NuxtLink>
         <NuxtLink to="/downloads" class="mobile-nav-link" @click="mobileMenuOpen = false">
           <span class="nav-icon">📦</span>

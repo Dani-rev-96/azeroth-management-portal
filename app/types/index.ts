@@ -303,3 +303,55 @@ export type CharacterDetailResponse = {
   stats: CharacterStats[]
   realmId: string
 }
+
+// Shop Types
+export type ShopCategory = 'trade_goods' | 'mounts' | 'miscellaneous'
+
+export type ShopItem = {
+  entry: number
+  name: string
+  description: string
+  class: number
+  subclass: number
+  quality: number
+  buyPrice: number // Original vendor price in copper
+  sellPrice: number
+  shopPrice: number // Price with markup in copper
+  icon: string
+  inventoryType: number
+  itemLevel: number
+  requiredLevel: number
+  maxStackSize: number
+}
+
+export type ShopCategoryInfo = {
+  id: ShopCategory
+  name: string
+  description: string
+  icon: string
+}
+
+export type ShopConfig = {
+  enabled: boolean
+  priceMarkupPercent: number // e.g., 20 means 20% markup
+  deliveryMethod: 'mail' | 'inventory' // Currently only mail is safe
+  mailSubject: string
+  mailBody: string
+  categories: ShopCategory[]
+}
+
+export type ShopPurchaseRequest = {
+  itemId: number
+  quantity: number
+  characterGuid: number
+  realmId: string
+}
+
+export type ShopPurchaseResponse = {
+  success: boolean
+  message: string
+  mailId?: number
+  itemName?: string
+  totalCost: number
+  newBalance?: number
+}

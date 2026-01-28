@@ -4,7 +4,7 @@
  * PUBLIC - Safe to share with client
  */
 
-import type { RealmConfig, RealmId } from '~/types'
+import type { RealmConfig, RealmId, ShopConfig } from '~/types'
 
 export const realms: Record<RealmId, RealmConfig> = {
   wotlk: {
@@ -48,5 +48,15 @@ export const realms: Record<RealmId, RealmConfig> = {
 export const authServerConfig = {
   host: 'localhost',
   port: 3724,
+}
+
+// Shop configuration
+export const shopConfig: ShopConfig = {
+  enabled: true,
+  priceMarkupPercent: 20, // 20% markup on vendor prices
+  deliveryMethod: 'mail', // 'mail' is safe, 'inventory' requires more work
+  mailSubject: 'Shop Purchase',
+  mailBody: 'Thank you for your purchase from the Azeroth Shop!',
+  categories: ['trade_goods', 'mounts', 'miscellaneous'],
 }
 

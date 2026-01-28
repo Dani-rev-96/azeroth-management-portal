@@ -55,3 +55,26 @@ export const useServerDatabaseConfig = async () => {
     databaseConfigs: getDatabaseConfigs(),
   }
 }
+
+/**
+ * Get shop configuration
+ * Loads from shared config based on environment
+ */
+export const getShopConfig = async () => {
+  const env = process.env.NODE_ENV || 'development'
+
+  try {
+    let config
+    if (env === 'production') {
+      config = await import('../../../shared/utils/config/production')
+    } else {
+      config = await import('../../../shared/utils/config/local')
+    }
+    return config.shopConfig
+  } catch (error) {
+    console.error(`Failed to load shop config for environment: ${env}`, error)
+    // Fallback to local
+    const config = await import('../../../shared/utils/config/local')
+    return config.shopConfig
+  }
+}

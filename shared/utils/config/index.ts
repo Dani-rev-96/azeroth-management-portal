@@ -10,7 +10,7 @@
  *   import { useServerDatabaseConfig } from '#server/utils/config'
  */
 
-import type { RealmConfig, RealmId } from '~/types'
+import type { RealmConfig, RealmId, ShopConfig } from '~/types'
 
 /**
  * Composable for client-side config loading
@@ -30,6 +30,7 @@ export const useServerConfig = async () => {
     return {
       realms: config.realms,
       authServerConfig: config.authServerConfig,
+      shopConfig: config.shopConfig,
     }
   } catch (error) {
     console.error(`Failed to load config for environment: ${env}`, error)
@@ -38,12 +39,13 @@ export const useServerConfig = async () => {
     return {
       realms: config.realms,
       authServerConfig: config.authServerConfig,
+      shopConfig: config.shopConfig,
     }
   }
 }
 
 // Export type helpers
-export type { RealmConfig, RealmId }
+export type { RealmConfig, RealmId, ShopConfig }
 
 // Direct conditional exports for server-side imports
 export * from './local'
