@@ -142,6 +142,8 @@ function getStatName(statType: number): string {
   justify-content: center;
   position: relative;
   transition: all 0.2s;
+  min-height: 80px;
+  min-width: 80px;
 }
 
 .equipment-slot.empty {
@@ -184,14 +186,14 @@ function getStatName(statType: number): string {
 }
 
 .item-icon-placeholder {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   border-radius: 0.375rem;
   background: rgba(59, 130, 246, 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 2rem;
+  font-size: 1.5rem;
 }
 
 .item-level {
@@ -210,16 +212,21 @@ function getStatName(statType: number): string {
 .empty-slot {
   text-align: center;
   color: #64748b;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
 }
 
 .slot-icon {
-  display: block;
-  font-size: 2rem;
-  margin-bottom: 0.5rem;
+  font-size: 1.5rem;
+  line-height: 1;
 }
 
 .slot-name {
-  font-size: 0.875rem;
+  display: none;
 }
 
 /* Tooltip */

@@ -51,14 +51,28 @@
             <CharacterEquipmentSlot :slot="getSlotDefinition(0)" :item="getItemInSlot(0)" />
             <CharacterEquipmentSlot :slot="getSlotDefinition(1)" :item="getItemInSlot(1)" />
             <CharacterEquipmentSlot :slot="getSlotDefinition(2)" :item="getItemInSlot(2)" />
-            <CharacterEquipmentSlot :slot="getSlotDefinition(15)" :item="getItemInSlot(15)" />
+            <CharacterEquipmentSlot :slot="getSlotDefinition(14)" :item="getItemInSlot(14)" />
             <CharacterEquipmentSlot :slot="getSlotDefinition(4)" :item="getItemInSlot(4)" />
+            <CharacterEquipmentSlot :slot="getSlotDefinition(3)" :item="getItemInSlot(3)" />
+            <CharacterEquipmentSlot :slot="getSlotDefinition(18)" :item="getItemInSlot(18)" />
             <CharacterEquipmentSlot :slot="getSlotDefinition(8)" :item="getItemInSlot(8)" />
-            <CharacterEquipmentSlot :slot="getSlotDefinition(9)" :item="getItemInSlot(9)" />
           </div>
 
           <!-- Center Column -->
           <div class="equipment-column center-column">
+            <div class="character-placeholder">
+              <span class="character-icon">🧙</span>
+            </div>
+            <div class="weapon-slots">
+              <CharacterEquipmentSlot :slot="getSlotDefinition(15)" :item="getItemInSlot(15)" />
+              <CharacterEquipmentSlot :slot="getSlotDefinition(16)" :item="getItemInSlot(16)" />
+              <CharacterEquipmentSlot :slot="getSlotDefinition(17)" :item="getItemInSlot(17)" />
+            </div>
+          </div>
+
+          <!-- Right Column -->
+          <div class="equipment-column right-column">
+            <CharacterEquipmentSlot :slot="getSlotDefinition(9)" :item="getItemInSlot(9)" />
             <CharacterEquipmentSlot :slot="getSlotDefinition(5)" :item="getItemInSlot(5)" />
             <CharacterEquipmentSlot :slot="getSlotDefinition(6)" :item="getItemInSlot(6)" />
             <CharacterEquipmentSlot :slot="getSlotDefinition(7)" :item="getItemInSlot(7)" />
@@ -66,14 +80,6 @@
             <CharacterEquipmentSlot :slot="getSlotDefinition(11)" :item="getItemInSlot(11)" />
             <CharacterEquipmentSlot :slot="getSlotDefinition(12)" :item="getItemInSlot(12)" />
             <CharacterEquipmentSlot :slot="getSlotDefinition(13)" :item="getItemInSlot(13)" />
-          </div>
-
-          <!-- Right Column -->
-          <div class="equipment-column right-column">
-            <CharacterEquipmentSlot :slot="getSlotDefinition(14)" :item="getItemInSlot(14)" />
-            <CharacterEquipmentSlot :slot="getSlotDefinition(16)" :item="getItemInSlot(16)" />
-            <CharacterEquipmentSlot :slot="getSlotDefinition(17)" :item="getItemInSlot(17)" />
-            <CharacterEquipmentSlot :slot="getSlotDefinition(18)" :item="getItemInSlot(18)" />
           </div>
         </div>
       </div>
@@ -297,6 +303,7 @@ const equipmentSlots = [
   { id: 2, name: 'Shoulders', icon: '🛡️' },
   { id: 15, name: 'Back', icon: '🧥' },
   { id: 4, name: 'Chest', icon: '👕' },
+  { id: 3, name: 'Shirt', icon: '👔' },
   { id: 18, name: 'Tabard', icon: '🎗️' },
   { id: 8, name: 'Wrist', icon: '⌚' },
   { id: 9, name: 'Hands', icon: '🧤' },
@@ -510,6 +517,43 @@ function formatPlaytime(seconds: number) {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.center-column {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.character-placeholder {
+  width: 100%;
+  aspect-ratio: 1;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(99, 102, 241, 0.1));
+  border: 2px solid #334155;
+  border-radius: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 768px) {
+  .character-placeholder {
+    display: none;
+  }
+}
+
+.character-icon {
+  font-size: 4rem;
+  opacity: 0.3;
+}
+
+.weapon-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
 }
 
 .stats-section,
