@@ -1,41 +1,49 @@
 /**
  * Server-side Database Configuration
- * Automatically loads realms from NUXT_DB_REALM_* environment variables
+ * Reads realm configuration directly from environment variables at RUNTIME
+ * This is critical for Kubernetes deployments where env vars are injected at runtime
  *
  * SERVER-SIDE ONLY - Contains sensitive credentials
  *
  * Usage in API routes:
- *   const { realms, getRealmConfig } = await useServerDatabaseConfig()
+ *   import { getRealms, getRealmConfig, getAuthDbConfig } from '#server/utils/config'
  */
 
 import type { RealmConfig } from '~/types'
 
+// Cache for loaded realms (avoid re-parsing env vars on every call)
+let cachedRealms: Record<string, RealmConfig> | null = null
+let startupLogged = false
+
 /**
- * Get auth database configuration
+ * Get auth database configuration directly from environment variables
  */
 export const getAuthDbConfig = () => {
-  const config = useRuntimeConfig()
-
   return {
-    host: config.db.authHost as string,
-    port: config.db.authPort as number,
-    user: config.db.authUser as string,
-    password: config.db.authPassword as string,
+    host: process.env.NUXT_DB_AUTH_HOST || 'localhost',
+    port: parseInt(process.env.NUXT_DB_AUTH_PORT || '3306', 10),
+    user: process.env.NUXT_DB_AUTH_USER || 'acore',
+    password: process.env.NUXT_DB_AUTH_PASSWORD || 'acore',
     database: 'acore_auth',
   }
 }
 
 /**
- * Get all configured realms from runtime config
- * Reads NUXT_DB_REALM_0_*, NUXT_DB_REALM_1_*, etc.
+ * Get all configured realms directly from environment variables
+ * Reads NUXT_DB_REALM_0_*, NUXT_DB_REALM_1_*, etc. up to 10 realms
  */
 export const getRealms = (): Record<string, RealmConfig> => {
-  const config = useRuntimeConfig()
+  // Return cached realms if already loaded
+  if (cachedRealms) {
+    return cachedRealms
+  }
+
   const realms: Record<string, RealmConfig> = {}
 
   for (let i = 0; i < 10; i++) {
-    const id = config.db[`realm${i}Id` as keyof typeof config.db] as string
-    const name = config.db[`realm${i}Name` as keyof typeof config.db] as string
+    const prefix = `NUXT_DB_REALM_${i}_`
+    const id = process.env[`${prefix}ID`]
+    const name = process.env[`${prefix}NAME`]
 
     // Skip if realm is not defined
     if (!id || !name) continue
@@ -43,14 +51,28 @@ export const getRealms = (): Record<string, RealmConfig> => {
     realms[id] = {
       id,
       name,
-      description: config.db[`realm${i}Description` as keyof typeof config.db] as string || '',
-      dbHost: config.db[`realm${i}Host` as keyof typeof config.db] as string || 'localhost',
-      dbPort: config.db[`realm${i}Port` as keyof typeof config.db] as number || 3306,
-      dbUser: config.db[`realm${i}User` as keyof typeof config.db] as string || 'acore',
-      dbPassword: config.db[`realm${i}Password` as keyof typeof config.db] as string || 'acore',
+      description: process.env[`${prefix}DESCRIPTION`] || '',
+      dbHost: process.env[`${prefix}HOST`] || 'localhost',
+      dbPort: parseInt(process.env[`${prefix}PORT`] || '3306', 10),
+      dbUser: process.env[`${prefix}USER`] || 'acore',
+      dbPassword: process.env[`${prefix}PASSWORD`] || 'acore',
     }
   }
 
+  // Log on first load
+  if (!startupLogged) {
+    startupLogged = true
+    const realmCount = Object.keys(realms).length
+    console.log(`[Config] Loaded ${realmCount} realm(s) from environment variables`)
+    Object.values(realms).forEach((realm, i) => {
+      console.log(`  [${i}] ${realm.id}: "${realm.name}" @ ${realm.dbHost}:${realm.dbPort}`)
+    })
+    if (realmCount === 0) {
+      console.warn('[Config] WARNING: No realms configured! Check NUXT_DB_REALM_* environment variables.')
+    }
+  }
+
+  cachedRealms = realms
   return realms
 }
 
@@ -60,6 +82,14 @@ export const getRealms = (): Record<string, RealmConfig> => {
 export const getRealmConfig = (realmId: string): RealmConfig | undefined => {
   const realms = getRealms()
   return realms[realmId]
+}
+
+/**
+ * Clear the realm cache (useful for testing)
+ */
+export const clearRealmCache = () => {
+  cachedRealms = null
+  startupLogged = false
 }
 
 /**
@@ -75,24 +105,15 @@ export const useServerDatabaseConfig = async () => {
 }
 
 /**
- * Get shop configuration
- * Loads from shared config based on environment
+ * Get shop configuration from environment or defaults
  */
-export const getShopConfig = async () => {
-  const env = process.env.NODE_ENV || 'development'
-
-  try {
-    let config
-    if (env === 'production') {
-      config = await import('../../../shared/utils/config/production')
-    } else {
-      config = await import('../../../shared/utils/config/local')
-    }
-    return config.shopConfig
-  } catch (error) {
-    console.error(`Failed to load shop config for environment: ${env}`, error)
-    // Fallback to local
-    const config = await import('../../../shared/utils/config/local')
-    return config.shopConfig
+export const getShopConfig = () => {
+  return {
+    enabled: process.env.NUXT_SHOP_ENABLED !== 'false',
+    priceMarkupPercent: parseInt(process.env.NUXT_SHOP_MARKUP_PERCENT || '20', 10),
+    deliveryMethod: (process.env.NUXT_SHOP_DELIVERY_METHOD as 'mail' | 'bag') || 'mail',
+    mailSubject: process.env.NUXT_SHOP_MAIL_SUBJECT || 'Your Shop Purchase',
+    mailBody: process.env.NUXT_SHOP_MAIL_BODY || 'Thank you for your purchase! Your items are attached.',
+    categories: ['trade_goods', 'mounts', 'miscellaneous'],
   }
 }
