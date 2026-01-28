@@ -19,17 +19,11 @@ logs
 .fleet
 .idea
 
-# Local env files
+# Local env files (copy .env.example to .env.local for development)
+.env
 .env.local
 .env.*.local
 !.env.example
-
-# Database credentials (plaintext local only - encrypted .enc versions are safe to commit)
-.db.local.json
-.db.staging.json
-.db.production.json
-# But allow encrypted versions
-!.db.*.enc.json
 
 # nix
 result

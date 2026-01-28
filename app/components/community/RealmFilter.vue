@@ -6,7 +6,7 @@ import UiSelect from '~/components/ui/UiSelect.vue'
  */
 export interface Props {
   modelValue: string
-  realms: Record<string, { name: string }>
+  realms: Record<string, { id: string, name: string }>
 }
 
 const props = defineProps<Props>()
@@ -18,7 +18,7 @@ const emit = defineEmits<{
 const options = computed(() => [
   { value: '', label: 'All Realms' },
   ...Object.entries(props.realms).map(([id, realm]) => ({
-    value: id,
+    value: realm.id,
     label: realm.name,
   })),
 ])

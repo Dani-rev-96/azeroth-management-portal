@@ -13,7 +13,6 @@
       <AccountHeader
         :account-name="accountData.mapping.wowAccountName"
         :realm-name="primaryRealm?.name || 'No Characters'"
-        :realm-version="primaryRealm?.version || ''"
       />
 
       <AccountSecurityInfo :account="azAccount" />

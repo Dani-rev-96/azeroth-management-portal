@@ -7,7 +7,7 @@
  *   import { realms, useServerConfig } from '~/shared/utils/config'
  *
  * For database credentials (server-side only):
- *   import { useServerDatabaseConfig } from '#server/utils/config'
+ *   import { getRealms, getRealmConfig, getAuthDbConfig } from '#server/utils/config'
  *
  * Environment-specific configs are in shared/utils/config/:
  *   - local.ts (development)
@@ -16,7 +16,6 @@
 
 export {
   realms,
-  authServerConfig,
   useServerConfig,
 } from './config/index'
 

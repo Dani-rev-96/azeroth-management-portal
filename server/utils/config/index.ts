@@ -1,58 +1,76 @@
 /**
  * Server-side Database Configuration
- * Automatically loads the correct database config based on NODE_ENV
+ * Automatically loads realms from NUXT_DB_REALM_* environment variables
  *
  * SERVER-SIDE ONLY - Contains sensitive credentials
  *
  * Usage in API routes:
- *   const { databaseConfigs } = await useServerDatabaseConfig()
+ *   const { realms, getRealmConfig } = await useServerDatabaseConfig()
  */
 
+import type { RealmConfig } from '~/types'
+
 /**
- * Database configurations
- * Credentials are loaded from .db.[env].json via runtimeConfig
+ * Get auth database configuration
  */
-export const getDatabaseConfigs = () => {
+export const getAuthDbConfig = () => {
   const config = useRuntimeConfig()
 
   return {
-    'auth-db': {
-      host: config.db.authHost,
-      port: config.db.authPort,
-      user: config.db.authUser,
-      password: config.db.authPassword,
-      databases: ['acore_auth'],
-    },
-    'blizzlike-db': {
-      host: config.db.blizzlikeWorldHost,
-      port: config.db.blizzlikeWorldPort,
-      user: config.db.blizzlikeWorldUser,
-      password: config.db.blizzlikeWorldPassword,
-      databases: ['acore_world', 'acore_characters'],
-    },
-    'ip-db': {
-      host: config.db.ipWorldHost,
-      port: config.db.ipWorldPort,
-      user: config.db.ipWorldUser,
-      password: config.db.ipWorldPassword,
-      databases: ['acore_world', 'acore_characters'],
-    },
-    'ip-boosted-db': {
-      host: config.db.ipBoostedWorldHost,
-      port: config.db.ipBoostedWorldPort,
-      user: config.db.ipBoostedWorldUser,
-      password: config.db.ipBoostedWorldPassword,
-      databases: ['acore_world', 'acore_characters'],
-    },
+    host: config.db.authHost as string,
+    port: config.db.authPort as number,
+    user: config.db.authUser as string,
+    password: config.db.authPassword as string,
+    database: 'acore_auth',
   }
 }
 
 /**
+ * Get all configured realms from runtime config
+ * Reads NUXT_DB_REALM_0_*, NUXT_DB_REALM_1_*, etc.
+ */
+export const getRealms = (): Record<string, RealmConfig> => {
+  const config = useRuntimeConfig()
+  const realms: Record<string, RealmConfig> = {}
+
+  for (let i = 0; i < 10; i++) {
+    const id = config.db[`realm${i}Id` as keyof typeof config.db] as string
+    const name = config.db[`realm${i}Name` as keyof typeof config.db] as string
+
+    // Skip if realm is not defined
+    if (!id || !name) continue
+
+    realms[id] = {
+      id,
+      name,
+      description: config.db[`realm${i}Description` as keyof typeof config.db] as string || '',
+      dbHost: config.db[`realm${i}Host` as keyof typeof config.db] as string || 'localhost',
+      dbPort: config.db[`realm${i}Port` as keyof typeof config.db] as number || 3306,
+      dbUser: config.db[`realm${i}User` as keyof typeof config.db] as string || 'acore',
+      dbPassword: config.db[`realm${i}Password` as keyof typeof config.db] as string || 'acore',
+    }
+  }
+
+  return realms
+}
+
+/**
+ * Get a specific realm configuration
+ */
+export const getRealmConfig = (realmId: string): RealmConfig | undefined => {
+  const realms = getRealms()
+  return realms[realmId]
+}
+
+/**
  * Get database configurations (server-side only)
+ * Returns realms and auth db config
  */
 export const useServerDatabaseConfig = async () => {
   return {
-    databaseConfigs: getDatabaseConfigs(),
+    realms: getRealms(),
+    authDb: getAuthDbConfig(),
+    getRealmConfig,
   }
 }
 

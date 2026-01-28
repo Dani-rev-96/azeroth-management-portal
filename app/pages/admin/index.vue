@@ -85,8 +85,7 @@ async function loadRealms() {
     const data = await $fetch<any>('/api/realms')
     if (data) {
       realmsList.value = Object.entries(data).map(([id, realm]: [string, any]) => ({
-        id,
-        realmId: realm.realmId,
+        id: realm.id,
         name: realm.name,
       }))
     }

@@ -5,7 +5,7 @@
 
 import type { RealmId, WoWCharacter, RealmCharacterData, RealmConfig } from '~/types'
 import { getCharactersByAccountId } from './character'
-import { realms } from '#shared/utils/config'
+import { getRealms } from '#server/utils/config'
 
 /**
  * Find all realms that have characters for the given account
@@ -13,24 +13,24 @@ import { realms } from '#shared/utils/config'
  * @returns Array of realm character data, only including realms with characters
  */
 export async function findRealmsWithCharacters(accountId: number): Promise<RealmCharacterData[]> {
-  const realmList: RealmId[] = ['wotlk', 'wotlk-ip', 'wotlk-ip-boosted']
+  const realmsRecord = getRealms()
   const results: RealmCharacterData[] = []
 
   // Query each realm for characters
   await Promise.all(
-    realmList.map(async (realmId) => {
+    Object.values(realmsRecord).map(async (realm) => {
       try {
-        const characters = await getCharactersByAccountId(accountId, realmId)
-        
+        const characters = await getCharactersByAccountId(accountId, realm.id)
+
         // Only include realms that have characters
         if (characters.length > 0) {
           results.push({
-            realm: realms[realmId],
+            realm,
             characters,
           })
         }
       } catch (error) {
-        console.error(`Failed to query characters for realm ${realmId}:`, error)
+        console.error(`Failed to query characters for realm ${realm.id}:`, error)
         // Continue with other realms
       }
     })

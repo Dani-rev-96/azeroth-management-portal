@@ -1,20 +1,28 @@
 /**
  * Environment-aware configuration loader
- * Automatically loads the correct config based on NODE_ENV
+ * Realms are loaded from NUXT_DB_REALM_* environment variables at runtime
  * PUBLIC - Safe to share with client (only realm metadata, no credentials)
  *
  * Client-side (Components):
  *   const { realms } = await useServerConfig()
  *
  * Server-side (API routes - for database credentials):
- *   import { useServerDatabaseConfig } from '#server/utils/config'
+ *   import { useServerDatabaseConfig, getRealms } from '#server/utils/config'
  */
 
 import type { RealmConfig, RealmId, ShopConfig } from '~/types'
 
+// Public realm info (without credentials) for client-side use
+export type PublicRealmConfig = {
+  id: RealmId
+  name: string
+  description: string
+}
+
 /**
  * Composable for client-side config loading
  * Only returns realm metadata (no sensitive data)
+ * Note: In production, realms are fetched from /api/realms endpoint
  */
 export const useServerConfig = async () => {
   const env = process.env.NODE_ENV || 'development'
@@ -29,7 +37,6 @@ export const useServerConfig = async () => {
 
     return {
       realms: config.realms,
-      authServerConfig: config.authServerConfig,
       shopConfig: config.shopConfig,
     }
   } catch (error) {
@@ -38,7 +45,6 @@ export const useServerConfig = async () => {
     const config = await import('./local')
     return {
       realms: config.realms,
-      authServerConfig: config.authServerConfig,
       shopConfig: config.shopConfig,
     }
   }

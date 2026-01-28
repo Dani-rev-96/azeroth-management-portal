@@ -4,7 +4,7 @@
       <h1>{{ accountName }}</h1>
       <p class="realm-info">
         <span class="realm-icon">🌍</span>
-        {{ realmName }} <span class="separator">•</span> {{ realmVersion }}
+        {{ realmName }}<template v-if="realmVersion"> <span class="separator">•</span> {{ realmVersion }}</template>
       </p>
     </div>
   </div>
@@ -14,7 +14,7 @@
 defineProps<{
   accountName: string
   realmName: string
-  realmVersion: string
+  realmVersion?: string
 }>()
 </script>
 

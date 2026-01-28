@@ -12,19 +12,18 @@ export type KeycloakUser = {
 }
 
 // WoW Server Realm Configuration
-export type RealmId = 'wotlk' | 'wotlk-ip' | 'wotlk-ip-boosted'
+// RealmId is now a dynamic string - realms are configured via environment variables
+export type RealmId = string
 
 export type RealmConfig = {
   id: RealmId
-  realmId: number // Numeric ID from realmlist table
   name: string
   description: string
-  version: string // WOTLK, etc.
-  worldPort: number
-  soapPort: number
-  database: string
-  databaseHost: string
-  databaseKey: string // References the database config key (e.g., 'blizzlike-db', 'ip-db')
+  // Database connection info
+  dbHost: string
+  dbPort: number
+  dbUser: string
+  dbPassword: string
 }
 
 // AzerothCore Account (raw from acore_auth.account table)

@@ -1,85 +1,78 @@
-// Load database credentials and environment config from .json file before config initialization
-// This runs during build and SSR startup
-const fs = require('fs')
+// Load database credentials from environment variables
+// Configure via .env.local (development) or environment variables (production)
 const path = require('path')
-const { execSync } = require('child_process')
 
-interface DbCredentials {
+interface RealmEnvConfig {
+  id: string
+  name: string
+  description: string
   user: string
   password: string
+  host: string
+  port: number
 }
 
-interface CredentialsFile {
-  databases: {
-    'auth-db': DbCredentials & { host?: string; port?: number }
-    'blizzlike-db': DbCredentials & { host?: string; port?: number }
-    'ip-db': DbCredentials & { host?: string; port?: number }
-    'ip-boosted-db': DbCredentials & { host?: string; port?: number }
-  }
-  env?: {
-    // Auth configuration
-    authMode?: 'mock' | 'oauth-proxy' | 'keycloak'
-    mockUser?: string
-    mockEmail?: string
+/**
+ * Load realms from environment variables
+ * Supports NUXT_DB_REALM_0_*, NUXT_DB_REALM_1_*, etc. up to 10 realms
+ */
+function loadRealmsFromEnv(): RealmEnvConfig[] {
+  const realms: RealmEnvConfig[] = []
+  const maxRealms = 10
 
-    // External services
-    keycloakUrl?: string
-    keycloakRealm?: string
-    directusUrl?: string
+  for (let i = 0; i < maxRealms; i++) {
+    const prefix = `NUXT_DB_REALM_${i}_`
+    const id = process.env[`${prefix}ID`]
+    const name = process.env[`${prefix}NAME`]
 
-    // App config
-    appBaseUrl?: string
+    // Skip if realm is not defined
+    if (!id || !name) continue
+
+    realms.push({
+      id,
+      name,
+      description: process.env[`${prefix}DESCRIPTION`] || '',
+      user: process.env[`${prefix}USER`] || 'acore',
+      password: process.env[`${prefix}PASSWORD`] || 'acore',
+      host: process.env[`${prefix}HOST`] || 'localhost',
+      port: parseInt(process.env[`${prefix}PORT`] || '3306', 10),
+    })
   }
+
+  return realms
 }
 
-function loadDbCredentials(): CredentialsFile | null {
-  const env = process.env.NODE_ENV || 'development'
-  const envMap: Record<string, string> = {
-    production: 'production',
-    staging: 'staging',
-    development: 'local',
-  }
+// Load realms from environment
+const realmsFromEnv = loadRealmsFromEnv()
 
-  const envName = envMap[env] || 'local'
-  const plainPath = path.resolve(process.cwd(), `.db.${envName}.json`)
-  const encPath = path.resolve(process.cwd(), `.db.${envName}.enc.json`)
+// Build realm runtime config from environment variables
+function buildRealmRuntimeConfig(): Record<string, any> {
+  const config: Record<string, any> = {}
 
-  // Try plain file first (local development)
-  if (fs.existsSync(plainPath)) {
-    try {
-      const credContent = fs.readFileSync(plainPath, 'utf-8')
-      const credentials: CredentialsFile = JSON.parse(credContent)
-      console.log(`[✓] Loaded credentials from .db.${envName}.json`)
-      return credentials
-    } catch (error) {
-      console.warn(`[WARN] Failed to load .db.${envName}.json:`, error)
+  for (let i = 0; i < 10; i++) {
+    const realm = realmsFromEnv[i]
+    if (realm) {
+      config[`realm${i}Id`] = realm.id
+      config[`realm${i}Name`] = realm.name
+      config[`realm${i}Description`] = realm.description
+      config[`realm${i}User`] = realm.user
+      config[`realm${i}Password`] = realm.password
+      config[`realm${i}Host`] = realm.host
+      config[`realm${i}Port`] = realm.port
+    } else {
+      // Provide empty defaults so Nuxt doesn't complain
+      config[`realm${i}Id`] = ''
+      config[`realm${i}Name`] = ''
+      config[`realm${i}Description`] = ''
+      config[`realm${i}User`] = ''
+      config[`realm${i}Password`] = ''
+      config[`realm${i}Host`] = ''
+      config[`realm${i}Port`] = 0
     }
   }
 
-  // Try encrypted file (staging/production)
-  if (fs.existsSync(encPath)) {
-    try {
-      const decrypted = execSync(`sops -d "${encPath}"`, { encoding: 'utf-8' })
-      const credentials: CredentialsFile = JSON.parse(decrypted)
-      console.log(`[✓] Decrypted credentials from .db.${envName}.enc.json`)
-      return credentials
-    } catch (error) {
-      console.warn(`[WARN] Failed to decrypt .db.${envName}.enc.json`)
-      console.warn(`[HINT] Make sure SOPS and age/KMS are configured:`)
-      console.warn(`  - Local: export SOPS_AGE_KEY_FILE=~/.age/keys.txt`)
-      console.warn(`  - AWS: Set AWS_PROFILE or AWS credentials`)
-      console.warn(`  - Or create .db.${envName}.json (plaintext)`)
-      return null
-    }
-  }
-
-  console.warn(`[WARN] No credentials file found for environment: ${envName}`)
-  console.warn(`[HINT] Expected .db.${envName}.json or .db.${envName}.enc.json`)
-  return null
+  return config
 }
-
-// Load credentials before exporting config
-const credentials = loadDbCredentials()
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
@@ -87,42 +80,35 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   ssr: true,
 
-  // Runtime configuration
-  // Note: Server/database configs are in shared/utils/config/{local,staging,production}.ts
+  // Runtime configuration - all settings via environment variables
+  // See .env.example for available options
   runtimeConfig: {
-	db: {
-	  authUser: credentials?.databases['auth-db']?.user || 'acore',
-	  authPassword: credentials?.databases['auth-db']?.password || 'acore',
-	  authHost: credentials?.databases['auth-db']?.host || 'localhost',
-	  authPort: credentials?.databases['auth-db']?.port || 3306,
-	  blizzlikeWorldUser: credentials?.databases['blizzlike-db']?.user || 'acore',
-	  blizzlikeWorldPassword: credentials?.databases['blizzlike-db']?.password || 'acore',
-	  blizzlikeWorldHost: credentials?.databases['blizzlike-db']?.host || 'localhost',
-	  blizzlikeWorldPort: credentials?.databases['blizzlike-db']?.port || 3306,
-	  ipWorldUser: credentials?.databases['ip-db']?.user || 'acore',
-	  ipWorldPassword: credentials?.databases['ip-db']?.password || 'acore',
-	  ipWorldHost: credentials?.databases['ip-db']?.host || 'localhost',
-	  ipWorldPort: credentials?.databases['ip-db']?.port || 3307,
-	  ipBoostedWorldUser: credentials?.databases['ip-boosted-db']?.user || 'acore',
-	  ipBoostedWorldPassword: credentials?.databases['ip-boosted-db']?.password || 'acore',
-	  ipBoostedWorldHost: credentials?.databases['ip-boosted-db']?.host || 'localhost',
-	  ipBoostedWorldPort: credentials?.databases['ip-boosted-db']?.port || 3308,
-	},
-    // Public - accessible in browser
+    db: {
+      // Auth database (shared across all realms)
+      authUser: process.env.NUXT_DB_AUTH_USER || 'acore',
+      authPassword: process.env.NUXT_DB_AUTH_PASSWORD || 'acore',
+      authHost: process.env.NUXT_DB_AUTH_HOST || 'localhost',
+      authPort: parseInt(process.env.NUXT_DB_AUTH_PORT || '3306', 10),
+
+      // Realm configurations (up to 10 realms)
+      // Format: NUXT_DB_REALM_0_ID, NUXT_DB_REALM_0_NAME, NUXT_DB_REALM_0_USER, etc.
+      ...buildRealmRuntimeConfig(),
+    },
+    // Public - accessible in browser (use NUXT_PUBLIC_* env vars)
     public: {
       // Auth mode: 'mock' (local dev) | 'oauth-proxy' (production) | 'keycloak' (staging)
-      authMode: credentials?.env?.authMode || 'mock',
-      mockUser: credentials?.env?.mockUser || 'admin',
-      mockEmail: credentials?.env?.mockEmail || 'admin@localhost',
-			mockGMLevel: credentials?.env?.mockGMLevel || 3,
+      authMode: process.env.NUXT_PUBLIC_AUTH_MODE || 'mock',
+      mockUser: process.env.NUXT_PUBLIC_MOCK_USER || 'admin',
+      mockEmail: process.env.NUXT_PUBLIC_MOCK_EMAIL || 'admin@localhost',
+      mockGMLevel: parseInt(process.env.NUXT_PUBLIC_MOCK_GM_LEVEL || '3', 10),
 
       // External services
-      keycloakUrl: credentials?.env?.keycloakUrl || 'http://localhost:8080',
-      keycloakRealm: credentials?.env?.keycloakRealm || 'wow',
-      directusUrl: credentials?.env?.directusUrl || 'http://localhost:8055',
+      keycloakUrl: process.env.NUXT_PUBLIC_KEYCLOAK_URL || 'http://localhost:8080',
+      keycloakRealm: process.env.NUXT_PUBLIC_KEYCLOAK_REALM || 'wow',
+      directusUrl: process.env.NUXT_PUBLIC_DIRECTUS_URL || 'http://localhost:8055',
 
       // App config
-      appBaseUrl: credentials?.env?.appBaseUrl || 'http://localhost:3000',
+      appBaseUrl: process.env.NUXT_PUBLIC_APP_BASE_URL || 'http://localhost:3000',
 
       // File paths
       publicPath: process.env.PUBLIC_PATH || path.resolve(process.cwd(), 'data/public'),

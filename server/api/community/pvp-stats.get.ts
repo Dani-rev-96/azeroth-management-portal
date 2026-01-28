@@ -5,14 +5,15 @@
  */
 import { getPvPStats } from '#server/services/community'
 import { handleApiError } from '#server/utils/api-errors'
+import { getRealms } from '#server/utils/config'
 
 export default defineEventHandler(async (event) => {
   try {
     const query = getQuery(event)
     const realmIdFilter = query.realmId as string | undefined
-    const serverConfig = await useServerConfig()
+    const realms = getRealms()
 
-    return await getPvPStats(serverConfig.realms, realmIdFilter)
+    return await getPvPStats(realms, realmIdFilter)
   } catch (error) {
     return handleApiError(error, 'Failed to fetch PvP statistics')
   }

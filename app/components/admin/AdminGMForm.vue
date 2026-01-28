@@ -9,7 +9,7 @@ import UiMessage from '~/components/ui/UiMessage.vue'
  * AdminGMForm - Set GM access level form
  */
 export interface RealmOption {
-  realmId: number
+  id: number
   name: string
 }
 
@@ -90,7 +90,7 @@ watch(() => props.success, (newSuccess) => {
             v-model="form.realmId"
             :options="[
               { value: -1, label: 'All Realms' },
-              ...realms.map(r => ({ value: r.realmId, label: r.name }))
+              ...realms.map(r => ({ value: r.id, label: r.name }))
             ]"
             placeholder=""
           />

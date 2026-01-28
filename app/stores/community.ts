@@ -58,7 +58,7 @@ export type LeaderboardMetric = 'level' | 'playtime' | 'achievements'
 
 export const useCommunityStore = defineStore('community', () => {
   // State - Server Config
-  const realms = ref<Record<string, { name: string }>>({})
+  const realms = ref<Record<string, { name: string, id: string }>>({})
   const realmsLoading = ref(false)
   const realmsError = ref<string | undefined>(undefined)
 
@@ -104,7 +104,7 @@ export const useCommunityStore = defineStore('community', () => {
     realmsError.value = undefined
 
     try {
-      const data = await $fetch<Record<string, { name: string }>>('/api/realms')
+      const data = await $fetch<Record<string, { name: string, id: string }>>('/api/realms')
       realms.value = data || {}
     } catch (error) {
       realmsError.value = 'Failed to fetch realms'
