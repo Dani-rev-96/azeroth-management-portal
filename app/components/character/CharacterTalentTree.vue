@@ -17,7 +17,7 @@
       <div class="tree-grid">
         <!-- Render talent nodes in a grid -->
         <div
-          v-for="tier in 11"
+          v-for="tier in maxTierNeeded"
           :key="`tier-${tier - 1}`"
           class="tier-row"
         >
@@ -199,6 +199,19 @@ const tabs = computed<TalentTab[]>(() => {
 
 const currentTab = computed(() => tabs.value[activeTab.value])
 
+// Calculate the maximum tier needed for the current tab
+const maxTierNeeded = computed(() => {
+  if (!currentTab.value) return 11
+  let maxTier = 0
+  for (const talent of currentTab.value.talents.values()) {
+    if (talent.tier > maxTier) {
+      maxTier = talent.tier
+    }
+  }
+  // Return maxTier + 1 (since tiers are 0-indexed) or at least 7 rows for visual consistency
+  return Math.max(maxTier + 1, 7)
+})
+
 function getTalentAt(tier: number, col: number): TalentTreeNode | null {
   if (!currentTab.value) return null
   const key = `${tier}-${col}`
@@ -334,15 +347,14 @@ function onImageError(event: Event) {
   display: grid;
   gap: 0.25rem;
   margin-bottom: 1rem;
-  max-width: 100%;
+  max-width: 480px;
   overflow-x: auto;
 }
 
 .tier-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(70px, 100px));
   gap: 0.375rem;
-  min-width: 280px;
 }
 
 .talent-cell {
@@ -454,10 +466,10 @@ function onImageError(event: Event) {
 }
 
 .talent-name {
-  font-size: 0.625rem;
+  font-size: 0.5625rem;
   color: #cbd5e1;
-  line-height: 1.2;
-  max-height: 2.4em;
+  line-height: 1.1;
+  max-height: 2.2em;
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -515,8 +527,8 @@ function onImageError(event: Event) {
   }
 
   .tier-row {
+    grid-template-columns: repeat(4, minmax(50px, 70px));
     gap: 0.25rem;
-    min-width: 220px;
   }
 
   .talent-node {
@@ -560,7 +572,7 @@ function onImageError(event: Event) {
   }
 
   .tier-row {
-    min-width: 200px;
+    grid-template-columns: repeat(4, minmax(45px, 60px));
     gap: 0.1875rem;
   }
 
@@ -594,7 +606,7 @@ function onImageError(event: Event) {
   }
 
   .tier-row {
-    min-width: 180px;
+    grid-template-columns: repeat(4, minmax(40px, 55px));
     gap: 0.125rem;
   }
 
@@ -627,7 +639,7 @@ function onImageError(event: Event) {
 /* Ultra-small screens */
 @media (max-width: 360px) {
   .tier-row {
-    min-width: 160px;
+    grid-template-columns: repeat(4, minmax(36px, 50px));
     gap: 0.09375rem;
   }
 
