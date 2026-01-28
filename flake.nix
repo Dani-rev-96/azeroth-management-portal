@@ -54,7 +54,7 @@
             pkgs.vips
           ];
 
-          npmDepsHash = "sha256-j7GWtwbiGG0IwNxbqeoUymWGQ/zPxrfAXyx+eJZSbDE=";
+          npmDepsHash = "sha256-S0oT2lwDFxFHnvxQVSxj2VyhU/GKiRQ1g9f42GkfwiA=";
           # npmDepsHash = "";
 
           npmPackFlags = [ "--ignore-scripts" ];
