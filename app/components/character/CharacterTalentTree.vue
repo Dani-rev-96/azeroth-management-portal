@@ -1,360 +1,454 @@
 <template>
   <div class="talent-tree-viewer">
-    <div class="tabs">
-      <button
-        v-for="tab in tabs"
-        :key="tab.id"
-        class="tab-button"
-        :class="{ active: activeTab === tab.id }"
-        @click="activeTab = tab.id"
-      >
-        {{ tab.name }}
-        <span class="points-badge">{{ tab.pointsSpent }}</span>
-      </button>
+    <!-- Loading state -->
+    <div v-if="treePending" class="loading-state">
+      <span class="loading-spinner">⏳</span>
+      <p>Loading talent tree...</p>
     </div>
 
-    <div v-if="currentTab" class="talent-tree">
-      <div class="tree-grid">
-        <!-- Render talent nodes in a grid -->
-        <div
-          v-for="tier in maxTierNeeded"
-          :key="`tier-${tier - 1}`"
-          class="tier-row"
+    <!-- Error state -->
+    <div v-else-if="treeError" class="error-state">
+      <p>Failed to load talent tree</p>
+    </div>
+
+    <!-- Talent tree content -->
+    <template v-else-if="talentTree">
+      <!-- Spec tabs -->
+      <div class="spec-tabs">
+        <button
+          v-for="(tab, index) in talentTree.tabs"
+          :key="tab.id"
+          class="spec-tab"
+          :class="{ active: activeTabIndex === index }"
+          @click="activeTabIndex = index"
         >
+          <img
+            v-if="tab.iconTexture"
+            :src="getIconUrl(tab.iconTexture)"
+            :alt="tab.name"
+            class="spec-icon"
+            @error="onIconError"
+          />
+          <div class="spec-info">
+            <span class="spec-name">{{ tab.name || getDefaultTabName(index) }}</span>
+            <span class="spec-points">{{ getTabPointsSpent(tab) }} points</span>
+          </div>
+        </button>
+      </div>
+
+      <!-- Talent grid -->
+      <div v-if="currentTab" class="talent-grid-container">
+        <div class="talent-grid">
           <div
-            v-for="col in 4"
-            :key="`col-${col - 1}`"
-            class="talent-cell"
+            v-for="tierIndex in maxTiers"
+            :key="`tier-${tierIndex}`"
+            class="talent-row"
           >
             <div
-              v-if="getTalentAt(tier - 1, col - 1)"
-              class="talent-node"
-              :class="{
-                active: getTalentRank(getTalentAt(tier - 1, col - 1)) > 0,
-                disabled: !canLearnTalent(getTalentAt(tier - 1, col - 1)),
-                maxed: isMaxRank(getTalentAt(tier - 1, col - 1))
-              }"
-              :title="getTalentTooltip(getTalentAt(tier - 1, col - 1))"
+              v-for="colIndex in 4"
+              :key="`col-${colIndex}`"
+              class="talent-cell"
             >
-              <div class="talent-icon-wrapper">
-                <img
-                  :src="getSpellIconUrl(getTalentAt(tier - 1, col - 1))"
-                  :alt="getTalentName(getTalentAt(tier - 1, col - 1))"
-                  class="talent-icon"
-                  @error="onImageError"
-                />
-                <div class="talent-rank-overlay">
-                  {{ getTalentRank(getTalentAt(tier - 1, col - 1)) }}/{{ getMaxRank(getTalentAt(tier - 1, col - 1)) }}
+              <div
+                v-if="getTalentNode(tierIndex - 1, colIndex - 1)"
+                class="talent-node"
+                :class="getTalentNodeClasses(getTalentNode(tierIndex - 1, colIndex - 1)!)"
+                @mouseenter="showTooltip($event, getTalentNode(tierIndex - 1, colIndex - 1)!)"
+                @mouseleave="hideTooltip"
+              >
+                <div class="talent-icon-container">
+                  <img
+                    :src="getIconUrl(getTalentNode(tierIndex - 1, colIndex - 1)!.iconTexture)"
+                    :alt="getTalentName(getTalentNode(tierIndex - 1, colIndex - 1)!)"
+                    class="talent-icon"
+                    @error="onIconError"
+                  />
+                  <div class="talent-rank-badge">
+                    {{ getCurrentRank(getTalentNode(tierIndex - 1, colIndex - 1)!) }}/{{ getTalentNode(tierIndex - 1, colIndex - 1)!.maxRank }}
+                  </div>
                 </div>
               </div>
-              <div class="talent-name">{{ getTalentName(getTalentAt(tier - 1, col - 1)) }}</div>
+              <div v-else class="talent-empty"></div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div class="tree-info">
-        <p>Points spent: <strong>{{ currentTab.pointsSpent }}</strong></p>
-        <p>Required level: {{ Math.floor(currentTab.pointsSpent / 3) * 2 + 10 }}</p>
+        <!-- Tree summary -->
+        <div class="tree-summary">
+          <div class="summary-stat">
+            <span class="summary-label">Points Spent</span>
+            <span class="summary-value">{{ getTabPointsSpent(currentTab) }}</span>
+          </div>
+          <div class="summary-stat">
+            <span class="summary-label">Required Level</span>
+            <span class="summary-value">{{ getRequiredLevel(currentTab) }}</span>
+          </div>
+        </div>
       </div>
-    </div>
+    </template>
+
+    <!-- Tooltip -->
+    <Teleport to="body">
+      <div
+        v-if="tooltipVisible && tooltipTalent"
+        class="talent-tooltip"
+        :style="tooltipStyle"
+      >
+        <div class="tooltip-header">
+          <h4 class="tooltip-name">{{ getTalentName(tooltipTalent) }}</h4>
+          <span class="tooltip-rank">
+            Rank {{ getCurrentRank(tooltipTalent) }}/{{ tooltipTalent.maxRank }}
+          </span>
+        </div>
+        <div class="tooltip-tier">
+          Tier {{ tooltipTalent.tier + 1 }} Talent
+        </div>
+        <div v-if="getCurrentRankInfo(tooltipTalent)" class="tooltip-description">
+          {{ formatDescription(getCurrentRankInfo(tooltipTalent)!.description) }}
+        </div>
+        <div v-if="getNextRankInfo(tooltipTalent)" class="tooltip-next-rank">
+          <div class="next-rank-header">Next Rank:</div>
+          <div class="next-rank-description">
+            {{ formatDescription(getNextRankInfo(tooltipTalent)!.description) }}
+          </div>
+        </div>
+        <div v-if="tooltipTalent.prereqTalent" class="tooltip-prereq">
+          Requires {{ tooltipTalent.prereqRank }} points in {{ getPrereqTalentName(tooltipTalent) }}
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-
-interface TalentData {
-  guid: number
-  spell: number
-  specMask: number
-  spellName?: string
-  spellRank?: string
-  talentId?: number
-  tabId?: number
-  tier?: number
-  column?: number
-  currentRank: number
-  maxRank: number
-  spellIconTexture?: string
-}
-
-interface TalentTreeNode {
-  talentId: number
-  tier: number
-  column: number
-  spell: number
-  spellName: string
-  spellIconTexture: string
-  rank: number
-  maxRank: number
-}
-
-interface TalentTab {
-  id: number
-  name: string
-  pointsSpent: number
-  talents: Map<string, TalentTreeNode>
-}
+import type { TalentTreeResponse, TalentTreeTab, TalentTreeNode, TalentRankInfo, CharacterTalent } from '~/types'
 
 const props = defineProps<{
-  talents: TalentData[]
+  talents: CharacterTalent[]
   characterClass: number
   activeSpec: number
 }>()
 
-const activeTab = ref(0)
+// Fetch complete talent tree for the class
+const { data: talentTree, pending: treePending, error: treeError } = await useFetch<TalentTreeResponse>(
+  () => `/api/characters/talent-tree/${props.characterClass}`,
+  { key: `talent-tree-${props.characterClass}` }
+)
 
-// Map class to tab names (WoW 3.3.5a talent trees)
-const classTabNames: Record<number, string[]> = {
-  1: ['Arms', 'Fury', 'Protection'], // Warrior
-  2: ['Holy', 'Protection', 'Retribution'], // Paladin
-  3: ['Beast Mastery', 'Marksmanship', 'Survival'], // Hunter
-  4: ['Assassination', 'Combat', 'Subtlety'], // Rogue
-  5: ['Discipline', 'Holy', 'Shadow'], // Priest
-  6: ['Blood', 'Frost', 'Unholy'], // Death Knight
-  7: ['Elemental', 'Enhancement', 'Restoration'], // Shaman
-  8: ['Arcane', 'Fire', 'Frost'], // Mage
-  9: ['Affliction', 'Demonology', 'Destruction'], // Warlock
-  11: ['Balance', 'Feral Combat', 'Restoration'] // Druid
-}
+// Active tab state
+const activeTabIndex = ref(0)
 
-// Build talent tabs from character talent data
-const tabs = computed<TalentTab[]>(() => {
-  const tabNames = classTabNames[props.characterClass] || ['Spec 1', 'Spec 2', 'Spec 3']
-  const tabData: TalentTab[] = tabNames.map((name, idx) => ({
-    id: idx,
-    name,
-    pointsSpent: 0,
-    talents: new Map()
-  }))
-
-  // Class mask to tab ID mapping
-  // ClassMask: 1=Warrior, 2=Paladin, 4=Hunter, 8=Rogue, 16=Priest, 32=DK, 64=Shaman, 128=Mage, 256=Warlock, 1024=Druid
-  const classTabIds: Record<number, number[]> = {
-    1: [161, 164, 163],     // Warrior: Arms, Fury, Protection
-    2: [382, 383, 381],     // Paladin: Holy, Protection, Retribution
-    3: [361, 363, 362],     // Hunter: Beast Mastery, Marksmanship, Survival
-    4: [182, 181, 183],     // Rogue: Assassination, Combat, Subtlety
-    5: [201, 202, 203],     // Priest: Discipline, Holy, Shadow
-    6: [398, 399, 400],     // Death Knight: Blood, Frost, Unholy
-    7: [261, 263, 262],     // Shaman: Elemental, Enhancement, Restoration
-    8: [81, 41, 61],        // Mage: Arcane, Fire, Frost
-    9: [302, 303, 301],     // Warlock: Affliction, Demonology, Destruction
-    11: [283, 281, 282]     // Druid: Balance, Feral Combat, Restoration
-  }
-
-  const classTabs = classTabIds[props.characterClass] || []
-
-  // Group talents by tab
-  for (const talent of props.talents) {
-    if (!talent.tabId || talent.tier === undefined || talent.column === undefined) {
-      console.log('[TalentTree] Skipping talent - missing data:', {
-        spell: talent.spell,
-        tabId: talent.tabId,
-        tier: talent.tier,
-        column: talent.column
-      })
-      continue
-    }
-
-    // Map actual DBC tab ID to our 0-2 index based on class
-    const tabIdx = classTabs.indexOf(talent.tabId)
-
-    if (tabIdx < 0 || tabIdx >= tabData.length) {
-      console.log('[TalentTree] Unknown tab ID for class:', {
-        classId: props.characterClass,
-        tabId: talent.tabId,
-        expectedTabs: classTabs
-      })
-      continue
-    }
-
-    const tab = tabData[tabIdx]
-    if (!tab) continue
-
-    const key = `${talent.tier}-${talent.column}`
-    const existing = tab.talents.get(key)
-
-    // Always use the highest rank spell for each talent position
-    if (!existing || talent.currentRank > existing.rank) {
-      tab.talents.set(key, {
-        talentId: talent.talentId!,
-        tier: talent.tier,
-        column: talent.column,
-        spell: talent.spell,
-        spellName: talent.spellName || `Spell ${talent.spell}`,
-        spellIconTexture: talent.spellIconTexture || '',
-        rank: talent.currentRank,
-        maxRank: talent.maxRank
-      })
-    }
-
-    // Recalculate points spent
-    tab.pointsSpent = Array.from(tab.talents.values()).reduce((sum, t) => sum + t.rank, 0)
-  }
-
-  return tabData
+// Get the current tab
+const currentTab = computed(() => {
+  if (!talentTree.value?.tabs) return null
+  return talentTree.value.tabs[activeTabIndex.value]
 })
 
-const currentTab = computed(() => tabs.value[activeTab.value])
-
-// Calculate the maximum tier needed for the current tab
-const maxTierNeeded = computed(() => {
-  if (!currentTab.value) return 11
+// Calculate max tiers for the grid
+const maxTiers = computed(() => {
+  if (!currentTab.value) return 7
   let maxTier = 0
-  for (const talent of currentTab.value.talents.values()) {
-    if (talent.tier > maxTier) {
-      maxTier = talent.tier
-    }
+  for (const talent of currentTab.value.talents) {
+    if (talent.tier > maxTier) maxTier = talent.tier
   }
-  // Return maxTier + 1 (since tiers are 0-indexed) or at least 7 rows for visual consistency
   return Math.max(maxTier + 1, 7)
 })
 
-function getTalentAt(tier: number, col: number): TalentTreeNode | null {
+// Create a map of character's learned talents for quick lookup
+const learnedTalents = computed(() => {
+  const map = new Map<number, number>() // talentId -> currentRank
+  for (const talent of props.talents) {
+    if (talent.talentId !== undefined) {
+      map.set(talent.talentId, talent.currentRank)
+    }
+  }
+  return map
+})
+
+// Get talent at specific position
+function getTalentNode(tier: number, col: number): TalentTreeNode | null {
   if (!currentTab.value) return null
-  const key = `${tier}-${col}`
-  return currentTab.value.talents.get(key) || null
+  return currentTab.value.talents.find(t => t.tier === tier && t.column === col) || null
 }
 
-function getTalentRank(talent: TalentTreeNode | null): number {
-  return talent?.rank || 0
+// Get current rank of a talent (0 if not learned)
+function getCurrentRank(talent: TalentTreeNode): number {
+  return learnedTalents.value.get(talent.talentId) || 0
 }
 
-function getMaxRank(talent: TalentTreeNode | null): number {
-  return talent?.maxRank || 5
+// Get talent name (from first rank spell)
+function getTalentName(talent: TalentTreeNode): string {
+  if (!talent.ranks || talent.ranks.length === 0) return 'Unknown'
+  const firstRank = talent.ranks[0]
+  if (!firstRank) return 'Unknown'
+  return firstRank.spellName.replace(/\s*Rank \d+\s*$/, '')
 }
 
-function isMaxRank(talent: TalentTreeNode | null): boolean {
-  if (!talent) return false
-  return talent.rank >= talent.maxRank
+// Get current rank info
+function getCurrentRankInfo(talent: TalentTreeNode): TalentRankInfo | null {
+  const rank = getCurrentRank(talent)
+  if (rank === 0) {
+    // Show first rank for unlearned talents
+    return talent.ranks[0] || null
+  }
+  return talent.ranks[rank - 1] || null
 }
 
-function getTalentName(talent: TalentTreeNode | null): string {
-  if (!talent) return ''
-  // Remove "Rank X" from name
-  return talent.spellName.replace(/\s*Rank \d+\s*$/, '')
+// Get next rank info
+function getNextRankInfo(talent: TalentTreeNode): TalentRankInfo | null {
+  const rank = getCurrentRank(talent)
+  if (rank >= talent.maxRank) return null
+  return talent.ranks[rank] || null
 }
 
-function getTalentTooltip(talent: TalentTreeNode | null): string {
-  if (!talent) return ''
-  return `${talent.spellName}\nRank ${talent.rank}/${talent.maxRank}`
+// Format description (basic cleanup)
+function formatDescription(desc: string): string {
+  if (!desc) return ''
+  // Remove $1, $2 type placeholders and simplify
+  return desc
+    .replace(/\$\d+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
-function canLearnTalent(talent: TalentTreeNode | null): boolean {
-  if (!talent) return false
-  // Simplified: In real WoW, you need enough points in tree + prerequisites
-  return true
+// Get CSS classes for talent node
+function getTalentNodeClasses(talent: TalentTreeNode) {
+  const rank = getCurrentRank(talent)
+  return {
+    learned: rank > 0,
+    maxed: rank >= talent.maxRank,
+    unlearned: rank === 0
+  }
 }
 
-function getSpellIconUrl(talent: TalentTreeNode | null): string {
-  if (!talent?.spellIconTexture) return 'https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg'
+// Get default tab name if DBC name is empty
+function getDefaultTabName(index: number): string {
+  const classTabNames: Record<number, string[]> = {
+    1: ['Arms', 'Fury', 'Protection'],
+    2: ['Holy', 'Protection', 'Retribution'],
+    3: ['Beast Mastery', 'Marksmanship', 'Survival'],
+    4: ['Assassination', 'Combat', 'Subtlety'],
+    5: ['Discipline', 'Holy', 'Shadow'],
+    6: ['Blood', 'Frost', 'Unholy'],
+    7: ['Elemental', 'Enhancement', 'Restoration'],
+    8: ['Arcane', 'Fire', 'Frost'],
+    9: ['Affliction', 'Demonology', 'Destruction'],
+    11: ['Balance', 'Feral Combat', 'Restoration']
+  }
+  return classTabNames[props.characterClass]?.[index] || `Spec ${index + 1}`
+}
 
-  // Extract just the icon filename from the path
-  // Format: "Interface\\Icons\\Ability_BackStab" -> "ability_backstab"
-  const parts = talent.spellIconTexture.split('\\')
+// Calculate points spent in a tab
+function getTabPointsSpent(tab: TalentTreeTab): number {
+  let points = 0
+  for (const talent of tab.talents) {
+    points += getCurrentRank(talent)
+  }
+  return points
+}
+
+// Calculate required level for spent points
+function getRequiredLevel(tab: TalentTreeTab): number {
+  const points = getTabPointsSpent(tab)
+  if (points === 0) return 10
+  return Math.floor(points / 5) * 2 + 10
+}
+
+// Get icon URL from texture path
+function getIconUrl(texture: string): string {
+  if (!texture) return 'https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg'
+
+  // Extract just the icon filename from path like "Interface\\Icons\\Ability_BackStab"
+  const parts = texture.split('\\')
   const filename = parts[parts.length - 1]
   if (!filename) return 'https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg'
 
   return `https://wow.zamimg.com/images/wow/icons/large/${filename.toLowerCase()}.jpg`
 }
 
-function onImageError(event: Event) {
+function onIconError(event: Event) {
   const img = event.target as HTMLImageElement
   img.src = 'https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg'
+}
+
+// Get prerequisite talent name
+function getPrereqTalentName(talent: TalentTreeNode): string {
+  if (!talent.prereqTalent || !currentTab.value) return 'Unknown'
+  const prereq = currentTab.value.talents.find(t => t.talentId === talent.prereqTalent)
+  if (prereq) return getTalentName(prereq)
+  return 'Unknown'
+}
+
+// Tooltip state
+const tooltipVisible = ref(false)
+const tooltipTalent = ref<TalentTreeNode | null>(null)
+const tooltipStyle = ref<Record<string, string>>({})
+
+function showTooltip(event: MouseEvent, talent: TalentTreeNode) {
+  tooltipTalent.value = talent
+  tooltipVisible.value = true
+
+  // Position tooltip
+  const rect = (event.target as HTMLElement).getBoundingClientRect()
+  const tooltipWidth = 320
+  const tooltipHeight = 300
+
+  let left = rect.right + 12
+  let top = rect.top
+
+  // Flip to left if not enough space on right
+  if (left + tooltipWidth > window.innerWidth) {
+    left = rect.left - tooltipWidth - 12
+  }
+
+  // Adjust if too low
+  if (top + tooltipHeight > window.innerHeight) {
+    top = window.innerHeight - tooltipHeight - 12
+  }
+
+  // Ensure not off screen top
+  if (top < 12) top = 12
+
+  tooltipStyle.value = {
+    left: `${left}px`,
+    top: `${top}px`
+  }
+}
+
+function hideTooltip() {
+  tooltipVisible.value = false
+  tooltipTalent.value = null
 }
 </script>
 
 <style scoped>
 .talent-tree-viewer {
-  background: #1a1d2e;
-  border-radius: 0.5rem;
-  padding: 1rem;
-  color: #e5e7eb;
-  width: 100%;
+  background: var(--bg-secondary, #1e293b);
+  border: 1px solid var(--border-primary, #334155);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  color: var(--text-primary, #e2e8f0);
 }
 
-.tabs {
+/* Loading & Error States */
+.loading-state,
+.error-state {
   display: flex;
-  gap: 0.5rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.loading-spinner {
+  font-size: 2rem;
   margin-bottom: 1rem;
-  border-bottom: 2px solid #374151;
-  padding-bottom: 0.5rem;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Spec Tabs */
+.spec-tabs {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border-primary, #334155);
+  padding-bottom: 1rem;
   overflow-x: auto;
   scrollbar-width: thin;
-  scrollbar-color: #3b82f6 #1e293b;
+  scrollbar-color: var(--blue-primary, #3b82f6) var(--bg-primary, #0f172a);
+	flex-wrap: wrap;
 }
 
-.tabs::-webkit-scrollbar {
+.spec-tabs::-webkit-scrollbar {
   height: 6px;
 }
 
-.tabs::-webkit-scrollbar-track {
-  background: #1e293b;
+.spec-tabs::-webkit-scrollbar-track {
+  background: var(--bg-primary, #0f172a);
   border-radius: 3px;
 }
 
-.tabs::-webkit-scrollbar-thumb {
-  background: #3b82f6;
+.spec-tabs::-webkit-scrollbar-thumb {
+  background: var(--blue-primary, #3b82f6);
   border-radius: 3px;
 }
 
-.tab-button {
-  padding: 0.5rem 1rem;
-  background: transparent;
-  border: none;
-  color: #9ca3af;
-  cursor: pointer;
-  font-size: 0.875rem;
-  font-weight: 600;
-  position: relative;
-  transition: all 0.2s;
+.spec-tab {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  white-space: nowrap;
+  gap: 0.75rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--bg-primary, #0f172a);
+  border: 1px solid var(--border-primary, #334155);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
   flex-shrink: 0;
 }
 
-.tab-button:hover {
-  color: #60a5fa;
-  background: rgba(96, 165, 250, 0.1);
-  border-radius: 0.25rem;
+.spec-tab:hover {
+  border-color: var(--border-secondary, #475569);
+  background: rgba(59, 130, 246, 0.05);
 }
 
-.tab-button.active {
-  color: #fff;
-  border-bottom: 3px solid #60a5fa;
+.spec-tab.active {
+  border-color: var(--blue-primary, #3b82f6);
+  background: rgba(59, 130, 246, 0.1);
 }
 
-.points-badge {
-  background: #3b82f6;
-  color: white;
-  border-radius: 9999px;
-  padding: 0.125rem 0.375rem;
-  font-size: 0.625rem;
-  font-weight: 700;
-  min-width: 1.25rem;
-  text-align: center;
+.spec-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 0.375rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.talent-tree {
-  margin-top: 0.5rem;
+.spec-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
-.tree-grid {
+.spec-name {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--text-primary, #e2e8f0);
+}
+
+.spec-tab.active .spec-name {
+  color: var(--blue-light, #60a5fa);
+}
+
+.spec-points {
+  font-size: 0.8125rem;
+  color: var(--text-secondary, #94a3b8);
+  font-weight: 500;
+}
+
+/* Talent Grid Container */
+.talent-grid-container {
+  background: var(--bg-primary, #0f172a);
+  border: 1px solid var(--border-primary, #334155);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.talent-grid {
   display: grid;
-  gap: 0.25rem;
-  margin-bottom: 1rem;
-  max-width: 480px;
-  overflow-x: auto;
+  gap: 0.5rem;
 }
 
-.tier-row {
+.talent-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(70px, 100px));
-  gap: 0.375rem;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
 }
 
 .talent-cell {
@@ -362,72 +456,59 @@ function onImageError(event: Event) {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 0;
 }
 
+.talent-empty {
+  width: 100%;
+  height: 100%;
+}
+
+/* Talent Node */
 .talent-node {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.9));
-  border: 2px solid #475569;
-  border-radius: 0.5rem;
-  padding: 0.25rem;
+  max-width: 64px;
+  max-height: 64px;
+  position: relative;
   cursor: pointer;
   transition: all 0.2s;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  position: relative;
+  border-radius: 0.5rem;
+  border: 2px solid var(--border-primary, #334155);
+  background: var(--bg-secondary, #1e293b);
   overflow: hidden;
-}
-
-.talent-node::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0), rgba(59, 130, 246, 0.1));
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.talent-node:hover::before {
-  opacity: 1;
 }
 
 .talent-node:hover {
-  border-color: #60a5fa;
-  transform: scale(1.05);
+  transform: scale(1.1);
   z-index: 10;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
-.talent-node.active {
-  border-color: #10b981;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.1));
-}
-
-.talent-node.maxed {
-  border-color: #fbbf24;
-  background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(245, 158, 11, 0.1));
-  box-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
-}
-
-.talent-node.disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+.talent-node.unlearned {
+  opacity: 0.5;
   filter: grayscale(60%);
 }
 
-.talent-icon-wrapper {
+.talent-node.unlearned:hover {
+  opacity: 0.8;
+  filter: grayscale(30%);
+}
+
+.talent-node.learned {
+  border-color: var(--success, #22c55e);
+  opacity: 1;
+  filter: none;
+}
+
+.talent-node.maxed {
+  border-color: var(--orange-primary, #f59e0b);
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
+}
+
+.talent-icon-container {
   position: relative;
   width: 100%;
-  aspect-ratio: 1;
-  border-radius: 0.375rem;
-  overflow: hidden;
-  margin-bottom: 0.25rem;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+  height: 100%;
 }
 
 .talent-icon {
@@ -439,244 +520,272 @@ function onImageError(event: Event) {
 }
 
 .talent-node:hover .talent-icon {
-  transform: scale(1.1);
+  transform: scale(1.05);
 }
 
-.talent-node.disabled .talent-icon {
-  filter: grayscale(100%) brightness(0.6);
-}
-
-.talent-rank-overlay {
+.talent-rank-badge {
   position: absolute;
   bottom: 2px;
   right: 2px;
-  background: rgba(0, 0, 0, 0.8);
-  color: #10b981;
-  font-size: 0.625rem;
+  background: rgba(0, 0, 0, 0.85);
+  color: var(--success, #22c55e);
+  font-size: 0.6875rem;
   font-weight: 700;
-  padding: 0.125rem 0.25rem;
+  padding: 0.125rem 0.3rem;
   border-radius: 0.25rem;
   line-height: 1;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  border: 1px solid rgba(34, 197, 94, 0.3);
 }
 
-.talent-node.maxed .talent-rank-overlay {
-  color: #fbbf24;
-  border-color: rgba(251, 191, 36, 0.3);
+.talent-node.maxed .talent-rank-badge {
+  color: var(--orange-primary, #f59e0b);
+  border-color: rgba(245, 158, 11, 0.3);
 }
 
-.talent-name {
-  font-size: 0.5625rem;
-  color: #cbd5e1;
-  line-height: 1.1;
-  max-height: 2.2em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-  font-weight: 500;
+.talent-node.unlearned .talent-rank-badge {
+  color: var(--text-muted, #64748b);
+  border-color: rgba(100, 116, 139, 0.3);
 }
 
-.talent-node.active .talent-name {
-  color: #f0fdf4;
+/* Tree Summary */
+.tree-summary {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-primary, #334155);
+}
+
+.summary-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.summary-label {
+  font-size: 0.8125rem;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.summary-value {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--blue-light, #60a5fa);
+}
+
+/* Tooltip */
+.talent-tooltip {
+  position: fixed;
+  z-index: 9999;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  background: var(--bg-secondary, #1e293b);
+  border: 2px solid var(--border-secondary, #475569);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.tooltip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-primary, #334155);
+}
+
+.tooltip-name {
+  margin: 0;
+  font-size: 1rem;
   font-weight: 600;
+  color: var(--text-primary, #e2e8f0);
 }
 
-.tree-info {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(37, 99, 235, 0.1));
-  border: 1px solid rgba(59, 130, 246, 0.3);
+.tooltip-rank {
+  font-size: 0.8125rem;
+  color: var(--success, #22c55e);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tooltip-tier {
+  font-size: 0.8125rem;
+  color: var(--text-muted, #64748b);
+  margin-bottom: 0.75rem;
+}
+
+.tooltip-description {
+  font-size: 0.875rem;
+  color: var(--orange-light, #fbbf24);
+  line-height: 1.5;
+  margin-bottom: 0.75rem;
+}
+
+.tooltip-next-rank {
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
   border-radius: 0.375rem;
   padding: 0.75rem;
-  margin-top: 1rem;
-  font-size: 0.875rem;
+  margin-bottom: 0.75rem;
 }
 
-.tree-info p {
-  margin: 0.25rem 0;
-  color: #e5e7eb;
+.next-rank-header {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--blue-light, #60a5fa);
+  margin-bottom: 0.375rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-.tree-info strong {
-  color: #60a5fa;
-  font-weight: 700;
+.next-rank-description {
+  font-size: 0.8125rem;
+  color: var(--text-secondary, #94a3b8);
+  line-height: 1.5;
+}
+
+.tooltip-prereq {
+  font-size: 0.8125rem;
+  color: var(--error, #ef4444);
+  font-style: italic;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-primary, #334155);
 }
 
 /* Mobile Responsiveness */
 @media (max-width: 768px) {
   .talent-tree-viewer {
-    padding: 0.5rem;
+    padding: 1rem;
   }
 
-  .tabs {
-    gap: 0.25rem;
-    margin-bottom: 0.5rem;
-    padding-bottom: 0.25rem;
+  .spec-tabs {
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
   }
 
-  .tab-button {
-    padding: 0.375rem 0.625rem;
-    font-size: 0.6875rem;
+  .spec-tab {
+    padding: 0.5rem 0.75rem;
   }
 
-  .points-badge {
-    font-size: 0.5625rem;
-    padding: 0.0625rem 0.25rem;
-    min-width: 1rem;
+  .spec-icon {
+    width: 28px;
+    height: 28px;
   }
 
-  .tier-row {
-    grid-template-columns: repeat(4, minmax(50px, 70px));
-    gap: 0.25rem;
+  .spec-name {
+    font-size: 0.8125rem;
+  }
+
+  .spec-points {
+    font-size: 0.75rem;
+  }
+
+  .talent-grid-container {
+    padding: 0.75rem;
+  }
+
+  .talent-row {
+    gap: 0.375rem;
   }
 
   .talent-node {
-    padding: 0.125rem;
-    border-width: 1.5px;
+    max-width: 56px;
+    max-height: 56px;
   }
 
-  .talent-rank-overlay {
-    font-size: 0.5rem;
-    padding: 0.0625rem 0.125rem;
-    bottom: 1px;
-    right: 1px;
-  }
-
-  .talent-name {
-    font-size: 0.5rem;
-    line-height: 1.1;
-  }
-
-  .tree-info {
-    padding: 0.5rem;
-    font-size: 0.75rem;
-    margin-top: 0.75rem;
-  }
-}
-
-@media (max-width: 640px) {
-  .talent-tree-viewer {
-    padding: 0.375rem;
-  }
-
-  .tab-button {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.625rem;
-    gap: 0.25rem;
-  }
-
-  .points-badge {
-    font-size: 0.5rem;
+  .talent-rank-badge {
+    font-size: 0.5625rem;
     padding: 0.0625rem 0.1875rem;
   }
 
-  .tier-row {
-    grid-template-columns: repeat(4, minmax(45px, 60px));
-    gap: 0.1875rem;
+  .tree-summary {
+    gap: 1rem;
   }
 
-  .talent-icon-wrapper {
-    margin-bottom: 0.0625rem;
+  .summary-label {
+    font-size: 0.75rem;
   }
 
-  .talent-name {
-    font-size: 0.4375rem;
-  }
-
-  .tree-info {
-    padding: 0.375rem;
-    font-size: 0.6875rem;
+  .summary-value {
+    font-size: 1rem;
   }
 }
 
 @media (max-width: 480px) {
   .talent-tree-viewer {
-    padding: 0.25rem;
+    padding: 0.75rem;
   }
 
-  .tabs {
-    padding-bottom: 0.1875rem;
-    margin-bottom: 0.375rem;
+  .spec-tab {
+    padding: 0.375rem 0.5rem;
+    gap: 0.5rem;
   }
 
-  .tab-button {
-    padding: 0.1875rem 0.375rem;
-    font-size: 0.5625rem;
+  .spec-icon {
+    width: 24px;
+    height: 24px;
   }
 
-  .tier-row {
-    grid-template-columns: repeat(4, minmax(40px, 55px));
-    gap: 0.125rem;
+  .spec-name {
+    font-size: 0.75rem;
   }
 
-  .talent-node {
-    padding: 0.0625rem;
-    border-radius: 0.375rem;
+  .spec-points {
+    font-size: 0.6875rem;
   }
 
-  .talent-rank-overlay {
-    font-size: 0.4375rem;
-    padding: 0.03125rem 0.09375rem;
+  .talent-grid-container {
+    padding: 0.5rem;
   }
 
-  .talent-name {
-    font-size: 0.375rem;
-    max-height: 1.8em;
-  }
-
-  .tree-info {
-    margin-top: 0.5rem;
-    padding: 0.25rem;
-    font-size: 0.625rem;
-  }
-
-  .tree-info p {
-    margin: 0.1875rem 0;
-  }
-}
-
-/* Ultra-small screens */
-@media (max-width: 360px) {
-  .tier-row {
-    grid-template-columns: repeat(4, minmax(36px, 50px));
-    gap: 0.09375rem;
+  .talent-row {
+    gap: 0.25rem;
   }
 
   .talent-node {
-    border-width: 1px;
+    max-width: 48px;
+    max-height: 48px;
+    border-width: 1.5px;
   }
 
-  .talent-name {
-    display: none; /* Hide names on very small screens */
+  .talent-rank-badge {
+    font-size: 0.5rem;
+    padding: 0.03125rem 0.125rem;
+    bottom: 1px;
+    right: 1px;
   }
 
-  .talent-rank-overlay {
-    font-size: 0.375rem;
+  .tree-summary {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .summary-stat {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+
+  .talent-tooltip {
+    width: 280px;
+    padding: 0.75rem;
+  }
+
+  .tooltip-name {
+    font-size: 0.9375rem;
+  }
+
+  .tooltip-description,
+  .next-rank-description {
+    font-size: 0.8125rem;
   }
 }
 
-/* Smooth scrolling for tree grid on mobile */
-@media (max-width: 640px) {
-  .tree-grid {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-    scrollbar-color: #3b82f6 #1e293b;
-  }
-
-  .tree-grid::-webkit-scrollbar {
-    height: 6px;
-  }
-
-  .tree-grid::-webkit-scrollbar-track {
-    background: #1e293b;
-    border-radius: 3px;
-  }
-
-  .tree-grid::-webkit-scrollbar-thumb {
-    background: #3b82f6;
-    border-radius: 3px;
+/* Touch devices - show tooltip on tap */
+@media (hover: none) {
+  .talent-node {
+    -webkit-tap-highlight-color: transparent;
   }
 }
 </style>

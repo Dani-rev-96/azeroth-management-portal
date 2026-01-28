@@ -181,6 +181,41 @@ export type CharacterTalent = {
   maxRank: number
 }
 
+// Complete talent tree types
+export type TalentRankInfo = {
+  rank: number
+  spellId: number
+  spellName: string
+  description: string
+  tooltip: string
+}
+
+export type TalentTreeNode = {
+  talentId: number
+  tabId: number
+  tier: number
+  column: number
+  ranks: TalentRankInfo[]
+  maxRank: number
+  iconTexture: string
+  prereqTalent: number | null
+  prereqRank: number | null
+}
+
+export type TalentTreeTab = {
+  id: number
+  name: string
+  orderIndex: number
+  backgroundFile: string
+  iconTexture: string
+  talents: TalentTreeNode[]
+}
+
+export type TalentTreeResponse = {
+  classId: number
+  tabs: TalentTreeTab[]
+}
+
 export type CharacterStats = {
   guid: number
   maxhealth: number
