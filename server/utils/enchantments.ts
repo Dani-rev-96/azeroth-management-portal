@@ -2,8 +2,71 @@ import {
   getSpellItemEnchantmentBatch,
   getItemRandomSuffix,
   getItemRandomProperties,
+  getSpellBatch,
   type SpellItemEnchantment
 } from './dbc-db'
+
+/**
+ * Suffix factor lookup table based on item level
+ * This approximates the values from RandPropPoints.dbc
+ * The actual values vary by slot type, but this provides reasonable estimates
+ * Values are for "Good" (green) quality items with standard slots
+ */
+const SUFFIX_FACTOR_BY_LEVEL: Record<number, number> = {
+  // Levels 1-10
+  1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 8: 2, 9: 2, 10: 2,
+  // Levels 11-20
+  11: 2, 12: 2, 13: 2, 14: 3, 15: 3, 16: 3, 17: 3, 18: 3, 19: 3, 20: 4,
+  // Levels 21-30
+  21: 4, 22: 4, 23: 4, 24: 5, 25: 5, 26: 5, 27: 6, 28: 6, 29: 6, 30: 7,
+  // Levels 31-40
+  31: 7, 32: 7, 33: 8, 34: 8, 35: 9, 36: 9, 37: 10, 38: 10, 39: 11, 40: 11,
+  // Levels 41-50
+  41: 12, 42: 12, 43: 13, 44: 14, 45: 14, 46: 15, 47: 16, 48: 16, 49: 17, 50: 18,
+  // Levels 51-60
+  51: 19, 52: 20, 53: 21, 54: 22, 55: 23, 56: 24, 57: 25, 58: 26, 59: 27, 60: 28,
+  // Levels 61-70 (TBC)
+  61: 30, 62: 32, 63: 34, 64: 36, 65: 38, 66: 40, 67: 42, 68: 44, 69: 47, 70: 50,
+  // Levels 71-80 (WotLK)
+  71: 53, 72: 56, 73: 59, 74: 62, 75: 66, 76: 70, 77: 74, 78: 78, 79: 82, 80: 86,
+  // Higher levels (scaled estimate)
+  81: 90, 82: 95, 83: 100, 84: 105, 85: 110, 86: 116, 87: 122, 88: 128, 89: 135, 90: 142,
+}
+
+/**
+ * Get the suffix factor for calculating random suffix stat values
+ * Formula: stat_value = floor(suffixFactor * allocationPct / 10000)
+ */
+export function getSuffixFactor(itemLevel: number): number {
+  // Direct lookup if available
+  if (SUFFIX_FACTOR_BY_LEVEL[itemLevel]) {
+    return SUFFIX_FACTOR_BY_LEVEL[itemLevel]
+  }
+
+  // For levels beyond our table, extrapolate
+  if (itemLevel > 90) {
+    // Roughly 5-6% increase per level at high levels
+    return Math.floor(142 * Math.pow(1.055, itemLevel - 90))
+  }
+
+  // For any missing levels, interpolate
+  const levels = Object.keys(SUFFIX_FACTOR_BY_LEVEL).map(Number).sort((a, b) => a - b)
+  let lower = 1, upper = 90
+  for (const lvl of levels) {
+    if (lvl <= itemLevel) lower = lvl
+    if (lvl >= itemLevel) { upper = lvl; break }
+  }
+
+  if (lower === upper) {
+    return SUFFIX_FACTOR_BY_LEVEL[lower] || 1
+  }
+
+  // Linear interpolation
+  const lowerVal = SUFFIX_FACTOR_BY_LEVEL[lower] || 1
+  const upperVal = SUFFIX_FACTOR_BY_LEVEL[upper] || 1
+  const ratio = (itemLevel - lower) / (upper - lower)
+  return Math.floor(lowerVal + (upperVal - lowerVal) * ratio)
+}
 
 /**
  * Enchantment slot types
@@ -277,6 +340,8 @@ export async function getEnchantmentInfo(parsedEnchants: ParsedEnchantment[]): P
 
 /**
  * Get enchantments from random properties/suffix
+ * @param randomPropertyId - Positive for ItemRandomProperties, negative for ItemRandomSuffix
+ * @param itemLevel - The item level, used to look up suffix factor for random suffix items
  */
 export async function getRandomEnchantments(
   randomPropertyId: number,
@@ -287,7 +352,8 @@ export async function getRandomEnchantments(
   const result: EnchantmentInfo[] = []
 
   if (randomPropertyId > 0) {
-    // Random Properties
+    // Random Properties (positive ID)
+    // These enchantments typically have fixed values stored in effect_points_min/max
     const props = await getItemRandomProperties(randomPropertyId)
     if (!props) return []
 
@@ -312,8 +378,12 @@ export async function getRandomEnchantments(
     }
   } else if (randomPropertyId < 0) {
     // Random Suffix (negative ID)
+    // The stat values are calculated using: floor(suffixFactor * allocationPct / 10000)
     const suffix = await getItemRandomSuffix(-randomPropertyId)
     if (!suffix) return []
+
+    // Get suffix factor from item level using lookup table
+    const suffixFactor = itemLevel ? getSuffixFactor(itemLevel) : 0
 
     const enchantIds = [
       suffix.enchantment_1,
@@ -339,20 +409,13 @@ export async function getRandomEnchantments(
 
         const allocation = allocations[i] || 0
 
-        // Scale effects by allocation percentage and item level
-        let effects = enchantmentToEffects(enchant)
-
-        // Apply allocation scaling if itemLevel is provided
-        if (itemLevel && allocation > 0) {
-          effects = effects.map(effect => ({
-            ...effect,
-            value: Math.floor(effect.value * allocation / 10000)
-          }))
-        }
+        // For random suffixes, the enchantment's effect_points_min/max are 0
+        // We need to calculate the actual value using: floor(suffixFactor * allocationPct / 10000)
+        let effects = enchantmentToEffectsWithSuffixScaling(enchant, suffixFactor, allocation)
 
         result.push({
           id: enchant.id,
-          name: suffix.name,
+          name: suffix.name || suffix.internal_name || '',
           slot: -1, // Random suffix
           effects
         })
@@ -361,6 +424,72 @@ export async function getRandomEnchantments(
   }
 
   return result
+}
+
+/**
+ * Convert enchantment to effects with suffix scaling for random suffix items
+ * The stat value is calculated as: floor(suffixFactor * allocationPct / 10000)
+ */
+function enchantmentToEffectsWithSuffixScaling(
+  enchant: SpellItemEnchantment,
+  suffixFactor: number,
+  allocationPct: number
+): EnchantmentEffect[] {
+  const effects: EnchantmentEffect[] = []
+  const calculatedValue = Math.floor(suffixFactor * allocationPct / 10000)
+
+  for (let i = 1; i <= 3; i++) {
+    const effectType = enchant[`effect_${i}` as keyof SpellItemEnchantment] as number
+    const arg = enchant[`effect_arg_${i}` as keyof SpellItemEnchantment] as number
+
+    if (effectType === ENCHANTMENT_TYPES.NONE) continue
+
+    // For random suffixes, the value comes from the calculation, not the enchantment record
+    const value = calculatedValue
+
+    if (effectType === ENCHANTMENT_TYPES.STAT) {
+      // Stat enchantment - arg is the stat type
+      const statName = STAT_TYPES[arg] || `Stat ${arg}`
+      effects.push({
+        type: effectType,
+        stat: statName,
+        value
+      })
+    } else if (effectType === ENCHANTMENT_TYPES.RESISTANCE) {
+      // Resistance - arg is school (0=physical, 1=holy, 2=fire, etc.)
+      const resistTypes = ['Armor', 'Holy Resistance', 'Fire Resistance', 'Nature Resistance', 'Frost Resistance', 'Shadow Resistance', 'Arcane Resistance']
+      const resistName = resistTypes[arg] || `Resistance ${arg}`
+      effects.push({
+        type: effectType,
+        stat: resistName,
+        value
+      })
+    } else if (effectType === ENCHANTMENT_TYPES.DAMAGE) {
+      // Weapon damage
+      effects.push({
+        type: effectType,
+        stat: 'Weapon Damage',
+        value
+      })
+    } else if (effectType === ENCHANTMENT_TYPES.COMBAT_SPELL ||
+               effectType === ENCHANTMENT_TYPES.EQUIP_SPELL ||
+               effectType === ENCHANTMENT_TYPES.USE_SPELL) {
+      // Spell effect - arg is spell ID
+      effects.push({
+        type: effectType,
+        value,
+        spellId: arg
+      })
+    } else {
+      // Generic effect
+      effects.push({
+        type: effectType,
+        value
+      })
+    }
+  }
+
+  return effects
 }
 
 /**
@@ -374,4 +503,96 @@ export function formatEnchantmentEffect(effect: EnchantmentEffect): string {
     return `Spell ${effect.spellId}`
   }
   return `Effect ${effect.type}: ${effect.value}`
+}
+
+/**
+ * Item spell effect parsed from item_template spell fields
+ */
+export interface ItemSpellEffect {
+  spellId: number
+  trigger: number // 0=Use, 1=Equip, 2=Chance on Hit
+  stat?: string
+  value?: number
+  description?: string
+}
+
+/**
+ * Spell effect types that grant stats
+ * Effect ID 13 = Add Modifier
+ * Effect ID 99 = Mod Stat
+ */
+const SPELL_EFFECT_MOD_STAT = 99
+
+/**
+ * Aura types that grant stats
+ * Aura 13 = Mod Damage Done (spell power)
+ * Aura 22 = Mod Resistance
+ * Aura 29 = Mod Stat
+ * Aura 99 = Mod Attack Power
+ * Aura 124 = Mod Ranged Attack Power
+ */
+const STAT_GRANTING_AURAS: Record<number, string> = {
+  13: 'Spell Power',      // SPELL_AURA_MOD_DAMAGE_DONE - actually spell damage/healing
+  22: 'Resistance',       // SPELL_AURA_MOD_RESISTANCE
+  29: 'Stat',             // SPELL_AURA_MOD_STAT - generic stat mod, uses misc value
+  99: 'Attack Power',     // SPELL_AURA_MOD_ATTACK_POWER
+  124: 'Ranged Attack Power',
+  135: 'Spell Power',     // SPELL_AURA_MOD_HEALING_DONE (converted to spell power in WotLK)
+}
+
+/**
+ * Get stat-granting effects from item spells
+ * Returns effects for "Equip: Increases X by Y" type bonuses
+ */
+export async function getItemSpellEffects(
+  spellIds: { spellId: number; trigger: number }[]
+): Promise<ItemSpellEffect[]> {
+  // Filter to only equip effects (trigger = 1) with valid spell IDs
+  const equipSpells = spellIds.filter(s => s.trigger === 1 && s.spellId > 0)
+  if (equipSpells.length === 0) return []
+
+  const ids = equipSpells.map(s => s.spellId)
+  const spells = await getSpellBatch(ids)
+
+  const effects: ItemSpellEffect[] = []
+
+  for (const spell of spells) {
+    // Check each of the 3 spell effects
+    for (let i = 1; i <= 3; i++) {
+      const aura = spell[`effect_aura_${i}` as keyof typeof spell] as number
+      const basePoints = spell[`effect_base_points_${i}` as keyof typeof spell] as number
+      const miscValue = spell[`effect_misc_value_${i}` as keyof typeof spell] as number
+
+      // Check if this is a stat-granting aura
+      if (aura === 13 || aura === 135) {
+        // Spell Power / Healing (SPELL_AURA_MOD_DAMAGE_DONE / MOD_HEALING_DONE)
+        // In WotLK these are unified as Spell Power
+        effects.push({
+          spellId: spell.id,
+          trigger: 1,
+          stat: 'Spell Power',
+          value: basePoints + 1, // Base points is typically value - 1
+        })
+      } else if (aura === 29) {
+        // Mod Stat - misc value determines which stat
+        const statName = STAT_TYPES[miscValue] || `Stat ${miscValue}`
+        effects.push({
+          spellId: spell.id,
+          trigger: 1,
+          stat: statName,
+          value: basePoints + 1,
+        })
+      } else if (aura === 99 || aura === 124) {
+        // Attack Power / Ranged Attack Power
+        effects.push({
+          spellId: spell.id,
+          trigger: 1,
+          stat: aura === 124 ? 'Ranged Attack Power' : 'Attack Power',
+          value: basePoints + 1,
+        })
+      }
+    }
+  }
+
+  return effects
 }

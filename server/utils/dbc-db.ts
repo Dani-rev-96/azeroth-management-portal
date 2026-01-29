@@ -157,8 +157,14 @@ export interface Spell {
   tooltip: string
   school_mask: number
   spell_icon_id: number
-  // Effect values for description parsing
+  // Effect type and aura type for each of 3 effects
   duration_index: number
+  effect_1: number
+  effect_2: number
+  effect_3: number
+  effect_aura_1: number
+  effect_aura_2: number
+  effect_aura_3: number
   effect_base_points_1: number
   effect_base_points_2: number
   effect_base_points_3: number
@@ -277,6 +283,7 @@ export async function getTalentTab(tabId: number): Promise<TalentTab | undefined
 export interface ItemRandomSuffix {
   id: number
   name: string
+  name_deDE?: string
   internal_name: string
   enchantment_1: number
   enchantment_2: number
@@ -301,6 +308,7 @@ export async function getItemRandomSuffix(suffixId: number): Promise<ItemRandomS
 export interface ItemRandomProperties {
   id: number
   name: string
+  name_deDE?: string
   enchantment_1: number
   enchantment_2: number
   enchantment_3: number

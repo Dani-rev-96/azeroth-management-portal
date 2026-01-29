@@ -177,6 +177,12 @@ const dbcConfigs = {
         school_mask INTEGER,
         spell_icon_id INTEGER,
         duration_index INTEGER,
+        effect_1 INTEGER,
+        effect_2 INTEGER,
+        effect_3 INTEGER,
+        effect_aura_1 INTEGER,
+        effect_aura_2 INTEGER,
+        effect_aura_3 INTEGER,
         effect_base_points_1 INTEGER,
         effect_base_points_2 INTEGER,
         effect_base_points_3 INTEGER,
@@ -215,6 +221,12 @@ const dbcConfigs = {
       school_mask: row.SchoolMask,
       spell_icon_id: row.SpellIconID,
       duration_index: row.DurationIndex || 0,
+      effect_1: row.Effect_1 || 0,
+      effect_2: row.Effect_2 || 0,
+      effect_3: row.Effect_3 || 0,
+      effect_aura_1: row.EffectAura_1 || 0,
+      effect_aura_2: row.EffectAura_2 || 0,
+      effect_aura_3: row.EffectAura_3 || 0,
       effect_base_points_1: row.EffectBasePoints_1 || 0,
       effect_base_points_2: row.EffectBasePoints_2 || 0,
       effect_base_points_3: row.EffectBasePoints_3 || 0,
@@ -325,6 +337,7 @@ const dbcConfigs = {
       CREATE TABLE item_random_suffix (
         id INTEGER PRIMARY KEY,
         name TEXT,
+        name_deDE TEXT,
         internal_name TEXT,
         enchantment_1 INTEGER,
         enchantment_2 INTEGER,
@@ -340,7 +353,10 @@ const dbcConfigs = {
     `,
     mapping: (row) => ({
       id: row.ID,
-      name: row.Name_enUS || row.Name_Lang || '',
+      // Use localized name if available, otherwise fall back to InternalName (which has proper English names)
+      name: row.Name_Lang_enUS || row.Name_Lang_enGB || row.InternalName || '',
+      // German names are incorrectly stored in frFR field in the export, also check deDE for future-proofing
+      name_deDE: row.Name_Lang_deDE || row.Name_Lang_frFR || '',
       internal_name: row.InternalName,
       enchantment_1: row.Enchantment_1,
       enchantment_2: row.Enchantment_2,
@@ -363,6 +379,7 @@ const dbcConfigs = {
       CREATE TABLE item_random_properties (
         id INTEGER PRIMARY KEY,
         name TEXT,
+        name_deDE TEXT,
         enchantment_1 INTEGER,
         enchantment_2 INTEGER,
         enchantment_3 INTEGER,
@@ -372,7 +389,10 @@ const dbcConfigs = {
     `,
     mapping: (row) => ({
       id: row.ID,
-      name: row.Name_enUS || row.Name_Lang || '',
+      // ItemRandomProperties has a plain "Name" field with English names
+      name: row.Name || row.Name_Lang_enUS || row.Name_Lang_enGB || '',
+      // German names are incorrectly stored in frFR field in the export, also check deDE for future-proofing
+      name_deDE: row.Name_Lang_deDE || row.Name_Lang_frFR || '',
       enchantment_1: row.Enchantment_1,
       enchantment_2: row.Enchantment_2,
       enchantment_3: row.Enchantment_3,

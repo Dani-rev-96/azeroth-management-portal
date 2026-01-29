@@ -6,6 +6,7 @@ import {
   getEnchantmentInfo,
   getRandomEnchantments,
   formatEnchantmentEffect,
+  getItemSpellEffects,
   STAT_NAME_TO_TYPE,
   type EnchantmentInfo
 } from '#server/utils/enchantments'
@@ -115,7 +116,12 @@ export default defineEventHandler(async (event) => {
           it.dmg_min2, it.dmg_max2, it.dmg_type2,
           it.armor,
           it.holy_res, it.fire_res, it.nature_res, it.frost_res, it.shadow_res, it.arcane_res,
-          it.delay
+          it.delay,
+          it.spellid_1, it.spelltrigger_1,
+          it.spellid_2, it.spelltrigger_2,
+          it.spellid_3, it.spelltrigger_3,
+          it.spellid_4, it.spelltrigger_4,
+          it.spellid_5, it.spelltrigger_5
         FROM item_template it
         LEFT JOIN item_template_locale itl ON it.entry = itl.ID AND itl.locale = ?
         WHERE it.entry IN (${placeholders})
@@ -208,6 +214,17 @@ export default defineEventHandler(async (event) => {
           parsedEnchants,
           durability: charItem.durability,
           randomPropertyId: charItem.randomPropertyId,
+          // Store spell IDs for equip effects like +spell power
+          spellid_1: template.spellid_1,
+          spelltrigger_1: template.spelltrigger_1,
+          spellid_2: template.spellid_2,
+          spelltrigger_2: template.spelltrigger_2,
+          spellid_3: template.spellid_3,
+          spelltrigger_3: template.spelltrigger_3,
+          spellid_4: template.spellid_4,
+          spelltrigger_4: template.spelltrigger_4,
+          spellid_5: template.spellid_5,
+          spelltrigger_5: template.spelltrigger_5,
           icon: iconName
         }
       }).filter(Boolean)
@@ -247,6 +264,38 @@ export default defineEventHandler(async (event) => {
                     item[`stat_value${nextSlot}` as keyof typeof item] = effect.value as any
                     item.statsCount = nextSlot
                   }
+                }
+              }
+            }
+          }
+        }
+
+        // Get spell-based equip effects (like "Equip: Increases spell power by X")
+        const spellIds = []
+        for (let i = 1; i <= 5; i++) {
+          const spellId = item[`spellid_${i}` as keyof typeof item] as number
+          const trigger = item[`spelltrigger_${i}` as keyof typeof item] as number
+          if (spellId && spellId > 0) {
+            spellIds.push({ spellId, trigger })
+          }
+        }
+
+        if (spellIds.length > 0) {
+          const spellEffects = await getItemSpellEffects(spellIds)
+
+          // Add spell effects as stats
+          for (const effect of spellEffects) {
+            if (effect.stat && effect.value) {
+              // Find the stat type ID for this stat name
+              const statTypeId = STAT_NAME_TO_TYPE[effect.stat]
+              if (statTypeId !== undefined) {
+                // Add to next available stat slot
+                const currentStatCount = item.statsCount || 0
+                if (currentStatCount < 10) {
+                  const nextSlot = currentStatCount + 1
+                  item[`stat_type${nextSlot}` as keyof typeof item] = statTypeId as any
+                  item[`stat_value${nextSlot}` as keyof typeof item] = effect.value as any
+                  item.statsCount = nextSlot
                 }
               }
             }
