@@ -335,7 +335,172 @@ export async function getEnchantmentInfo(parsedEnchants: ParsedEnchantment[]): P
     })
   }
 
+  // Resolve spell effects - collect all spell IDs from effects
+  const spellIdsToResolve: number[] = []
+  for (const info of result) {
+    for (const effect of info.effects) {
+      if (effect.spellId && effect.spellId > 0) {
+        spellIdsToResolve.push(effect.spellId)
+      }
+    }
+  }
+
+  // Batch fetch spells if any need resolving
+  if (spellIdsToResolve.length > 0) {
+    const spells = await getSpellBatch(spellIdsToResolve)
+    const spellMap = new Map(spells.map(s => [s.id, s]))
+
+    // Replace spell effects with resolved effects
+    for (const info of result) {
+      const newEffects: EnchantmentEffect[] = []
+      for (const effect of info.effects) {
+        if (effect.spellId && effect.spellId > 0) {
+          const spell = spellMap.get(effect.spellId)
+          if (spell) {
+            const resolvedEffects = resolveSpellToEnchantmentEffects(spell)
+            if (resolvedEffects.length > 0) {
+              newEffects.push(...resolvedEffects)
+            } else {
+              // Fallback to spell name if we can't parse effects
+              newEffects.push({
+                type: effect.type,
+                stat: spell.name || undefined,
+                value: effect.value,
+                spellId: effect.spellId
+              })
+            }
+          } else {
+            newEffects.push(effect)
+          }
+        } else {
+          newEffects.push(effect)
+        }
+      }
+      info.effects = newEffects
+    }
+  }
+
   return result
+}
+
+/**
+ * Resolve a spell's aura effects into enchantment effects
+ */
+function resolveSpellToEnchantmentEffects(spell: {
+  id: number
+  name: string
+  effect_aura_1: number
+  effect_aura_2: number
+  effect_aura_3: number
+  effect_base_points_1: number
+  effect_base_points_2: number
+  effect_base_points_3: number
+  effect_misc_value_1: number
+  effect_misc_value_2: number
+  effect_misc_value_3: number
+}): EnchantmentEffect[] {
+  const effects: EnchantmentEffect[] = []
+  const seenStats = new Set<string>()
+
+  for (let i = 1; i <= 3; i++) {
+    const aura = spell[`effect_aura_${i}` as keyof typeof spell] as number
+    const basePoints = spell[`effect_base_points_${i}` as keyof typeof spell] as number
+    const miscValue = spell[`effect_misc_value_${i}` as keyof typeof spell] as number
+    const value = basePoints + 1
+
+    if (aura === 0) continue
+
+    // SPELL_AURA_MOD_STAT (29) - misc_value is stat type, -1 = all stats
+    if (aura === 29) {
+      if (miscValue === -1) {
+        // All stats - show as "All Stats"
+        if (!seenStats.has('All Stats')) {
+          seenStats.add('All Stats')
+          effects.push({ type: ENCHANTMENT_TYPES.STAT, stat: 'All Stats', value })
+        }
+      } else {
+        const statName = STAT_TYPES[miscValue] || `Stat ${miscValue}`
+        if (!seenStats.has(statName)) {
+          seenStats.add(statName)
+          effects.push({ type: ENCHANTMENT_TYPES.STAT, stat: statName, value })
+        }
+      }
+    }
+    // SPELL_AURA_MOD_DAMAGE_DONE (13) / MOD_HEALING_DONE (135) - Spell Power
+    else if (aura === 13 || aura === 135) {
+      if (!seenStats.has('Spell Power')) {
+        seenStats.add('Spell Power')
+        effects.push({ type: ENCHANTMENT_TYPES.STAT, stat: 'Spell Power', value })
+      }
+    }
+    // SPELL_AURA_MOD_ATTACK_POWER (99)
+    else if (aura === 99) {
+      if (!seenStats.has('Attack Power')) {
+        seenStats.add('Attack Power')
+        effects.push({ type: ENCHANTMENT_TYPES.STAT, stat: 'Attack Power', value })
+      }
+    }
+    // SPELL_AURA_MOD_RANGED_ATTACK_POWER (124)
+    else if (aura === 124) {
+      if (!seenStats.has('Ranged Attack Power')) {
+        seenStats.add('Ranged Attack Power')
+        effects.push({ type: ENCHANTMENT_TYPES.STAT, stat: 'Ranged Attack Power', value })
+      }
+    }
+    // SPELL_AURA_MOD_INCREASE_MOUNTED_SPEED (4) - Mount speed
+    else if (aura === 4) {
+      if (!seenStats.has('Mount Speed')) {
+        seenStats.add('Mount Speed')
+        effects.push({ type: ENCHANTMENT_TYPES.EQUIP_SPELL, stat: `+${value}% Mount Speed`, value: 0 })
+      }
+    }
+    // SPELL_AURA_MOD_RATING (189) - Combat rating
+    else if (aura === 189) {
+      // miscValue is a bitmask of rating types, but often it's just one
+      // Common ones: 1=defense, 2=dodge, 4=parry, 8=block, 16=meleehit, etc.
+      const ratingNames: Record<number, string> = {
+        1: 'Defense Rating', 2: 'Dodge Rating', 4: 'Parry Rating', 8: 'Block Rating',
+        16: 'Melee Hit Rating', 32: 'Ranged Hit Rating', 64: 'Spell Hit Rating',
+        128: 'Melee Crit Rating', 256: 'Ranged Crit Rating', 512: 'Spell Crit Rating',
+        1024: 'Melee Haste Rating', 2048: 'Ranged Haste Rating', 4096: 'Spell Haste Rating',
+        16384: 'Resilience Rating', 32768: 'Expertise Rating', 65536: 'Armor Penetration'
+      }
+      const statName = ratingNames[miscValue] || `Rating ${miscValue}`
+      if (!seenStats.has(statName)) {
+        seenStats.add(statName)
+        effects.push({ type: ENCHANTMENT_TYPES.STAT, stat: statName, value })
+      }
+    }
+    // SPELL_AURA_MOD_SKILL (115) - Skill bonus
+    else if (aura === 115) {
+      // miscValue is the skill ID
+      effects.push({ type: ENCHANTMENT_TYPES.EQUIP_SPELL, stat: `+${value} Skill`, value: 0 })
+    }
+    // SPELL_AURA_MOD_THREAT (17) - Threat modifier
+    else if (aura === 17) {
+      const threatMod = value > 0 ? `+${value}%` : `${value}%`
+      effects.push({ type: ENCHANTMENT_TYPES.EQUIP_SPELL, stat: `${threatMod} Threat`, value: 0 })
+    }
+    // SPELL_AURA_MOD_RESISTANCE (22) - Resistance
+    else if (aura === 22) {
+      const resistTypes = ['All Resistances', 'Holy Resistance', 'Fire Resistance', 'Nature Resistance', 'Frost Resistance', 'Shadow Resistance', 'Arcane Resistance']
+      const resistName = resistTypes[miscValue] || `Resistance ${miscValue}`
+      if (!seenStats.has(resistName)) {
+        seenStats.add(resistName)
+        effects.push({ type: ENCHANTMENT_TYPES.RESISTANCE, stat: resistName, value })
+      }
+    }
+    // SPELL_AURA_MOD_INCREASE_SPEED (31) - Run speed
+    else if (aura === 31) {
+      effects.push({ type: ENCHANTMENT_TYPES.EQUIP_SPELL, stat: `+${value}% Run Speed`, value: 0 })
+    }
+    // SPELL_AURA_MOD_INCREASE_SWIM_SPEED (32) - Swim speed
+    else if (aura === 32) {
+      effects.push({ type: ENCHANTMENT_TYPES.EQUIP_SPELL, stat: `+${value}% Swim Speed`, value: 0 })
+    }
+  }
+
+  return effects
 }
 
 /**
@@ -497,6 +662,10 @@ function enchantmentToEffectsWithSuffixScaling(
  */
 export function formatEnchantmentEffect(effect: EnchantmentEffect): string {
   if (effect.stat) {
+    // If value is 0 or stat already includes the value (like "+4% Mount Speed"), just return stat
+    if (effect.value === 0 || effect.stat.startsWith('+') || effect.stat.startsWith('-')) {
+      return effect.stat
+    }
     return `+${effect.value} ${effect.stat}`
   }
   if (effect.spellId) {
