@@ -53,8 +53,9 @@
                 v-if="getTalentNode(tierIndex - 1, colIndex - 1)"
                 class="talent-node"
                 :class="getTalentNodeClasses(getTalentNode(tierIndex - 1, colIndex - 1)!)"
-                @mouseenter="showTooltip($event, getTalentNode(tierIndex - 1, colIndex - 1)!)"
-                @mouseleave="hideTooltip"
+                @mouseenter="handleMouseEnter($event, getTalentNode(tierIndex - 1, colIndex - 1)!)"
+                @mouseleave="handleMouseLeave"
+                @touchstart="handleTouchStart($event, getTalentNode(tierIndex - 1, colIndex - 1)!)"
               >
                 <div class="talent-icon-container">
                   <img
@@ -89,11 +90,20 @@
 
     <!-- Tooltip -->
     <Teleport to="body">
+      <!-- Mobile backdrop -->
+      <div
+        v-if="tooltipVisible && isMobileTooltip"
+        class="tooltip-backdrop"
+        @click="onTooltipBackdropClick"
+      ></div>
       <div
         v-if="tooltipVisible && tooltipTalent"
         class="talent-tooltip"
+        :class="{ 'mobile-tooltip': isMobileTooltip }"
         :style="tooltipStyle"
+        @click.stop
       >
+        <button v-if="isMobileTooltip" class="tooltip-close" @click="hideTooltip">×</button>
         <div class="tooltip-header">
           <h4 class="tooltip-name">{{ getTalentName(tooltipTalent) }}</h4>
           <span class="tooltip-rank">
@@ -447,13 +457,55 @@ function getPrereqTalentName(talent: TalentTreeNode): string {
 const tooltipVisible = ref(false)
 const tooltipTalent = ref<TalentTreeNode | null>(null)
 const tooltipStyle = ref<Record<string, string>>({})
+const isMobileTooltip = ref(false)
+const isTouch = ref(false)
 
-function showTooltip(event: MouseEvent, talent: TalentTreeNode) {
+// Detect if device supports touch or is a small screen
+function isMobileDevice(): boolean {
+  return window.innerWidth <= 768 || 'ontouchstart' in window || navigator.maxTouchPoints > 0
+}
+
+function handleTouchStart(event: TouchEvent, talent: TalentTreeNode) {
+  event.preventDefault()
+  isTouch.value = true
+
+  // Toggle tooltip if tapping same talent
+  if (tooltipVisible.value && tooltipTalent.value?.talentId === talent.talentId) {
+    hideTooltip()
+    return
+  }
+
+  showTooltip(event, talent)
+}
+
+function handleMouseEnter(event: MouseEvent, talent: TalentTreeNode) {
+  // Skip if this was triggered by a touch
+  if (isTouch.value) return
+  showTooltip(event, talent)
+}
+
+function handleMouseLeave() {
+  // Skip if this was triggered by a touch
+  if (isTouch.value) return
+  hideTooltip()
+}
+
+function showTooltip(event: MouseEvent | TouchEvent, talent: TalentTreeNode) {
   tooltipTalent.value = talent
   tooltipVisible.value = true
 
-  // Position tooltip
-  const rect = (event.target as HTMLElement).getBoundingClientRect()
+  const mobile = isMobileDevice()
+  isMobileTooltip.value = mobile
+
+  if (mobile) {
+    // On mobile, show as fixed bottom panel - no positioning needed
+    tooltipStyle.value = {}
+    return
+  }
+
+  // Desktop: Position tooltip near the element
+  const target = event.target as HTMLElement
+  const rect = target.getBoundingClientRect()
   const tooltipWidth = 320
   const tooltipHeight = 300
 
@@ -482,6 +534,18 @@ function showTooltip(event: MouseEvent, talent: TalentTreeNode) {
 function hideTooltip() {
   tooltipVisible.value = false
   tooltipTalent.value = null
+  isMobileTooltip.value = false
+  // Reset touch flag after a short delay to allow for next interaction
+  setTimeout(() => {
+    isTouch.value = false
+  }, 300)
+}
+
+// Handle click outside to close mobile tooltip
+function onTooltipBackdropClick() {
+  if (isMobileTooltip.value) {
+    hideTooltip()
+  }
 }
 </script>
 
@@ -948,6 +1012,80 @@ function hideTooltip() {
 @media (hover: none) {
   .talent-node {
     -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Mobile Tooltip Backdrop */
+.tooltip-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 9998;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Mobile Tooltip Styles */
+.talent-tooltip.mobile-tooltip {
+  position: fixed;
+  left: 50% !important;
+  top: auto !important;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 100%;
+  border-radius: 1rem 1rem 0 0;
+  max-height: 70vh;
+  overflow-y: auto;
+  animation: slideUp 0.25s ease-out;
+  pointer-events: auto;
+  padding-top: 2.5rem;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateX(-50%) translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+}
+
+.tooltip-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.75rem;
+  background: none;
+  border: none;
+  color: var(--text-secondary, #94a3b8);
+  font-size: 1.75rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.25rem;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.tooltip-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary, #e2e8f0);
+}
+
+/* Ensure mobile tooltip has proper safe area padding */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .talent-tooltip.mobile-tooltip {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
   }
 }
 </style>
