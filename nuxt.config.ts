@@ -88,7 +88,7 @@ export default defineNuxtConfig({
 		},
 		api: {
 			enabled: true,
-			authorization: "mybesttempcachecleartoken",
+			authorization: process.env.NUXT_CACHE_API_TOKEN || 'change-me-in-production',
 		},
 	},
   svgo: {

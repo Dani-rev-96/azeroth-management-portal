@@ -1,8 +1,22 @@
 {
-  "name": "wow-frontend",
+  "name": "azeroth-management-portal",
   "version": "1.8.0",
   "type": "module",
-  "private": true,
+  "description": "A modern, CMS-independent management and community portal for AzerothCore WoW servers",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Dani-rev-96/wow-frontend.git"
+  },
+  "license": "MIT",
+  "keywords": [
+    "wow",
+    "world-of-warcraft",
+    "azerothcore",
+    "nuxt",
+    "vue",
+    "game-server",
+    "management-portal"
+  ],
   "scripts": {
     "dev": "nuxt dev",
     "dev:ssl": "nuxt dev --https --ssl-cert ./certs/localhost.pem --ssl-key ./certs/localhost-key.pem",

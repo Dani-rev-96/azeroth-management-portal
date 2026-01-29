@@ -117,8 +117,8 @@ A modern, CMS-independent management and community portal for [AzerothCore](http
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/azeroth-management-portal.git
-cd azeroth-management-portal
+git clone https://github.com/Dani-rev-96/wow-frontend.git
+cd wow-frontend
 
 # Install dependencies
 pnpm install
