@@ -154,18 +154,13 @@ export async function modifyMoney(
   characterName: string,
   copperAmount: number
 ): Promise<SoapResponse> {
-  // .modify money works on selected target
-  // For remote, we might need: .character modify money <name> <amount>
-  // Or use send money command
-
-  // Standard command for character by name:
-  // There's no direct "modify money for player X" in vanilla AC
-  // We'll need to rely on DB updates or a custom command
-
-  // For safety, let's check if they have a character targeting command
-  // Some servers have: .modify money $charname amount
-
-  // Let's try the player-targeted version
+  // AzerothCore syntax for modifying a specific player's money:
+  // .modify money <playername> #amount
+  // The amount can be negative to subtract money
+  //
+  // Note: The player MUST be online for this command to work.
+  // For offline characters, direct database updates should be used instead.
+  // Reference: https://www.azerothcore.org/wiki/gm-commands
   const command = `modify money ${characterName} ${copperAmount}`
   return executeCommand(config, command)
 }

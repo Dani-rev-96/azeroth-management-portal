@@ -271,10 +271,13 @@ async function deliverViaBag(
 ): Promise<ShopPurchaseResponse> {
   const { addItemToCharacter } = await import('#server/services/soap')
 
-  // Step 1: Deduct money first (pay before deliver)
+  // Step 1: Queue money deduction via web_money_requests table
+  // The Eluna script will process this for both online and offline characters
+  const reason = `Shop purchase: ${quantity}x ${item.name}`
   await charPool.query(
-    'UPDATE characters SET money = money - ? WHERE guid = ?',
-    [totalCost, character.guid]
+    `INSERT INTO web_money_requests (character_guid, delta_copper, reason, status)
+     VALUES (?, ?, ?, 'pending')`,
+    [character.guid, -totalCost, reason]
   )
 
   try {
@@ -287,11 +290,12 @@ async function deliverViaBag(
     )
 
     if (!result.success) {
-      // Step 3: Refund on failure
+      // Step 3: Queue refund on failure via web_money_requests
       console.error(`[Shop] SOAP bag delivery failed for ${character.name}:`, result.error)
       await charPool.query(
-        'UPDATE characters SET money = money + ? WHERE guid = ?',
-        [totalCost, character.guid]
+        `INSERT INTO web_money_requests (character_guid, delta_copper, reason, status)
+         VALUES (?, ?, ?, 'pending')`,
+        [character.guid, totalCost, `Refund: Failed to deliver ${quantity}x ${item.name}`]
       )
       throw createError({
         statusCode: 500,
@@ -299,12 +303,8 @@ async function deliverViaBag(
       })
     }
 
-    // Get new balance
-    const [newBalanceRows] = await charPool.query(
-      'SELECT money FROM characters WHERE guid = ?',
-      [character.guid]
-    )
-    const newBalance = (newBalanceRows as any[])[0].money
+    // Calculate new balance (the actual deduction happens async via Eluna script)
+    const newBalance = character.money - totalCost
 
     console.log(`[Shop] ${username} purchased ${quantity}x ${item.name} for ${character.name} via bag - Cost: ${formatMoney(totalCost)}`)
 
@@ -317,12 +317,13 @@ async function deliverViaBag(
       deliveryMethod: 'bag',
     }
   } catch (error) {
-    // Ensure refund on any error
+    // Ensure refund on any unexpected error via web_money_requests
     if (!(error && typeof error === 'object' && 'statusCode' in error)) {
-      console.error('[Shop] Unexpected error during bag delivery, refunding:', error)
+      console.error('[Shop] Unexpected error during bag delivery, queueing refund:', error)
       await charPool.query(
-        'UPDATE characters SET money = money + ? WHERE guid = ?',
-        [totalCost, character.guid]
+        `INSERT INTO web_money_requests (character_guid, delta_copper, reason, status)
+         VALUES (?, ?, ?, 'pending')`,
+        [character.guid, totalCost, `Refund: Unexpected error during delivery`]
       )
     }
     throw error
@@ -343,10 +344,13 @@ async function deliverViaMail(
   username: string,
   shopConfig: ReturnType<typeof getShopConfig>
 ): Promise<ShopPurchaseResponse> {
-  // Deduct money from character
+  // Queue money deduction via web_money_requests table
+  // The Eluna script will process this for both online and offline characters
+  const reason = `Shop purchase: ${quantity}x ${item.name}`
   await charPool.query(
-    'UPDATE characters SET money = money - ? WHERE guid = ?',
-    [totalCost, character.guid]
+    `INSERT INTO web_money_requests (character_guid, delta_copper, reason, status)
+     VALUES (?, ?, ?, 'pending')`,
+    [character.guid, -totalCost, reason]
   )
 
   // Send item via mail
@@ -424,12 +428,8 @@ async function deliverViaMail(
     )
   }
 
-  // Get new balance
-  const [newBalanceRows] = await charPool.query(
-    'SELECT money FROM characters WHERE guid = ?',
-    [character.guid]
-  )
-  const newBalance = (newBalanceRows as any[])[0].money
+  // Calculate new balance (the actual deduction happens async via Eluna script)
+  const newBalance = character.money - totalCost
 
   console.log(`[Shop] ${username} purchased ${quantity}x ${item.name} for ${character.name} via mail - Cost: ${formatMoney(totalCost)}`)
 
