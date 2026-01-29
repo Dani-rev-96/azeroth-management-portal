@@ -3,6 +3,8 @@
  * Get server-wide statistics across all realms
  * Distinguishes between real players and bots (RNDBOT accounts)
  */
+import { getRealms } from '#server/utils/config'
+
 export default defineEventHandler(async (event) => {
   try {
     const { getAuthDbPool, getCharactersDbPool } = await import('#server/utils/mysql')
@@ -39,8 +41,10 @@ export default defineEventHandler(async (event) => {
     )
     const realAccountIdList = (realAccountIds as any[]).map(row => row.id)
 
-    // Get total characters across all realms
-    const realmDatabases = ["wotlk", "wotlk-ip", "wotlk-ip-boosted"]
+    // Get total characters across all realms dynamically from config
+    const configuredRealms = getRealms()
+    const realmIds = Object.keys(configuredRealms)
+
     let totalRealCharacters = 0
     let totalBotCharacters = 0
     let totalGuilds = 0
@@ -48,9 +52,9 @@ export default defineEventHandler(async (event) => {
     let totalLevels = 0
     let characterCount = 0
 
-    for (const realmDb of realmDatabases) {
+    for (const realmId of realmIds) {
       try {
-        const charsPool = await getCharactersDbPool(realmDb)
+        const charsPool = await getCharactersDbPool(realmId)
 
         // Get real player characters
         if (realAccountIdList.length > 0) {
@@ -92,7 +96,7 @@ export default defineEventHandler(async (event) => {
         totalGuilds += (guildResult as any)[0].count
 
       } catch (error) {
-        console.error(`Failed to query characters from ${realmDb}:`, error)
+        console.error(`Failed to query characters from realm ${realmId}:`, error)
         // Continue to next realm if one fails
       }
     }

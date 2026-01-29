@@ -29,6 +29,10 @@ export default defineNuxtConfig({
       // App config
       appBaseUrl: 'http://localhost:3000',
 
+      // Shop config
+      shopDeliveryMethod: 'mail',  // 'mail' | 'bag' | 'both'
+      shopMarkupPercent: 20,
+
       // File paths
       publicPath: path.resolve(process.cwd(), 'data/public'),
     },

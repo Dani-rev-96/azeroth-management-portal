@@ -15,13 +15,13 @@ export async function getCharactersByAccountId(
   realmId: RealmId
 ): Promise<WoWCharacter[]> {
   const pool = await getCharactersDbPool(realmId)
-  
+
   const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT 
-      guid, name, race, class, gender, level, xp, money,
+    `SELECT
+      guid, name, race, class, gender, level, xp, money, online,
       skin, face, hairStyle, hairColor, facialStyle, playerFlags,
       deleteInfos_Account, deleteInfos_Name, deleteDate
-    FROM characters 
+    FROM characters
     WHERE account = ?
     ORDER BY level DESC, name ASC`,
     [accountId]
@@ -36,6 +36,7 @@ export async function getCharactersByAccountId(
     level: row.level,
     xp: row.xp,
     money: row.money,
+    online: row.online === 1,
     skin: row.skin,
     face: row.face,
     hairStyle: row.hairStyle,
@@ -56,13 +57,13 @@ export async function getCharacterByGuid(
   realmId: RealmId
 ): Promise<WoWCharacter | null> {
   const pool = await getCharactersDbPool(realmId)
-  
+
   const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT 
+    `SELECT
       guid, name, race, class, gender, level, xp, money,
       skin, face, hairStyle, hairColor, facialStyle, playerFlags,
       deleteInfos_Account, deleteInfos_Name, deleteDate
-    FROM characters 
+    FROM characters
     WHERE guid = ?`,
     [guid]
   )

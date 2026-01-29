@@ -2,14 +2,19 @@
  * POST /api/shop/purchase
  * Purchase an item from the shop
  * Requires authentication
+ *
+ * Supports delivery methods:
+ * - mail: Send items via in-game mail (works offline)
+ * - bag: Add items directly to inventory via SOAP (requires online)
+ * - both: User chooses, with automatic fallback
  */
 
-import { getShopConfig } from '#server/utils/config'
+import { getShopConfig, getRealmSoapConfig, validateRealmSoapConfig, type RealmSoapConfig } from '#server/utils/config'
 import type { ShopPurchaseRequest, ShopPurchaseResponse } from '~/types'
 
 export default defineEventHandler(async (event): Promise<ShopPurchaseResponse> => {
   try {
-    const shopConfig = await getShopConfig()
+    const shopConfig = getShopConfig()
 
     if (!shopConfig.enabled) {
       throw createError({
@@ -23,7 +28,7 @@ export default defineEventHandler(async (event): Promise<ShopPurchaseResponse> =
     const user = await getAuthenticatedUser(event)
 
     const body = await readBody<ShopPurchaseRequest>(event)
-    const { itemId, quantity = 1, characterGuid, realmId } = body
+    const { itemId, quantity = 1, characterGuid, realmId, deliveryMethod: requestedDelivery } = body
 
     // Validation
     if (!itemId || typeof itemId !== 'number' || itemId <= 0) {
@@ -54,13 +59,26 @@ export default defineEventHandler(async (event): Promise<ShopPurchaseResponse> =
       })
     }
 
+    // Get realm-specific SOAP config
+    const realmSoapConfig = getRealmSoapConfig(realmId)
+
+    // Validate SOAP config if needed for this realm
+    const soapValidation = validateRealmSoapConfig(realmId)
+    if (!soapValidation.valid) {
+      console.error(`[Shop] SOAP configuration error for realm ${realmId}:`, soapValidation.error)
+      // Fall back to mail-only if SOAP is misconfigured
+      if (shopConfig.deliveryMethod !== 'mail') {
+        console.warn(`[Shop] Falling back to mail delivery for realm ${realmId} due to SOAP config issues`)
+      }
+    }
+
     const { getCharactersDbPool, getWorldDbPool } = await import('#server/utils/mysql')
     const charPool = await getCharactersDbPool(realmId)
     const worldPool = await getWorldDbPool(realmId)
 
     // Get character and verify ownership
     const [charRows] = await charPool.query(
-      'SELECT guid, name, account, money FROM characters WHERE guid = ? AND deleteDate IS NULL',
+      'SELECT guid, name, account, money, online FROM characters WHERE guid = ? AND deleteDate IS NULL',
       [characterGuid]
     )
 
@@ -72,6 +90,7 @@ export default defineEventHandler(async (event): Promise<ShopPurchaseResponse> =
     }
 
     const character = (charRows as any[])[0]
+    const isOnline = character.online === 1
 
     // Verify the user owns this character's account using local SQLite database
     const { getDatabase } = await import('#server/utils/db')
@@ -142,103 +161,65 @@ export default defineEventHandler(async (event): Promise<ShopPurchaseResponse> =
       })
     }
 
-    // Deduct money from character
-    await charPool.query(
-      'UPDATE characters SET money = money - ? WHERE guid = ?',
-      [totalCost, characterGuid]
-    )
+    // Determine actual delivery method
+    let actualDelivery: 'mail' | 'bag' = 'mail'
 
-    // Send item via mail
-    // Generate unique mail ID
-    const [maxIdRows] = await charPool.query(
-      'SELECT COALESCE(MAX(id), 0) + 1 as nextId FROM mail'
-    )
-    const mailId = (maxIdRows as any[])[0].nextId
+    if (shopConfig.deliveryMethod === 'bag') {
+      // Bag only - require online
+      if (!isOnline) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: 'Character must be online for direct bag delivery. Please log in first.',
+        })
+      }
+      actualDelivery = 'bag'
+    } else if (shopConfig.deliveryMethod === 'both') {
+      // User's choice with fallback
+      if (requestedDelivery === 'bag') {
+        if (!isOnline) {
+          throw createError({
+            statusCode: 400,
+            statusMessage: 'Character must be online for direct bag delivery. Please use mail delivery or log in first.',
+          })
+        }
+        actualDelivery = 'bag'
+      } else {
+        actualDelivery = 'mail'
+      }
+    }
+    // else: mail only (default)
 
-    const currentTime = Math.floor(Date.now() / 1000)
-    const expireTime = currentTime + (30 * 24 * 3600) // 30 days
-
-    // Create item instance(s)
-    const [maxItemGuidRows] = await charPool.query(
-      'SELECT COALESCE(MAX(guid), 0) as maxGuid FROM item_instance'
-    )
-    let nextItemGuid = (maxItemGuidRows as any[])[0].maxGuid + 1
-
-    const durability = item.MaxDurability || 0
-    const stackable = item.stackable || 1
-
-    // Calculate how many stacks we need
-    const itemsPerStack = Math.min(stackable, 200)
-    const fullStacks = Math.floor(quantity / itemsPerStack)
-    const remainder = quantity % itemsPerStack
-
-    const createdItems: { guid: number; count: number }[] = []
-
-    // Create full stacks
-    for (let i = 0; i < fullStacks; i++) {
-      await charPool.query(
-        `INSERT INTO item_instance
-         (guid, itemEntry, owner_guid, creatorGuid, giftCreatorGuid, count, duration, charges, flags, enchantments, randomPropertyId, durability, playedTime, text)
-         VALUES (?, ?, ?, 0, 0, ?, 0, '0 0 0 0 0', 0, '', 0, ?, 0, NULL)`,
-        [nextItemGuid, itemId, characterGuid, itemsPerStack, durability]
-      )
-      createdItems.push({ guid: nextItemGuid, count: itemsPerStack })
-      nextItemGuid++
+    // Check SOAP availability for bag delivery
+    if (actualDelivery === 'bag' && (!realmSoapConfig?.enabled || !soapValidation.valid)) {
+      throw createError({
+        statusCode: 503,
+        statusMessage: 'Direct bag delivery is currently unavailable for this realm. Please use mail delivery.',
+      })
     }
 
-    // Create remainder stack if needed
-    if (remainder > 0) {
-      await charPool.query(
-        `INSERT INTO item_instance
-         (guid, itemEntry, owner_guid, creatorGuid, giftCreatorGuid, count, duration, charges, flags, enchantments, randomPropertyId, durability, playedTime, text)
-         VALUES (?, ?, ?, 0, 0, ?, 0, '0 0 0 0 0', 0, '', 0, ?, 0, NULL)`,
-        [nextItemGuid, itemId, characterGuid, remainder, durability]
+    // Execute the purchase based on delivery method
+    if (actualDelivery === 'bag') {
+      return await deliverViaBag(
+        charPool,
+        character,
+        item,
+        quantity,
+        totalCost,
+        user.username,
+        shopConfig,
+        realmSoapConfig!
       )
-      createdItems.push({ guid: nextItemGuid, count: remainder })
-      nextItemGuid++
-    }
-
-    // Create mail entry
-    const hasItems = createdItems.length > 0 ? 1 : 0
-    await charPool.query(
-      `INSERT INTO mail
-       (id, messageType, stationery, mailTemplateId, sender, receiver, subject, body, has_items, expire_time, deliver_time, money, cod, checked)
-       VALUES (?, 0, 61, 0, 0, ?, ?, ?, ?, ?, ?, 0, 0, 0)`,
-      [
-        mailId,
-        characterGuid,
-        shopConfig.mailSubject.substring(0, 128),
-        shopConfig.mailBody.substring(0, 8000),
-        hasItems,
-        expireTime,
-        currentTime,
-      ]
-    )
-
-    // Link items to mail
-    for (const createdItem of createdItems) {
-      await charPool.query(
-        'INSERT INTO mail_items (mail_id, item_guid, receiver) VALUES (?, ?, ?)',
-        [mailId, createdItem.guid, characterGuid]
+    } else {
+      return await deliverViaMail(
+        charPool,
+        character,
+        item,
+        itemId,
+        quantity,
+        totalCost,
+        user.username,
+        shopConfig
       )
-    }
-
-    // Get new balance
-    const [newBalanceRows] = await charPool.query(
-      'SELECT money FROM characters WHERE guid = ?',
-      [characterGuid]
-    )
-    const newBalance = (newBalanceRows as any[])[0].money
-
-    console.log(`[Shop] ${user.username} purchased ${quantity}x ${item.name} for ${character.name} - Cost: ${formatMoney(totalCost)}`)
-
-    return {
-      success: true,
-      message: `Successfully purchased ${quantity}x ${item.name}. Check your mailbox!`,
-      mailId,
-      itemName: item.name,
-      totalCost,
-      newBalance,
     }
   } catch (error) {
     if (error && typeof error === 'object' && 'statusCode' in error) {
@@ -255,6 +236,196 @@ export default defineEventHandler(async (event): Promise<ShopPurchaseResponse> =
     })
   }
 })
+
+/**
+ * Deliver items directly to bag via SOAP
+ * Transaction: Deduct money -> Add item -> Refund on failure
+ * Requires character to be online.
+ */
+async function deliverViaBag(
+  charPool: any,
+  character: any,
+  item: any,
+  quantity: number,
+  totalCost: number,
+  username: string,
+  shopConfig: ReturnType<typeof getShopConfig>,
+  soapConfig: RealmSoapConfig
+): Promise<ShopPurchaseResponse> {
+  const { addItemToCharacter } = await import('#server/services/soap')
+
+  // Step 1: Deduct money first (pay before deliver)
+  await charPool.query(
+    'UPDATE characters SET money = money - ? WHERE guid = ?',
+    [totalCost, character.guid]
+  )
+
+  try {
+    // Step 2: Add items directly to bags via SOAP .additem command
+    const result = await addItemToCharacter(
+      soapConfig,
+      character.name,
+      item.entry,
+      quantity
+    )
+
+    if (!result.success) {
+      // Step 3: Refund on failure
+      console.error(`[Shop] SOAP bag delivery failed for ${character.name}:`, result.error)
+      await charPool.query(
+        'UPDATE characters SET money = money + ? WHERE guid = ?',
+        [totalCost, character.guid]
+      )
+      throw createError({
+        statusCode: 500,
+        statusMessage: `Failed to deliver items: ${result.error || 'Unknown error'}. Your gold has been refunded.`,
+      })
+    }
+
+    // Get new balance
+    const [newBalanceRows] = await charPool.query(
+      'SELECT money FROM characters WHERE guid = ?',
+      [character.guid]
+    )
+    const newBalance = (newBalanceRows as any[])[0].money
+
+    console.log(`[Shop] ${username} purchased ${quantity}x ${item.name} for ${character.name} via bag - Cost: ${formatMoney(totalCost)}`)
+
+    return {
+      success: true,
+      message: `Successfully purchased ${quantity}x ${item.name}. Items delivered to your bags!`,
+      itemName: item.name,
+      totalCost,
+      newBalance,
+      deliveryMethod: 'bag',
+    }
+  } catch (error) {
+    // Ensure refund on any error
+    if (!(error && typeof error === 'object' && 'statusCode' in error)) {
+      console.error('[Shop] Unexpected error during bag delivery, refunding:', error)
+      await charPool.query(
+        'UPDATE characters SET money = money + ? WHERE guid = ?',
+        [totalCost, character.guid]
+      )
+    }
+    throw error
+  }
+}
+
+/**
+ * Deliver items via in-game mail
+ * Original implementation - works for both online and offline characters
+ */
+async function deliverViaMail(
+  charPool: any,
+  character: any,
+  item: any,
+  itemId: number,
+  quantity: number,
+  totalCost: number,
+  username: string,
+  shopConfig: ReturnType<typeof getShopConfig>
+): Promise<ShopPurchaseResponse> {
+  // Deduct money from character
+  await charPool.query(
+    'UPDATE characters SET money = money - ? WHERE guid = ?',
+    [totalCost, character.guid]
+  )
+
+  // Send item via mail
+  // Generate unique mail ID
+  const [maxIdRows] = await charPool.query(
+    'SELECT COALESCE(MAX(id), 0) + 1 as nextId FROM mail'
+  )
+  const mailId = (maxIdRows as any[])[0].nextId
+
+  const currentTime = Math.floor(Date.now() / 1000)
+  const expireTime = currentTime + (30 * 24 * 3600) // 30 days
+
+  // Create item instance(s)
+  const [maxItemGuidRows] = await charPool.query(
+    'SELECT COALESCE(MAX(guid), 0) as maxGuid FROM item_instance'
+  )
+  let nextItemGuid = (maxItemGuidRows as any[])[0].maxGuid + 1
+
+  const durability = item.MaxDurability || 0
+  const stackable = item.stackable || 1
+
+  // Calculate how many stacks we need
+  const itemsPerStack = Math.min(stackable, 200)
+  const fullStacks = Math.floor(quantity / itemsPerStack)
+  const remainder = quantity % itemsPerStack
+
+  const createdItems: { guid: number; count: number }[] = []
+
+  // Create full stacks
+  for (let i = 0; i < fullStacks; i++) {
+    await charPool.query(
+      `INSERT INTO item_instance
+       (guid, itemEntry, owner_guid, creatorGuid, giftCreatorGuid, count, duration, charges, flags, enchantments, randomPropertyId, durability, playedTime, text)
+       VALUES (?, ?, ?, 0, 0, ?, 0, '0 0 0 0 0', 0, '', 0, ?, 0, NULL)`,
+      [nextItemGuid, itemId, character.guid, itemsPerStack, durability]
+    )
+    createdItems.push({ guid: nextItemGuid, count: itemsPerStack })
+    nextItemGuid++
+  }
+
+  // Create remainder stack if needed
+  if (remainder > 0) {
+    await charPool.query(
+      `INSERT INTO item_instance
+       (guid, itemEntry, owner_guid, creatorGuid, giftCreatorGuid, count, duration, charges, flags, enchantments, randomPropertyId, durability, playedTime, text)
+       VALUES (?, ?, ?, 0, 0, ?, 0, '0 0 0 0 0', 0, '', 0, ?, 0, NULL)`,
+      [nextItemGuid, itemId, character.guid, remainder, durability]
+    )
+    createdItems.push({ guid: nextItemGuid, count: remainder })
+    nextItemGuid++
+  }
+
+  // Create mail entry
+  const hasItems = createdItems.length > 0 ? 1 : 0
+  await charPool.query(
+    `INSERT INTO mail
+     (id, messageType, stationery, mailTemplateId, sender, receiver, subject, body, has_items, expire_time, deliver_time, money, cod, checked)
+     VALUES (?, 0, 61, 0, 0, ?, ?, ?, ?, ?, ?, 0, 0, 0)`,
+    [
+      mailId,
+      character.guid,
+      shopConfig.mailSubject.substring(0, 128),
+      shopConfig.mailBody.substring(0, 8000),
+      hasItems,
+      expireTime,
+      currentTime,
+    ]
+  )
+
+  // Link items to mail
+  for (const createdItem of createdItems) {
+    await charPool.query(
+      'INSERT INTO mail_items (mail_id, item_guid, receiver) VALUES (?, ?, ?)',
+      [mailId, createdItem.guid, character.guid]
+    )
+  }
+
+  // Get new balance
+  const [newBalanceRows] = await charPool.query(
+    'SELECT money FROM characters WHERE guid = ?',
+    [character.guid]
+  )
+  const newBalance = (newBalanceRows as any[])[0].money
+
+  console.log(`[Shop] ${username} purchased ${quantity}x ${item.name} for ${character.name} via mail - Cost: ${formatMoney(totalCost)}`)
+
+  return {
+    success: true,
+    message: `Successfully purchased ${quantity}x ${item.name}. Check your mailbox!`,
+    mailId,
+    itemName: item.name,
+    totalCost,
+    newBalance,
+    deliveryMethod: 'mail',
+  }
+}
 
 // Helper to format money as gold/silver/copper
 function formatMoney(copper: number): string {

@@ -67,6 +67,7 @@ export type WoWCharacter = {
   level: number
   xp: number
   money: number
+  online?: boolean
   skin: number
   face: number
   hairStyle: number
@@ -306,6 +307,8 @@ export type CharacterDetailResponse = {
 // Shop Types
 export type ShopCategory = 'trade_goods' | 'mounts' | 'miscellaneous'
 
+export type ShopDeliveryMethod = 'mail' | 'bag' | 'both'
+
 export type ShopItem = {
   entry: number
   name: string
@@ -333,7 +336,7 @@ export type ShopCategoryInfo = {
 export type ShopConfig = {
   enabled: boolean
   priceMarkupPercent: number // e.g., 20 means 20% markup
-  deliveryMethod: 'mail' | 'inventory' // Currently only mail is safe
+  deliveryMethod: ShopDeliveryMethod
   mailSubject: string
   mailBody: string
   categories: ShopCategory[]
@@ -344,6 +347,7 @@ export type ShopPurchaseRequest = {
   quantity: number
   characterGuid: number
   realmId: string
+  deliveryMethod?: 'mail' | 'bag' // User's choice when 'both' is enabled
 }
 
 export type ShopPurchaseResponse = {
@@ -353,4 +357,5 @@ export type ShopPurchaseResponse = {
   itemName?: string
   totalCost: number
   newBalance?: number
+  deliveryMethod?: 'mail' | 'bag' // Which method was used
 }

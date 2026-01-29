@@ -3,7 +3,7 @@
  * Get shop items by category
  * Query params:
  *   - category: 'trade_goods' | 'mounts' | 'miscellaneous'
- *   - realmId: realm to query (e.g., 'wotlk')
+ *   - realmId: realm to query (e.g., '1')
  *   - page: page number (default 1)
  *   - limit: items per page (default 50, max 100)
  *   - search: optional search term

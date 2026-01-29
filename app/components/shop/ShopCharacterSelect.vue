@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { getClassName } from '~/utils/wow'
-import type { ShopCharacter } from '~/composables/useShop'
+import type { Character } from '~/stores/characters'
 
 defineProps<{
-  characters: ShopCharacter[]
+  characters: Character[]
   loading: boolean
   error: string
   getClassIcon: (classId: number) => string
@@ -11,7 +11,7 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  select: [character: ShopCharacter]
+  select: [character: Character]
 }>()
 </script>
 

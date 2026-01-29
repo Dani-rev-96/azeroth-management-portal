@@ -11,8 +11,20 @@
 
 import type { RealmConfig } from '~/types'
 
+export interface RealmSoapConfig {
+  enabled: boolean
+  host: string
+  port: number
+  username: string
+  password: string
+}
+
+interface RealmConfigWithSoap extends RealmConfig {
+  soap?: RealmSoapConfig
+}
+
 // Cache for loaded realms (avoid re-parsing env vars on every call)
-let cachedRealms: Record<string, RealmConfig> | null = null
+let cachedRealms: Record<string, RealmConfigWithSoap> | null = null
 let startupLogged = false
 
 /**
@@ -31,14 +43,15 @@ export const getAuthDbConfig = () => {
 /**
  * Get all configured realms directly from environment variables
  * Reads NUXT_DB_REALM_0_*, NUXT_DB_REALM_1_*, etc. up to 10 realms
+ * Also reads per-realm SOAP config: NUXT_DB_REALM_0_SOAP_HOST, etc.
  */
-export const getRealms = (): Record<string, RealmConfig> => {
+export const getRealms = (): Record<string, RealmConfigWithSoap> => {
   // Return cached realms if already loaded
   if (cachedRealms) {
     return cachedRealms
   }
 
-  const realms: Record<string, RealmConfig> = {}
+  const realms: Record<string, RealmConfigWithSoap> = {}
 
   for (let i = 0; i < 10; i++) {
     const prefix = `NUXT_DB_REALM_${i}_`
@@ -48,6 +61,20 @@ export const getRealms = (): Record<string, RealmConfig> => {
     // Skip if realm is not defined
     if (!id || !name) continue
 
+    // Parse per-realm SOAP configuration
+    const soapEnabled = process.env[`${prefix}SOAP_ENABLED`] === 'true'
+    const soapHost = process.env[`${prefix}SOAP_HOST`]
+    const soapUsername = process.env[`${prefix}SOAP_USERNAME`]
+    const soapPassword = process.env[`${prefix}SOAP_PASSWORD`]
+
+    const soapConfig: RealmSoapConfig | undefined = soapEnabled ? {
+      enabled: true,
+      host: soapHost || '127.0.0.1',
+      port: parseInt(process.env[`${prefix}SOAP_PORT`] || '7878', 10),
+      username: soapUsername || '',
+      password: soapPassword || '',
+    } : undefined
+
     realms[id] = {
       id,
       name,
@@ -56,6 +83,7 @@ export const getRealms = (): Record<string, RealmConfig> => {
       dbPort: parseInt(process.env[`${prefix}PORT`] || '3306', 10),
       dbUser: process.env[`${prefix}USER`] || 'acore',
       dbPassword: process.env[`${prefix}PASSWORD`] || 'acore',
+      soap: soapConfig,
     }
   }
 
@@ -79,9 +107,19 @@ export const getRealms = (): Record<string, RealmConfig> => {
 /**
  * Get a specific realm configuration
  */
-export const getRealmConfig = (realmId: string): RealmConfig | undefined => {
+export const getRealmConfig = (realmId: string): RealmConfigWithSoap | undefined => {
   const realms = getRealms()
   return realms[realmId]
+}
+
+/**
+ * Get SOAP configuration for a specific realm
+ * @param realmId The realm ID
+ * @returns SOAP config or undefined if not configured
+ */
+export const getRealmSoapConfig = (realmId: string): RealmSoapConfig | undefined => {
+  const realm = getRealmConfig(realmId)
+  return realm?.soap
 }
 
 /**
@@ -106,14 +144,59 @@ export const useServerDatabaseConfig = async () => {
 
 /**
  * Get shop configuration from environment or defaults
+ * Uses NUXT_PUBLIC_* variables which are set in nuxt.config.ts and overridable via env
  */
 export const getShopConfig = () => {
+  const deliveryMethod = (process.env.NUXT_PUBLIC_SHOP_DELIVERY_METHOD || 'mail') as 'mail' | 'bag' | 'both'
+  const markupPercent = parseInt(process.env.NUXT_PUBLIC_SHOP_MARKUP_PERCENT || '20', 10)
+
   return {
     enabled: process.env.NUXT_SHOP_ENABLED !== 'false',
-    priceMarkupPercent: parseInt(process.env.NUXT_SHOP_MARKUP_PERCENT || '20', 10),
-    deliveryMethod: (process.env.NUXT_SHOP_DELIVERY_METHOD as 'mail' | 'bag') || 'mail',
+    priceMarkupPercent: markupPercent,
+    deliveryMethod,
     mailSubject: process.env.NUXT_SHOP_MAIL_SUBJECT || 'Your Shop Purchase',
     mailBody: process.env.NUXT_SHOP_MAIL_BODY || 'Thank you for your purchase! Your items are attached.',
-    categories: ['trade_goods', 'mounts', 'miscellaneous'],
+    categories: ['trade_goods', 'mounts', 'miscellaneous'] as const,
   }
+}
+
+/**
+ * Validate SOAP config for a specific realm
+ * @param realmId The realm ID
+ * @returns Validation result with any errors
+ */
+export const validateRealmSoapConfig = (realmId: string): { valid: boolean; error?: string } => {
+  const shopConfig = getShopConfig()
+
+  // SOAP is only required for 'bag' or 'both' delivery methods
+  if (shopConfig.deliveryMethod === 'mail') {
+    return { valid: true }
+  }
+
+  const soapConfig = getRealmSoapConfig(realmId)
+
+  if (!soapConfig?.enabled) {
+    return {
+      valid: false,
+      error: `Shop delivery method '${shopConfig.deliveryMethod}' requires SOAP to be enabled for realm '${realmId}'`,
+    }
+  }
+
+  if (!soapConfig.username || !soapConfig.password) {
+    return {
+      valid: false,
+      error: `SOAP credentials are required for realm '${realmId}'`,
+    }
+  }
+
+  return { valid: true }
+}
+
+/**
+ * Check if any realm has SOAP enabled
+ * Used to determine if bag delivery should be available at all
+ */
+export const hasAnySoapEnabled = (): boolean => {
+  const realms = getRealms()
+  return Object.values(realms).some(r => r.soap?.enabled)
 }

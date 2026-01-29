@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { ShopCharacter } from '~/composables/useShop'
+import type { Character } from '~/stores/characters'
 
 defineProps<{
-  character: ShopCharacter
+  character: Character
   getClassIcon: (classId: number) => string
   formatMoney: (copper: number) => string
 }>()

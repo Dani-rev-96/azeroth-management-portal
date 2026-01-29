@@ -1,21 +1,13 @@
 /**
- * Configuration Export
- * This is a convenience re-export that loads environment-specific configs
- * PUBLIC - Safe to share with client (only realm metadata, no credentials)
+ * Configuration Types Export
  *
- * Import from here for cleaner imports:
- *   import { realms, useServerConfig } from '~/shared/utils/config'
+ * All runtime configuration is loaded from environment variables via the server.
  *
- * For database credentials (server-side only):
- *   import { getRealms, getRealmConfig, getAuthDbConfig } from '#server/utils/config'
+ * Client-side: Fetch realm info from /api/realms endpoint
+ * Server-side: import { getRealms, getRealmConfig, getAuthDbConfig, getShopConfig } from '#server/utils/config'
  *
- * Environment-specific configs are in shared/utils/config/:
- *   - local.ts (development)
- *   - production.ts (production)
+ * This file only re-exports types for shared use.
  */
 
-export {
-  realms,
-  useServerConfig,
-} from './config/index'
+export type { PublicRealmConfig, RealmConfig, RealmId, ShopConfig } from './config/index'
 

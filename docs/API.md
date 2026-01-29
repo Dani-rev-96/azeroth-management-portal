@@ -95,7 +95,7 @@ GET /api/accounts/user/:keycloakId
 		"realms": [
 			{
 				"realm": {
-					"id": "wotlk",
+					"id": "1",
 					"name": "Azeroth WoTLK"
 				},
 				"characters": [
@@ -260,7 +260,7 @@ GET /api/characters/:guid
 **Query Parameters**
 | Name | Type | Description |
 |------|------|-------------|
-| `realm` | string | Realm ID (e.g., "wotlk") |
+| `realm` | string | Realm ID (e.g., "1") |
 
 **Response**
 
@@ -313,7 +313,7 @@ POST /api/characters/action
 ```json
 {
 	"guid": 1,
-	"realm": "wotlk",
+	"realm": "1",
 	"action": "rename",
 	"params": {
 		"newName": "NewThrall"
@@ -355,7 +355,7 @@ GET /api/community/online
 			"class": 1,
 			"level": 80,
 			"zone": "Orgrimmar",
-			"realm": "wotlk"
+			"realm": "1"
 		}
 	],
 	"total": 42,
@@ -425,7 +425,7 @@ GET /api/community/top-players
 			"race": 2,
 			"level": 80,
 			"value": 80,
-			"realm": "wotlk"
+			"realm": "1"
 		}
 	]
 }
@@ -561,7 +561,7 @@ POST /api/admin/mail/send
 
 ```json
 {
-	"realm": "wotlk",
+	"realm": "1",
 	"recipient": "Thrall",
 	"subject": "Welcome!",
 	"body": "Welcome to our server!",

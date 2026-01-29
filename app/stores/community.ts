@@ -1,19 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-
-// Types
-export interface OnlinePlayer {
-  guid: number
-  characterName: string
-  level: number
-  race: number
-  class: number
-  zone: number
-  accountName: string
-  realm: string
-  realmId: string
-  playtime: number
-}
+import { useCharactersStore, type OnlinePlayer } from './characters'
 
 export interface GeneralStats {
   accounts?: { total: number; online: number }
@@ -56,38 +43,65 @@ export interface PvPStats {
 
 export type LeaderboardMetric = 'level' | 'playtime' | 'achievements'
 
+/**
+ * Community Store
+ *
+ * Feature store for community page functionality.
+ * Uses the characters store as single source of truth for online players.
+ */
 export const useCommunityStore = defineStore('community', () => {
+  // Use characters store for online players data
+  const charactersStore = useCharactersStore()
+
+  // ==========================================================================
   // State - Server Config
+  // ==========================================================================
   const realms = ref<Record<string, { name: string, id: string }>>({})
   const realmsLoading = ref(false)
   const realmsError = ref<string | undefined>(undefined)
 
-  // State - Online Players
-  const onlinePlayers = ref<OnlinePlayer[]>([])
-  const onlinePlayersLoading = ref(false)
-  const onlinePlayersError = ref<string | undefined>(undefined)
-
+  // ==========================================================================
   // State - General Stats
+  // ==========================================================================
   const generalStats = ref<GeneralStats>({})
   const statsLoading = ref(false)
   const statsError = ref<string | undefined>(undefined)
 
+  // ==========================================================================
   // State - Top Players
+  // ==========================================================================
   const topPlayers = ref<TopPlayer[]>([])
   const topPlayersLoading = ref(false)
   const topPlayersError = ref<string | undefined>(undefined)
   const selectedMetric = ref<LeaderboardMetric>('level')
 
+  // ==========================================================================
   // State - PvP Stats
+  // ==========================================================================
   const pvpStats = ref<PvPStats>({})
   const pvpStatsLoading = ref(false)
   const pvpStatsError = ref<string | undefined>(undefined)
 
+  // ==========================================================================
   // State - Filters
+  // ==========================================================================
   const selectedRealm = ref<string>('')
 
-  // Getters
-  const onlineCount = computed(() => onlinePlayers.value.length)
+  // ==========================================================================
+  // Computed - Delegate to characters store
+  // ==========================================================================
+
+  /** Online players from characters store */
+  const onlinePlayers = computed(() => charactersStore.onlinePlayers)
+
+  /** Loading state from characters store */
+  const onlinePlayersLoading = computed(() => charactersStore.onlinePlayersLoading)
+
+  /** Error state from characters store */
+  const onlinePlayersError = computed(() => charactersStore.onlinePlayersError)
+
+  /** Online count from characters store */
+  const onlineCount = computed(() => charactersStore.onlineCount)
 
   const isLoading = computed(() =>
     onlinePlayersLoading.value ||
@@ -98,7 +112,10 @@ export const useCommunityStore = defineStore('community', () => {
 
   const hasStatsData = computed(() => Object.keys(generalStats.value).length > 0)
 
-  // Actions
+  // ==========================================================================
+  // Actions - Realms
+  // ==========================================================================
+
   async function fetchRealms() {
     realmsLoading.value = true
     realmsError.value = undefined
@@ -114,20 +131,20 @@ export const useCommunityStore = defineStore('community', () => {
     }
   }
 
-  async function fetchOnlinePlayers() {
-    onlinePlayersLoading.value = true
-    onlinePlayersError.value = undefined
+  // ==========================================================================
+  // Actions - Online Players (delegate to characters store)
+  // ==========================================================================
 
-    try {
-      const data = await $fetch<OnlinePlayer[]>('/api/community/online')
-      onlinePlayers.value = data || []
-    } catch (error) {
-      onlinePlayersError.value = 'Failed to fetch online players'
-      console.error('Failed to fetch online players:', error)
-    } finally {
-      onlinePlayersLoading.value = false
-    }
+  /**
+   * Fetch online players - delegates to characters store
+   */
+  async function fetchOnlinePlayers() {
+    await charactersStore.fetchOnlinePlayers()
   }
+
+  // ==========================================================================
+  // Actions - Stats
+  // ==========================================================================
 
   async function fetchGeneralStats() {
     statsLoading.value = true
@@ -208,7 +225,6 @@ export const useCommunityStore = defineStore('community', () => {
   }
 
   function $reset() {
-    onlinePlayers.value = []
     generalStats.value = {}
     topPlayers.value = []
     pvpStats.value = {}
@@ -217,13 +233,18 @@ export const useCommunityStore = defineStore('community', () => {
   }
 
   return {
-    // State
+    // State - Realms
     realms,
     realmsLoading,
     realmsError,
+
+    // State - Online Players (from characters store)
     onlinePlayers,
     onlinePlayersLoading,
     onlinePlayersError,
+    onlineCount,
+
+    // State - Stats
     generalStats,
     statsLoading,
     statsError,
@@ -234,11 +255,14 @@ export const useCommunityStore = defineStore('community', () => {
     pvpStats,
     pvpStatsLoading,
     pvpStatsError,
+
+    // State - Filters
     selectedRealm,
+
     // Getters
-    onlineCount,
     isLoading,
     hasStatsData,
+
     // Actions
     fetchRealms,
     fetchOnlinePlayers,

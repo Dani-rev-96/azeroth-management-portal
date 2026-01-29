@@ -33,12 +33,29 @@ export const WOW_CLASS_COLORS: Record<number, string> = {
   11: '#ff7d0a', // Druid
 }
 
+export const WOW_CLASS_ICONS: Record<number, string> = {
+  1: '⚔️',  // Warrior
+  2: '🛡️',  // Paladin
+  3: '🏹',  // Hunter
+  4: '🗡️',  // Rogue
+  5: '✨',  // Priest
+  6: '💀',  // Death Knight
+  7: '⚡',  // Shaman
+  8: '❄️',  // Mage
+  9: '🔥',  // Warlock
+  11: '🐻', // Druid
+}
+
 export function getClassName(classId: number): string {
   return WOW_CLASSES[classId] || `Class ${classId}`
 }
 
 export function getClassColor(classId: number): string {
   return WOW_CLASS_COLORS[classId] || '#ffffff'
+}
+
+export function getClassIcon(classId: number): string {
+  return WOW_CLASS_ICONS[classId] || '❓'
 }
 
 // ==========================================================================
@@ -54,12 +71,14 @@ export const WOW_RACES: Record<number, string> = {
   6: 'Tauren',
   7: 'Gnome',
   8: 'Troll',
+  9: 'Goblin',
   10: 'Blood Elf',
   11: 'Draenei',
+  22: 'Worgen',
 }
 
-export const ALLIANCE_RACES = [1, 3, 4, 7, 11]
-export const HORDE_RACES = [2, 5, 6, 8, 10]
+export const ALLIANCE_RACES = [1, 3, 4, 7, 11, 22] // Human, Dwarf, Night Elf, Gnome, Draenei, Worgen
+export const HORDE_RACES = [2, 5, 6, 8, 9, 10]    // Orc, Undead, Tauren, Troll, Goblin, Blood Elf
 
 export function getRaceName(raceId: number): string {
   return WOW_RACES[raceId] || `Race ${raceId}`
@@ -166,6 +185,22 @@ export function formatGold(copper: number): string {
   if (copperRemainder > 0 && gold === 0) parts.push(`${copperRemainder}c`)
 
   return parts.join(' ') || '0g'
+}
+
+/**
+ * Format copper amount to full gold/silver/copper display (always shows all parts)
+ */
+export function formatMoney(copper: number): string {
+  const gold = Math.floor(copper / 10000)
+  const silver = Math.floor((copper % 10000) / 100)
+  const copperRemainder = copper % 100
+
+  const parts: string[] = []
+  if (gold > 0) parts.push(`${gold}g`)
+  if (silver > 0 || gold > 0) parts.push(`${silver}s`)
+  parts.push(`${copperRemainder}c`)
+
+  return parts.join(' ')
 }
 
 /**

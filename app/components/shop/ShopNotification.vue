@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import type { ShopNotification } from '~/composables/useShop'
+export interface ShopNotification {
+  type: 'success' | 'error'
+  message: string
+}
 
 defineProps<{
   notification: ShopNotification | null

@@ -2,115 +2,52 @@
   <div class="shop-page">
     <UiPageHeader
       title="Shop"
-      subtitle="Purchase crafting materials, trade goods, and mounts"
+      subtitle="Select a character to start shopping"
     />
 
     <!-- Character Selection -->
     <ShopCharacterSelect
-      v-if="!selectedCharacter"
-      :characters="allCharacters"
-      :loading="loadingCharacters"
-      :error="characterError"
+      :characters="characters"
+      :loading="loading"
+      :error="error"
       :get-class-icon="getClassIcon"
       :format-money="formatMoney"
       @select="selectCharacter"
     />
-
-    <!-- Shop Content -->
-    <template v-else>
-      <ShopSelectedCharacterBar
-        :character="selectedCharacter"
-        :get-class-icon="getClassIcon"
-        :format-money="formatMoney"
-        @change="clearSelectedCharacter"
-      />
-
-      <ShopCategoryTabs
-        :categories="categories"
-        :selected="selectedCategory"
-        @select="selectCategory"
-      />
-
-      <ShopSearchControls
-        v-model="searchQuery"
-        :markup-percent="shopConfig?.priceMarkupPercent"
-        @search="debouncedSearch"
-      />
-
-      <ShopItemsGrid
-        :items="items"
-        :loading="loadingItems"
-        :error="itemsError"
-        :purchasing-id="purchasing"
-        :get-quantity="getQuantity"
-        :can-afford="canAfford"
-        :format-money="formatMoney"
-        :get-icon-url="getIconUrl"
-        @increment="incrementQuantity"
-        @decrement="decrementQuantity"
-        @set-quantity="setQuantity"
-        @purchase="purchaseItem"
-      />
-
-      <ShopPagination
-        :page="pagination.page"
-        :total-pages="pagination.totalPages"
-        @page-change="goToPage"
-      />
-    </template>
-
-    <ShopNotification :notification="notification" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import type { ShopCategoryInfo } from '~/types'
+import { ref, computed, onMounted } from 'vue'
+import { useShopStore } from '~/stores/shop'
+import type { Character } from '~/stores/characters'
 
-// Categories configuration
-const categories: ShopCategoryInfo[] = [
-  { id: 'trade_goods', name: 'Trade Goods', description: 'Crafting materials', icon: '🔨' },
-  { id: 'mounts', name: 'Mounts', description: 'Rideable mounts', icon: '🐴' },
-  { id: 'miscellaneous', name: 'Miscellaneous', description: 'General goods', icon: '📦' },
-]
+const router = useRouter()
+const shopStore = useShopStore()
 
-// Use the shop composable for all state and logic
-const {
-  selectedCharacter,
-  selectedCategory,
-  searchQuery,
-  items,
-  pagination,
-  purchasing,
-  notification,
-  loadingCharacters,
-  loadingItems,
-  characterError,
-  itemsError,
-  shopConfig,
-  allCharacters,
-  getClassIcon,
-  formatMoney,
-  getQuantity,
-  setQuantity,
-  incrementQuantity,
-  decrementQuantity,
-  canAfford,
-  getIconUrl,
-  loadShopConfig,
-  loadCharacters,
-  purchaseItem,
-  selectCharacter,
-  clearSelectedCharacter,
-  selectCategory,
-  goToPage,
-  debouncedSearch,
-} = useShop()
+// State
+const loading = computed(() => shopStore.charactersLoading)
+const error = computed(() => shopStore.charactersError)
+const characters = computed(() => shopStore.sortedCharacters)
+
+// Utility functions
+function getClassIcon(classId: number): string {
+  return shopStore.getClassIcon(classId)
+}
+
+function formatMoney(copper: number): string {
+  return shopStore.formatMoney(copper)
+}
+
+// Navigation - push to character-specific route
+function selectCharacter(character: Character) {
+  router.push(`/shop/${character.realmId}/${character.guid}`)
+}
 
 // Lifecycle
 onMounted(async () => {
-  await loadShopConfig()
-  await loadCharacters()
+  await shopStore.loadConfig()
+  await shopStore.loadCharacters()
 })
 </script>
 

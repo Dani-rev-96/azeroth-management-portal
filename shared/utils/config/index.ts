@@ -1,13 +1,11 @@
 /**
- * Environment-aware configuration loader
- * Realms are loaded from NUXT_DB_REALM_* environment variables at runtime
- * PUBLIC - Safe to share with client (only realm metadata, no credentials)
+ * Shared Configuration Types
  *
- * Client-side (Components):
- *   const { realms } = await useServerConfig()
+ * All runtime configuration is loaded from environment variables via the server.
+ * Client-side should fetch realm info from /api/realms endpoint.
+ * Server-side should use: import { getRealms, getShopConfig } from '#server/utils/config'
  *
- * Server-side (API routes - for database credentials):
- *   import { useServerDatabaseConfig, getRealms } from '#server/utils/config'
+ * This file only exports types for shared use between client and server.
  */
 
 import type { RealmConfig, RealmId, ShopConfig } from '~/types'
@@ -19,39 +17,5 @@ export type PublicRealmConfig = {
   description: string
 }
 
-/**
- * Composable for client-side config loading
- * Only returns realm metadata (no sensitive data)
- * Note: In production, realms are fetched from /api/realms endpoint
- */
-export const useServerConfig = async () => {
-  const env = process.env.NODE_ENV || 'development'
-
-  try {
-    let config
-    if (env === 'production') {
-      config = await import('./production')
-    } else {
-      config = await import('./local')
-    }
-
-    return {
-      realms: config.realms,
-      shopConfig: config.shopConfig,
-    }
-  } catch (error) {
-    console.error(`Failed to load config for environment: ${env}`, error)
-    // Fallback to local
-    const config = await import('./local')
-    return {
-      realms: config.realms,
-      shopConfig: config.shopConfig,
-    }
-  }
-}
-
 // Export type helpers
 export type { RealmConfig, RealmId, ShopConfig }
-
-// Direct conditional exports for server-side imports
-export * from './local'

@@ -117,12 +117,11 @@ azeroth-management-portal/
 │       ├── db.ts                 # SQLite (mappings)
 │       ├── mysql.ts              # MySQL connections
 │       ├── srp6.ts               # SRP-6a password
-│       └── dbc-db.ts             # DBC data access
+│       ├── dbc-db.ts             # DBC data access
+│       └── config/               # Runtime config (env vars)
 ├── shared/                       # Shared code
 │   └── utils/
-│       └── config/               # Realm configurations
-│           ├── local.ts          # Dev config
-│           └── production.ts     # Prod config
+│       └── config/               # Shared types only
 ├── data/                         # Data files
 │   ├── dbcJsons/                 # DBC JSON exports
 │   └── png/Icons/                # Item icons
@@ -282,27 +281,29 @@ export const useExample = () => {
 
 ### Adding a New Realm
 
-1. Update type in `app/types/index.ts`:
+Realms are configured via environment variables at runtime. No code changes are needed.
 
-   ```typescript
-   export type RealmId = "wotlk" | "wotlk-ip" | "new-realm";
+1. Add environment variables for the new realm:
+
+   ```bash
+   # Realm index (0-9)
+   NUXT_DB_REALM_3_ID=4
+   NUXT_DB_REALM_3_NAME=New Realm
+   NUXT_DB_REALM_3_DESCRIPTION=Description of the new realm
+   NUXT_DB_REALM_3_HOST=localhost
+   NUXT_DB_REALM_3_PORT=3310
+   NUXT_DB_REALM_3_USER=acore
+   NUXT_DB_REALM_3_PASSWORD=acore
+
+   # Optional SOAP configuration
+   NUXT_DB_REALM_3_SOAP_ENABLED=true
+   NUXT_DB_REALM_3_SOAP_HOST=127.0.0.1
+   NUXT_DB_REALM_3_SOAP_PORT=7881
+   NUXT_DB_REALM_3_SOAP_USERNAME=soap_user
+   NUXT_DB_REALM_3_SOAP_PASSWORD=soap_password
    ```
 
-2. Add config in `shared/utils/config/local.ts`:
-
-   ```typescript
-   export const realms: Record<RealmId, RealmConfig> = {
-   	// ...existing
-   	"new-realm": {
-   		id: "new-realm",
-   		realmId: 4,
-   		name: "New Realm",
-   		// ...
-   	},
-   };
-   ```
-
-3. Add database credentials to `.db.local.json`
+2. The realm will be automatically available via `/api/realms` endpoint
 
 ### Adding a New Component
 

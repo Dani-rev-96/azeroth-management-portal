@@ -1,60 +1,77 @@
-# Server Configuration Structure
+# Server Configuration
 
 ## Overview
 
-The configuration has been split into two parts for security:
+All configuration is loaded from environment variables at runtime.
+This is critical for Kubernetes deployments where env vars are injected at runtime.
 
-### Public Configuration (`shared/utils/config/`)
+## Configuration Sources
 
-Contains realm metadata that can be safely shared with the client:
+### Environment Variables (Runtime)
 
-- Realm names, IDs, descriptions
-- Port numbers
-- Database keys (references only, no credentials)
+All realm and shop configuration comes from environment variables:
 
-**Files:**
+```bash
+# Auth Database
+NUXT_DB_AUTH_HOST=localhost
+NUXT_DB_AUTH_PORT=3306
+NUXT_DB_AUTH_USER=acore
+NUXT_DB_AUTH_PASSWORD=acore
 
-- `shared/utils/config/index.ts` - Main export with `useServerConfig()`
-- `shared/utils/config/local.ts` - Local development realm config
-- `shared/utils/config/production.ts` - Production realm config
+# Realm 0
+NUXT_DB_REALM_0_ID=1
+NUXT_DB_REALM_0_NAME=Azeroth WoTLK
+NUXT_DB_REALM_0_DESCRIPTION=Classical WOTLK with PlayerBots
+NUXT_DB_REALM_0_HOST=localhost
+NUXT_DB_REALM_0_PORT=3307
+NUXT_DB_REALM_0_USER=acore
+NUXT_DB_REALM_0_PASSWORD=acore
 
-**Usage:**
+# Realm 0 SOAP (optional)
+NUXT_DB_REALM_0_SOAP_ENABLED=true
+NUXT_DB_REALM_0_SOAP_HOST=127.0.0.1
+NUXT_DB_REALM_0_SOAP_PORT=7878
+NUXT_DB_REALM_0_SOAP_USERNAME=soap_user
+NUXT_DB_REALM_0_SOAP_PASSWORD=soap_password
 
-```typescript
-// Client-side (pages, components)
-const { realms } = await useServerConfig();
-
-// Server-side (API routes) - for realm metadata only
-const serverConfig = await useServerConfig();
-console.log(serverConfig.realms);
+# Shop Configuration
+NUXT_SHOP_ENABLED=true
+NUXT_PUBLIC_SHOP_DELIVERY_METHOD=mail
+NUXT_PUBLIC_SHOP_MARKUP_PERCENT=20
 ```
 
-### Private Configuration (`server/utils/config/`)
+## Usage
 
-Contains sensitive database credentials (SERVER-SIDE ONLY):
-
-- Database hosts, ports
-- Database usernames and passwords
-- Connection details
-
-**Files:**
-
-- `server/utils/config/index.ts` - Main export with `useServerDatabaseConfig()`
-- `server/utils/config/local.ts` - Local development database credentials
-- `server/utils/config/production.ts` - Production database credentials
-
-**Usage:**
+### Server-side (API routes)
 
 ```typescript
-// Server-side ONLY (API routes, server utils)
-import { useServerDatabaseConfig } from "#server/utils/config";
+import { getRealms, getRealmConfig, getAuthDbConfig, getShopConfig } from "#server/utils/config";
 
-const { databaseConfigs } = await useServerDatabaseConfig();
-// Use databaseConfigs for database connections
+// Get all configured realms
+const realms = getRealms();
+
+// Get specific realm config (includes db credentials)
+const realmConfig = getRealmConfig("1");
+
+// Get auth database config
+const authDb = getAuthDbConfig();
+
+// Get shop configuration
+const shopConfig = getShopConfig();
 ```
 
-## Migration Notes
+### Client-side (Components)
 
-The database credentials have been moved from `shared/` to `server/` to prevent them from being exposed to the client. The `useServerConfig()` composable now only returns realm metadata without database credentials.
+Clients should fetch realm info from the API endpoint:
 
-All API routes and server utilities automatically use the correct configuration source.
+```typescript
+// In a composable or component
+const { data: realms } = await useFetch("/api/realms");
+```
+
+## Important Notes
+
+- **No hardcoded realm lists**: All realms are configured via environment variables
+- **Realm IDs are strings**: Use numeric-like IDs ("1", "2", "3") from the game's realmlist table
+- **Database credentials are server-only**: Never expose credentials to the client
+- **SOAP is optional per-realm**: Configure only for realms that need bag delivery
