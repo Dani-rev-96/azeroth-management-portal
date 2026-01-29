@@ -170,6 +170,25 @@ export const AccountMappingDB = {
     )
     return stmt.get(externalId, wowAccountId) !== undefined
   },
+
+  /**
+   * Delete a mapping by its ID (for admin use)
+   */
+  deleteById(id: number): boolean {
+    const db = getDatabase()
+    const stmt = db.prepare('DELETE FROM account_mappings WHERE id = ?')
+    const result = stmt.run(id)
+    return result.changes > 0
+  },
+
+  /**
+   * Find a mapping by ID
+   */
+  findById(id: number): DBAccountMapping | undefined {
+    const db = getDatabase()
+    const stmt = db.prepare('SELECT * FROM account_mappings WHERE id = ?')
+    return stmt.get(id) as DBAccountMapping | undefined
+  },
 }
 
 /**

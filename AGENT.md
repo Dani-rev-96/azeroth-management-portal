@@ -30,6 +30,7 @@ This project is a web application for managing and interacting with World of War
 
 - ensure that pages are as clean and minimal as possible, removing unnecessary styles or code and make use of vue components, which should be scoped.
 - pinia stores should be in compositon API style.
+- always check the scss mixins and variables for existing styles before adding new ones. Also ensure variables acutally exist.
 
 ## backend
 

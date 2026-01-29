@@ -13,6 +13,7 @@ import UiEmptyState from '~/components/ui/UiEmptyState.vue'
 import UiSectionHeader from '~/components/ui/UiSectionHeader.vue'
 import AdminAccountsTab from '~/components/admin/AdminAccountsTab.vue'
 import AdminMappingsTab from '~/components/admin/AdminMappingsTab.vue'
+import AdminLinkAccountsTab from '~/components/admin/AdminLinkAccountsTab.vue'
 import AdminGMForm from '~/components/admin/AdminGMForm.vue'
 import AdminMailForm from '~/components/admin/AdminMailForm.vue'
 import AdminFilesTab from '~/components/admin/AdminFilesTab.vue'
@@ -28,6 +29,7 @@ const gmLevel = computed(() => authStore.user?.gmLevel || 0)
 const tabs = [
   { id: 'accounts', label: 'All Accounts', icon: '👥' },
   { id: 'mappings', label: 'Account Mappings', icon: '🔗' },
+  { id: 'link-accounts', label: 'Link Accounts', icon: '🔧' },
   { id: 'gms', label: 'GM Management', icon: '🛡️' },
   { id: 'files', label: 'File Management', icon: '📁' },
 ]
@@ -290,6 +292,16 @@ async function handleFileDelete(filename: string) {
         <AdminMappingsTab
           :mappings="mappings"
           :loading="loadingMappings"
+        />
+      </UiTabPanel>
+
+      <!-- Link Accounts Tab (Admin) -->
+      <UiTabPanel id="link-accounts" :active="activeTab === 'link-accounts'">
+        <AdminLinkAccountsTab
+          :mappings="mappings"
+          :accounts="accounts"
+          :loading="loadingMappings"
+          @refresh="fetchMappings"
         />
       </UiTabPanel>
 

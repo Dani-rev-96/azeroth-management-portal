@@ -14,6 +14,7 @@ import DistributionChart from '~/components/community/DistributionChart.vue'
 import TopPlayersLeaderboard from '~/components/community/TopPlayersLeaderboard.vue'
 import PvPStatistics from '~/components/community/PvPStatistics.vue'
 import RealmFilter from '~/components/community/RealmFilter.vue'
+import { getRaceName, getClassName } from '~/utils/wow'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 
 // Tab configuration
@@ -70,6 +71,22 @@ function handleMetricChange(metric: string) {
   communityStore.changeMetric(metric as 'level' | 'playtime' | 'achievements')
 }
 
+function handleClassSelect(classId: number | null) {
+  communityStore.setClass(classId)
+  communityStore.fetchAllStats()
+}
+
+function handleRaceSelect(raceId: number | null) {
+  communityStore.setRace(raceId)
+  communityStore.fetchAllStats()
+}
+
+function clearAllFilters() {
+  communityStore.setClass(null)
+  communityStore.setRace(null)
+  communityStore.fetchAllStats()
+}
+
 function getMetricLabel(): string {
   switch (communityStore.selectedMetric) {
     case 'playtime': return 'Total Playtime'
@@ -105,6 +122,20 @@ function getMetricLabel(): string {
         :realms="communityStore.realms"
       />
 
+      <!-- Active Filters Indicator -->
+      <div v-if="communityStore.selectedClass || communityStore.selectedRace" class="active-filters">
+        <span class="filter-label">Active filters:</span>
+        <span v-if="communityStore.selectedClass" class="filter-tag">
+          {{ getClassName(communityStore.selectedClass) }}
+          <button @click="handleClassSelect(null)">×</button>
+        </span>
+        <span v-if="communityStore.selectedRace" class="filter-tag">
+          {{ getRaceName(communityStore.selectedRace) }}
+          <button @click="handleRaceSelect(null)">×</button>
+        </span>
+        <button class="clear-all-btn" @click="clearAllFilters">Clear all</button>
+      </div>
+
       <StatsOverview
         :stats="communityStore.generalStats"
         :loading="communityStore.statsLoading"
@@ -117,6 +148,8 @@ function getMetricLabel(): string {
         :distribution="communityStore.generalStats.classDistribution || {}"
         :total-characters="communityStore.generalStats.characters?.total || 0"
         type="class"
+        :selected-id="communityStore.selectedClass"
+        @select="handleClassSelect"
       />
 
       <DistributionChart
@@ -125,6 +158,8 @@ function getMetricLabel(): string {
         :distribution="communityStore.generalStats.raceDistribution || {}"
         :total-characters="communityStore.generalStats.characters?.total || 0"
         type="race"
+        :selected-id="communityStore.selectedRace"
+        @select="handleRaceSelect"
       />
 
       <TopPlayersLeaderboard
@@ -149,5 +184,66 @@ function getMetricLabel(): string {
 
 .community-page {
   @include container;
+}
+
+.active-filters {
+  display: flex;
+  align-items: center;
+  gap: $spacing-3;
+  padding: $spacing-3 $spacing-4;
+  background: rgba($blue-primary, 0.1);
+  border: 1px solid rgba($blue-primary, 0.3);
+  border-radius: $radius-md;
+  margin-bottom: $spacing-4;
+  flex-wrap: wrap;
+}
+
+.filter-label {
+  font-size: $font-size-sm;
+  color: $text-secondary;
+}
+
+.filter-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-2;
+  padding: $spacing-1 $spacing-3;
+  background: $blue-primary;
+  color: white;
+  border-radius: $radius-full;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+
+  button {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font-size: $font-size-base;
+    line-height: 1;
+    opacity: 0.7;
+    padding: 0;
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+}
+
+.clear-all-btn {
+  background: none;
+  border: 1px solid $text-muted;
+  border-radius: $radius-md;
+  color: $text-secondary;
+  padding: $spacing-1 $spacing-3;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  transition: all $transition-fast;
+  margin-left: auto;
+
+  &:hover {
+    border-color: $text-primary;
+    color: $text-primary;
+  }
 }
 </style>

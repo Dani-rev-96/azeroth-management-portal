@@ -1,8 +1,23 @@
 <template>
   <section class="content-section">
-    <h2>{{ icon }} {{ title }}</h2>
+    <div class="section-header">
+      <h2>{{ icon }} {{ title }}</h2>
+      <button
+        v-if="selectedId !== null"
+        class="clear-filter-btn"
+        @click="$emit('select', null)"
+      >
+        Clear filter
+      </button>
+    </div>
     <div class="distribution-grid">
-      <div v-for="(count, id) in distribution" :key="id" class="distribution-item">
+      <div
+        v-for="(count, id) in distribution"
+        :key="id"
+        class="distribution-item"
+        :class="{ selected: selectedId === Number(id), dimmed: selectedId !== null && selectedId !== Number(id) }"
+        @click="$emit('select', selectedId === Number(id) ? null : Number(id))"
+      >
         <div class="distribution-icon">{{ getIcon(Number(id)) }}</div>
         <div class="distribution-info">
           <span class="distribution-name">{{ getName(Number(id)) }}</span>
@@ -23,6 +38,11 @@ const props = defineProps<{
   distribution: Record<number, number>
   totalCharacters: number
   type: 'class' | 'race'
+  selectedId?: number | null
+}>()
+
+defineEmits<{
+  select: [id: number | null]
 }>()
 
 function getIcon(id: number): string {
@@ -67,7 +87,31 @@ function getPercentage(count: number): number {
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use '~/styles/variables' as *;
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-4;
+}
+
+.clear-filter-btn {
+  background: rgba($blue-primary, 0.2);
+  border: 1px solid $blue-primary;
+  border-radius: $radius-md;
+  color: $blue-light;
+  padding: $spacing-2 $spacing-4;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  transition: all $transition-fast;
+
+  &:hover {
+    background: rgba($blue-primary, 0.3);
+  }
+}
+
 .distribution-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -76,13 +120,34 @@ function getPercentage(count: number): number {
 }
 
 .distribution-item {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 0.5rem;
+  background: $bg-secondary;
+  border: 1px solid $border-primary;
+  border-radius: $radius-lg;
   padding: 1rem;
   display: flex;
   align-items: center;
   gap: 1rem;
+  cursor: pointer;
+  transition: all $transition-fast;
+
+  &:hover {
+    border-color: $blue-primary;
+    background: rgba($blue-primary, 0.1);
+  }
+
+  &.selected {
+    border-color: $blue-primary;
+    background: rgba($blue-primary, 0.2);
+    box-shadow: 0 0 12px rgba($blue-primary, 0.3);
+  }
+
+  &.dimmed {
+    opacity: 0.5;
+
+    &:hover {
+      opacity: 0.8;
+    }
+  }
 }
 
 .distribution-icon {
@@ -98,18 +163,18 @@ function getPercentage(count: number): number {
 }
 
 .distribution-name {
-  font-weight: 600;
-  color: #e2e8f0;
+  font-weight: $font-weight-semibold;
+  color: $text-primary;
 }
 
 .distribution-count {
-  font-size: 0.85rem;
-  color: #94a3b8;
+  font-size: $font-size-sm;
+  color: $text-secondary;
 }
 
 .distribution-bar {
   height: 6px;
-  background: #334155;
+  background: $bg-tertiary;
   border-radius: 3px;
   overflow: hidden;
   margin-top: 0.25rem;
@@ -117,7 +182,7 @@ function getPercentage(count: number): number {
 
 .distribution-fill {
   height: 100%;
-  background: linear-gradient(to right, #60a5fa, #a78bfa);
+  background: linear-gradient(to right, $blue-light, $purple-primary);
   transition: width 0.5s ease;
 }
 

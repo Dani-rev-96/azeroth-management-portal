@@ -86,6 +86,8 @@ export const useCommunityStore = defineStore('community', () => {
   // State - Filters
   // ==========================================================================
   const selectedRealm = ref<string>('')
+  const selectedClass = ref<number | null>(null)
+  const selectedRace = ref<number | null>(null)
 
   // ==========================================================================
   // Computed - Delegate to characters store
@@ -151,10 +153,12 @@ export const useCommunityStore = defineStore('community', () => {
     statsError.value = undefined
 
     try {
-      const url = selectedRealm.value
-        ? `/api/community/stats?realmId=${selectedRealm.value}`
-        : '/api/community/stats'
+      const params = new URLSearchParams()
+      if (selectedRealm.value) params.append('realmId', selectedRealm.value)
+      if (selectedClass.value) params.append('classId', String(selectedClass.value))
+      if (selectedRace.value) params.append('raceId', String(selectedRace.value))
 
+      const url = params.toString() ? `/api/community/stats?${params}` : '/api/community/stats'
       const data = await $fetch<GeneralStats>(url)
       generalStats.value = data || {}
     } catch (error) {
@@ -174,9 +178,9 @@ export const useCommunityStore = defineStore('community', () => {
         metric,
         limit: '10'
       })
-      if (selectedRealm.value) {
-        params.append('realmId', selectedRealm.value)
-      }
+      if (selectedRealm.value) params.append('realmId', selectedRealm.value)
+      if (selectedClass.value) params.append('classId', String(selectedClass.value))
+      if (selectedRace.value) params.append('raceId', String(selectedRace.value))
 
       const data = await $fetch<TopPlayer[]>(`/api/community/top-players?${params}`)
       topPlayers.value = data || []
@@ -220,6 +224,14 @@ export const useCommunityStore = defineStore('community', () => {
     selectedRealm.value = realmId
   }
 
+  function setClass(classId: number | null) {
+    selectedClass.value = classId
+  }
+
+  function setRace(raceId: number | null) {
+    selectedRace.value = raceId
+  }
+
   function changeMetric(metric: LeaderboardMetric) {
     fetchTopPlayers(metric)
   }
@@ -229,6 +241,8 @@ export const useCommunityStore = defineStore('community', () => {
     topPlayers.value = []
     pvpStats.value = {}
     selectedRealm.value = ''
+    selectedClass.value = null
+    selectedRace.value = null
     selectedMetric.value = 'level'
   }
 
@@ -258,6 +272,8 @@ export const useCommunityStore = defineStore('community', () => {
 
     // State - Filters
     selectedRealm,
+    selectedClass,
+    selectedRace,
 
     // Getters
     isLoading,
@@ -271,6 +287,8 @@ export const useCommunityStore = defineStore('community', () => {
     fetchPvPStats,
     fetchAllStats,
     setRealm,
+    setClass,
+    setRace,
     changeMetric,
     $reset,
   }

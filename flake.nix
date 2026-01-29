@@ -34,7 +34,7 @@
         ];
 
         name = package-json.name;
-        version = "${package-json.version}-1";
+        version = "${package-json.version}";
         src = ./.;
 
         prod-package = pkgs.buildNpmPackage {
@@ -54,7 +54,7 @@
             pkgs.vips
           ];
 
-          npmDepsHash = "sha256-2OIWb7+yzfIeNnhteNT7FTQDWMdSWWybdTO87y095Vk=";
+          npmDepsHash = "sha256-Yt2k6/djSG/8T/TiDykskSDLpuSc2nogK2GwJK780eE=";
           # npmDepsHash = "";
 
           npmPackFlags = [ "--ignore-scripts" ];

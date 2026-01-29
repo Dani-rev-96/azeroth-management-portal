@@ -62,6 +62,15 @@ export interface PvPStats {
 }
 
 /**
+ * Filter options for community queries
+ */
+export interface CommunityFilters {
+  realmId?: string
+  classId?: number
+  raceId?: number
+}
+
+/**
  * Get list of online players across realms
  */
 export async function getOnlinePlayers(
@@ -128,11 +137,17 @@ export async function getOnlinePlayers(
  */
 export async function getGeneralStats(
   realms: Record<string, any>,
-  realmIdFilter?: string
+  filters: CommunityFilters = {}
 ): Promise<GeneralStats> {
   const nonBotAccountIds = await getNonBotAccountIds()
   const accountFilter = await buildNonBotAccountFilter()
-  const realmsToQuery = getRealmsToQuery(realms, realmIdFilter)
+  const realmsToQuery = getRealmsToQuery(realms, filters.realmId)
+
+  // Build additional filters for class/race
+  const additionalFilters: string[] = []
+  if (filters.classId) additionalFilters.push(`class = ${filters.classId}`)
+  if (filters.raceId) additionalFilters.push(`race = ${filters.raceId}`)
+  const extraFilter = additionalFilters.length > 0 ? ` AND ${additionalFilters.join(' AND ')}` : ''
 
   // Get auth-level stats
   const authPool = await getAuthDbPool()
@@ -156,21 +171,21 @@ export async function getGeneralStats(
   for (const [realmId] of Object.entries(realmsToQuery)) {
     const charsPool = await getCharactersDbPool(realmId)
 
-    // Total characters
+    // Total characters (with optional class/race filter)
     const [charCount] = await charsPool.query<RowDataPacket[]>(
-      `SELECT COUNT(*) as total FROM characters WHERE ${accountFilter}`
+      `SELECT COUNT(*) as total FROM characters WHERE ${accountFilter}${extraFilter}`
     )
     stats.characters.total += charCount[0]?.total ?? 0
 
     // Total playtime
     const [playtime] = await charsPool.query<RowDataPacket[]>(
-      `SELECT SUM(totaltime) as total FROM characters WHERE ${accountFilter}`
+      `SELECT SUM(totaltime) as total FROM characters WHERE ${accountFilter}${extraFilter}`
     )
     stats.playtime.totalSeconds += Number(playtime[0]?.total ?? 0)
 
     // Max level characters
     const [maxLevel] = await charsPool.query<RowDataPacket[]>(
-      `SELECT COUNT(*) as total FROM characters WHERE level = 80 AND ${accountFilter}`
+      `SELECT COUNT(*) as total FROM characters WHERE level = 80 AND ${accountFilter}${extraFilter}`
     )
     stats.characters.maxLevel += maxLevel[0]?.total ?? 0
 
@@ -183,7 +198,7 @@ export async function getGeneralStats(
         END as faction,
         COUNT(*) as count
        FROM characters
-       WHERE ${accountFilter}
+       WHERE ${accountFilter}${extraFilter}
        GROUP BY faction`
     )
     for (const row of factions) {
@@ -191,17 +206,19 @@ export async function getGeneralStats(
       else if (row.faction === 'horde') stats.factions.horde += row.count
     }
 
-    // Class distribution
+    // Class distribution (apply only race filter, not class filter)
+    const classExtraFilter = filters.raceId ? ` AND race = ${filters.raceId}` : ''
     const [classes] = await charsPool.query<RowDataPacket[]>(
-      `SELECT class, COUNT(*) as count FROM characters WHERE ${accountFilter} GROUP BY class`
+      `SELECT class, COUNT(*) as count FROM characters WHERE ${accountFilter}${classExtraFilter} GROUP BY class`
     )
     for (const row of classes) {
       stats.classDistribution[row.class] = (stats.classDistribution[row.class] || 0) + row.count
     }
 
-    // Race distribution
+    // Race distribution (apply only class filter, not race filter)
+    const raceExtraFilter = filters.classId ? ` AND class = ${filters.classId}` : ''
     const [races] = await charsPool.query<RowDataPacket[]>(
-      `SELECT race, COUNT(*) as count FROM characters WHERE ${accountFilter} GROUP BY race`
+      `SELECT race, COUNT(*) as count FROM characters WHERE ${accountFilter}${raceExtraFilter} GROUP BY race`
     )
     for (const row of races) {
       stats.raceDistribution[row.race] = (stats.raceDistribution[row.race] || 0) + row.count
@@ -222,11 +239,17 @@ export async function getTopPlayers(
   realms: Record<string, any>,
   metric: 'level' | 'playtime' | 'achievements' = 'level',
   limit: number = 10,
-  realmIdFilter?: string
+  filters: CommunityFilters = {}
 ): Promise<TopPlayer[]> {
   const accountFilter = await buildNonBotAccountFilter()
-  const realmsToQuery = getRealmsToQuery(realms, realmIdFilter)
+  const realmsToQuery = getRealmsToQuery(realms, filters.realmId)
   const topPlayers: TopPlayer[] = []
+
+  // Build additional filters for class/race
+  const additionalFilters: string[] = []
+  if (filters.classId) additionalFilters.push(`class = ${filters.classId}`)
+  if (filters.raceId) additionalFilters.push(`race = ${filters.raceId}`)
+  const extraFilter = additionalFilters.length > 0 ? ` AND ${additionalFilters.join(' AND ')}` : ''
 
   for (const [realmId, realm] of Object.entries(realmsToQuery)) {
     const charsPool = await getCharactersDbPool(realmId)
@@ -238,7 +261,7 @@ export async function getTopPlayers(
         query = `
           SELECT guid, name, level, race, class, totaltime as playtime, totalKills
           FROM characters
-          WHERE ${accountFilter}
+          WHERE ${accountFilter}${extraFilter}
           ORDER BY totaltime DESC
           LIMIT ?`
         break
@@ -249,7 +272,7 @@ export async function getTopPlayers(
                  c.totalKills, COUNT(ca.achievement) as achievementCount
           FROM characters c
           LEFT JOIN character_achievement ca ON c.guid = ca.guid
-          WHERE ${accountFilter}
+          WHERE ${accountFilter}${extraFilter}
           GROUP BY c.guid
           ORDER BY achievementCount DESC
           LIMIT ?`
@@ -260,7 +283,7 @@ export async function getTopPlayers(
         query = `
           SELECT guid, name, level, race, class, totaltime as playtime, totalKills
           FROM characters
-          WHERE ${accountFilter}
+          WHERE ${accountFilter}${extraFilter}
           ORDER BY level DESC, totaltime DESC
           LIMIT ?`
     }

@@ -1,7 +1,7 @@
 /**
  * GET /api/community/stats
  * Get general player statistics across all realms
- * Query params: realmId (optional) - filter by specific realm
+ * Query params: realmId (optional), classId (optional), raceId (optional)
  */
 import { getGeneralStats } from '#server/services/community'
 import { handleApiError } from '#server/utils/api-errors'
@@ -10,10 +10,15 @@ import { getRealms } from '#server/utils/config'
 export default defineEventHandler(async (event) => {
   try {
     const query = getQuery(event)
-    const realmIdFilter = query.realmId as string | undefined
     const realms = getRealms()
 
-    return await getGeneralStats(realms, realmIdFilter)
+    const filters = {
+      realmId: query.realmId as string | undefined,
+      classId: query.classId ? parseInt(query.classId as string, 10) : undefined,
+      raceId: query.raceId ? parseInt(query.raceId as string, 10) : undefined,
+    }
+
+    return await getGeneralStats(realms, filters)
   } catch (error) {
     return handleApiError(error, 'Failed to fetch player statistics')
   }

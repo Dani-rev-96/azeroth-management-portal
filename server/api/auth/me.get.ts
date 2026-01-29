@@ -47,7 +47,8 @@ export default defineEventHandler(async (event) => {
     if (authMode === "mock") {
       gmLevel = config.public.mockGMLevel || 3
     } else {
-      gmLevel = await getUserGMLevel(username)
+      // Use 'id' (external user ID / OIDC sub claim) for GM lookup, as that's what's stored in the mapping database
+      gmLevel = await getUserGMLevel(id)
     }
 
     return {
