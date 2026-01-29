@@ -557,6 +557,10 @@ export async function getItemSpellEffects(
   const effects: ItemSpellEffect[] = []
 
   for (const spell of spells) {
+    // Track stats already added for this spell to avoid duplicates
+    // (e.g., spell power from both MOD_DAMAGE_DONE and MOD_HEALING_DONE)
+    const seenStats = new Set<string>()
+
     // Check each of the 3 spell effects
     for (let i = 1; i <= 3; i++) {
       const aura = spell[`effect_aura_${i}` as keyof typeof spell] as number
@@ -566,30 +570,40 @@ export async function getItemSpellEffects(
       // Check if this is a stat-granting aura
       if (aura === 13 || aura === 135) {
         // Spell Power / Healing (SPELL_AURA_MOD_DAMAGE_DONE / MOD_HEALING_DONE)
-        // In WotLK these are unified as Spell Power
-        effects.push({
-          spellId: spell.id,
-          trigger: 1,
-          stat: 'Spell Power',
-          value: basePoints + 1, // Base points is typically value - 1
-        })
+        // In WotLK these are unified as Spell Power - only add once per spell
+        if (!seenStats.has('Spell Power')) {
+          seenStats.add('Spell Power')
+          effects.push({
+            spellId: spell.id,
+            trigger: 1,
+            stat: 'Spell Power',
+            value: basePoints + 1, // Base points is typically value - 1
+          })
+        }
       } else if (aura === 29) {
         // Mod Stat - misc value determines which stat
         const statName = STAT_TYPES[miscValue] || `Stat ${miscValue}`
-        effects.push({
-          spellId: spell.id,
-          trigger: 1,
-          stat: statName,
-          value: basePoints + 1,
-        })
+        if (!seenStats.has(statName)) {
+          seenStats.add(statName)
+          effects.push({
+            spellId: spell.id,
+            trigger: 1,
+            stat: statName,
+            value: basePoints + 1,
+          })
+        }
       } else if (aura === 99 || aura === 124) {
         // Attack Power / Ranged Attack Power
-        effects.push({
-          spellId: spell.id,
-          trigger: 1,
-          stat: aura === 124 ? 'Ranged Attack Power' : 'Attack Power',
-          value: basePoints + 1,
-        })
+        const statName = aura === 124 ? 'Ranged Attack Power' : 'Attack Power'
+        if (!seenStats.has(statName)) {
+          seenStats.add(statName)
+          effects.push({
+            spellId: spell.id,
+            trigger: 1,
+            stat: statName,
+            value: basePoints + 1,
+          })
+        }
       }
     }
   }
