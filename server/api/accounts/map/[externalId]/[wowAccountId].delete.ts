@@ -1,14 +1,14 @@
 import { AccountMappingDB } from '#server/utils/db'
 
 /**
- * DELETE /api/accounts/map/:keycloakId/:wowAccountId
- * Remove mapping between Keycloak user and WoW account
+ * DELETE /api/accounts/map/:externalId/:wowAccountId
+ * Remove mapping between external auth user and WoW account
  */
 export default defineEventHandler(async (event) => {
-  const keycloakId = getRouterParam(event, 'keycloakId')
+  const externalId = getRouterParam(event, 'externalId')
   const wowAccountIdStr = getRouterParam(event, 'wowAccountId')
 
-  if (!keycloakId || !wowAccountIdStr) {
+  if (!externalId || !wowAccountIdStr) {
     throw createError({
       statusCode: 400,
       statusMessage: 'Missing required parameters',
@@ -32,13 +32,15 @@ export default defineEventHandler(async (event) => {
     if (authMode === 'mock') {
       authenticatedUser = config.public.mockUser || 'admin'
     } else {
-      authenticatedUser = getHeader(event, 'x-remote-user')
+      authenticatedUser = getHeader(event, 'x-remote-user') ||
+                          getHeader(event, 'x-auth-request-preferred-username') ||
+                          getHeader(event, 'x-forwarded-preferred-username')
     }
-    
+
     // Verify the mapping belongs to the authenticated user
-    const mappings = AccountMappingDB.findByKeycloakId(keycloakId)
+    const mappings = AccountMappingDB.findByExternalId(externalId)
     const mapping = mappings.find(m => m.wow_account_id === wowAccountId)
-    
+
     if (!mapping) {
       throw createError({
         statusCode: 404,
@@ -46,8 +48,8 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Additional security check: verify keycloakId matches authenticated user
-    if (authenticatedUser && mapping.keycloak_username !== authenticatedUser) {
+    // Additional security check: verify externalId matches authenticated user
+    if (authenticatedUser && mapping.display_name !== authenticatedUser) {
       throw createError({
         statusCode: 403,
         statusMessage: 'Not authorized to delete this mapping',
@@ -55,8 +57,8 @@ export default defineEventHandler(async (event) => {
     }
 
     // Delete the mapping from database
-    const deleted = AccountMappingDB.delete(keycloakId, wowAccountId)
-    
+    const deleted = AccountMappingDB.delete(externalId, wowAccountId)
+
     if (!deleted) {
       throw createError({
         statusCode: 500,

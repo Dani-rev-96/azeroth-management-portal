@@ -48,6 +48,7 @@
 
       <DangerZone
         ref="dangerZoneRef"
+        :show-unlink="authConfig.accountLinkingEnabled"
         @unlink="handleUnlinkAccount"
       />
     </div>
@@ -55,10 +56,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watchEffect } from 'vue'
+import { ref, computed, watchEffect, onMounted } from 'vue'
 import type { ManagedAccount, WoWCharacter, AzerothCoreAccount, RealmId, RealmConfig } from '~/types'
 import { useAuthStore } from '~/stores/auth'
 import { useAccountsStore } from '~/stores/accounts'
+import { useAuthConfig } from '~/composables/useAuthConfig'
 import AccountHeader from '~/components/account/AccountHeader.vue'
 import AccountSecurityInfo from '~/components/account/AccountSecurityInfo.vue'
 import PasswordChangeForm from '~/components/account/PasswordChangeForm.vue'
@@ -74,6 +76,12 @@ definePageMeta({
 const route = useRoute()
 const authStore = useAuthStore()
 const accountsStore = useAccountsStore()
+const { config: authConfig, fetchConfig } = useAuthConfig()
+
+// Fetch auth config on mount
+onMounted(() => {
+  fetchConfig()
+})
 
 const accountId = computed(() => Number(route.params.id))
 const loading = ref(true)

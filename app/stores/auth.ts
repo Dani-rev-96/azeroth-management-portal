@@ -1,10 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { KeycloakUser } from '~/types'
+import type { AuthUser } from '~/types'
 
 export const useAuthStore = defineStore('auth', () => {
   // State
-  const user = ref<KeycloakUser | null>(null)
+  const user = ref<AuthUser | null>(null)
   const token = ref<string | undefined>(undefined)
 
   // Getters
@@ -15,7 +15,7 @@ export const useAuthStore = defineStore('auth', () => {
   const username = computed(() => user.value?.preferred_username)
 
   // Actions
-  function setUser(nextUser: KeycloakUser, nextToken?: string) {
+  function setUser(nextUser: AuthUser, nextToken?: string) {
     user.value = nextUser
     if (nextToken) token.value = nextToken
   }
@@ -45,7 +45,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function fetchCurrentUser(): Promise<boolean> {
     try {
-      const fetched = await $fetch<KeycloakUser>('/api/auth/me')
+      const fetched = await $fetch<AuthUser>('/api/auth/me')
       if (fetched) {
         setUser(fetched)
         return true

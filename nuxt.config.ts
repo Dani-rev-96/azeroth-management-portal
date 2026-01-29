@@ -15,19 +15,20 @@ export default defineNuxtConfig({
   runtimeConfig: {
     // Public - accessible in browser (use NUXT_PUBLIC_* env vars)
     public: {
-      // Auth mode: 'mock' (local dev) | 'oauth-proxy' (production) | 'keycloak' (staging)
-      authMode: 'mock',
+      // Auth mode: 'mock' (local dev) | 'oauth-proxy' (production) | 'header' (generic) | 'direct' (WoW account login)
+      authMode: 'direct',
       mockUser: 'admin',
       mockEmail: 'admin@localhost',
       mockGMLevel: 3,
 
       // External services
-      keycloakUrl: 'http://localhost:8080',
-      keycloakRealm: 'wow',
       directusUrl: 'http://localhost:8055',
 
       // App config
       appBaseUrl: 'http://localhost:3000',
+
+      // Debug mode
+      debugMode: false,
 
       // Shop config
       shopDeliveryMethod: 'mail',  // 'mail' | 'bag' | 'both'

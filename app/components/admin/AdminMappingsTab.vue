@@ -9,7 +9,8 @@ import UiEmptyState from '~/components/ui/UiEmptyState.vue'
 
 export interface Mapping {
   id: number
-  keycloak_username: string
+  display_name: string
+  email: string | null
   wow_account_username: string
   wow_account_id: number
   created_at: string
@@ -24,7 +25,7 @@ export interface Props {
 defineProps<Props>()
 
 const columns = [
-  { key: 'keycloak_username', label: 'Keycloak User' },
+  { key: 'display_name', label: 'External User' },
   { key: 'wow_account_username', label: 'WoW Account' },
   { key: 'wow_account_id', label: 'WoW Account ID', width: '140px' },
   { key: 'created_at', label: 'Created' },
@@ -36,7 +37,7 @@ const columns = [
   <section class="admin-mappings-tab">
     <UiSectionHeader
       title="Account Mappings"
-      subtitle="Keycloak User → WoW Account Mappings"
+      subtitle="External User → WoW Account Mappings"
     />
 
     <UiLoadingState v-if="loading" message="Loading mappings..." />
@@ -52,7 +53,7 @@ const columns = [
         </thead>
         <tbody>
           <tr v-for="mapping in mappings" :key="mapping.id">
-            <td>{{ mapping.keycloak_username }}</td>
+            <td>{{ mapping.display_name }}</td>
             <td>{{ mapping.wow_account_username }}</td>
             <td>{{ mapping.wow_account_id }}</td>
             <td>{{ formatDate(mapping.created_at) }}</td>

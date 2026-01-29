@@ -61,16 +61,16 @@ POST /api/auth/logout
 
 ### Get User Accounts
 
-Get all WoW accounts linked to a Keycloak user.
+Get all WoW accounts linked to an external auth user.
 
 ```http
-GET /api/accounts/user/:keycloakId
+GET /api/accounts/user/:externalId
 ```
 
 **Parameters**
 | Name | Type | Description |
 |------|------|-------------|
-| `keycloakId` | string | Keycloak user ID |
+| `externalId` | string | External auth user ID |
 
 **Response**
 
@@ -78,8 +78,9 @@ GET /api/accounts/user/:keycloakId
 [
 	{
 		"mapping": {
-			"keycloakId": "user123",
-			"keycloakUsername": "testuser",
+			"externalId": "user123",
+			"displayName": "testuser",
+			"email": "user@example.com",
 			"wowAccountId": 1,
 			"wowAccountName": "WOWACCOUNT",
 			"createdAt": "2024-01-15T10:30:00Z",
@@ -161,7 +162,7 @@ POST /api/accounts/create
 
 ### Link Account
 
-Link a WoW account to the current Keycloak user.
+Link a WoW account to the current external auth user. Only available when using external authentication modes.
 
 ```http
 POST /api/accounts/map
@@ -171,7 +172,7 @@ POST /api/accounts/map
 
 ```json
 {
-	"keycloakId": "user123",
+	"externalId": "user123",
 	"wowAccountName": "MYACCOUNT",
 	"wowAccountPassword": "mypassword"
 }
@@ -182,8 +183,8 @@ POST /api/accounts/map
 ```json
 {
 	"mapping": {
-		"keycloakId": "user123",
-		"keycloakUsername": "testuser",
+		"externalId": "user123",
+		"displayName": "testuser",
 		"wowAccountId": 1,
 		"wowAccountName": "MYACCOUNT",
 		"createdAt": "2024-01-20T10:00:00Z"
@@ -209,7 +210,7 @@ POST /api/accounts/map
 Remove a WoW account link.
 
 ```http
-DELETE /api/accounts/map/:keycloakId/:wowAccountId
+DELETE /api/accounts/map/:externalId/:wowAccountId
 ```
 
 **Response**
@@ -502,7 +503,7 @@ GET /api/admin/accounts
 
 ### Get Account Mappings
 
-Get all Keycloak-to-WoW account mappings.
+Get all external-to-WoW account mappings.
 
 ```http
 GET /api/admin/account-mappings
@@ -515,8 +516,9 @@ GET /api/admin/account-mappings
 	"mappings": [
 		{
 			"id": 1,
-			"keycloakId": "user123",
-			"keycloakUsername": "testuser",
+			"externalId": "user123",
+			"displayName": "testuser",
+			"email": "user@example.com",
 			"wowAccountId": 1,
 			"wowAccountUsername": "WOWACCOUNT",
 			"createdAt": "2024-01-15"

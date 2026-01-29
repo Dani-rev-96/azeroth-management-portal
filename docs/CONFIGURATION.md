@@ -152,16 +152,15 @@ Startup logs show which realms were detected:
 
 These settings are accessible in the browser via `useRuntimeConfig().public`:
 
-| Variable                     | Description                 | Default                 |
-| ---------------------------- | --------------------------- | ----------------------- |
-| `NUXT_PUBLIC_AUTH_MODE`      | Authentication mode         | `mock`                  |
-| `NUXT_PUBLIC_MOCK_USER`      | Mock username               | `admin`                 |
-| `NUXT_PUBLIC_MOCK_EMAIL`     | Mock email                  | `admin@localhost`       |
-| `NUXT_PUBLIC_MOCK_GM_LEVEL`  | Mock GM level               | `3`                     |
-| `NUXT_PUBLIC_KEYCLOAK_URL`   | Keycloak server URL         | `http://localhost:8080` |
-| `NUXT_PUBLIC_KEYCLOAK_REALM` | Keycloak realm name         | `wow`                   |
-| `NUXT_PUBLIC_DIRECTUS_URL`   | Directus CMS URL (optional) | `http://localhost:8055` |
-| `NUXT_PUBLIC_APP_BASE_URL`   | Application base URL        | `http://localhost:3000` |
+| Variable                    | Description                 | Default                 |
+| --------------------------- | --------------------------- | ----------------------- |
+| `NUXT_PUBLIC_AUTH_MODE`     | Authentication mode         | `mock`                  |
+| `NUXT_PUBLIC_MOCK_USER`     | Mock username               | `admin`                 |
+| `NUXT_PUBLIC_MOCK_EMAIL`    | Mock email                  | `admin@localhost`       |
+| `NUXT_PUBLIC_MOCK_GM_LEVEL` | Mock GM level               | `3`                     |
+| `NUXT_PUBLIC_DIRECTUS_URL`  | Directus CMS URL (optional) | `http://localhost:8055` |
+| `NUXT_PUBLIC_APP_BASE_URL`  | Application base URL        | `http://localhost:3000` |
+| `NUXT_PUBLIC_DEBUG_MODE`    | Enable debug logging        | `false`                 |
 
 ### Auth Modes
 
@@ -169,7 +168,8 @@ These settings are accessible in the browser via `useRuntimeConfig().public`:
 | ------------- | ------------------------------ | ---------------------------- |
 | `mock`        | Simulates authentication       | Local development            |
 | `oauth-proxy` | Reads headers from OAuth-Proxy | Kubernetes with oauth2-proxy |
-| `keycloak`    | Direct Keycloak integration    | Staging environments         |
+| `header`      | Generic header-based auth      | Nginx basic auth, custom     |
+| `direct`      | Direct WoW account login       | Simple deployments           |
 
 ## Adding a New Realm
 

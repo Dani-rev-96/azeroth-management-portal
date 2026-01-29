@@ -23,13 +23,13 @@ export const useAccountsStore = defineStore('accounts', () => {
   const accountCount = computed(() => accounts.value.length)
 
   // Actions
-  async function loadAccounts(keycloakId: string) {
+  async function loadAccounts(externalId: string) {
     loading.value = true
     error.value = undefined
 
     try {
       const response = await $fetch<ManagedAccount[]>(
-        `/api/accounts/user/${keycloakId}`,
+        `/api/accounts/user/${externalId}`,
         { method: 'GET' }
       )
 
@@ -43,7 +43,7 @@ export const useAccountsStore = defineStore('accounts', () => {
   }
 
   async function createAccountMapping(
-    keycloakId: string,
+    externalId: string,
     wowAccountName: string,
     wowAccountPassword: string
   ) {
@@ -51,7 +51,7 @@ export const useAccountsStore = defineStore('accounts', () => {
       const data = await $fetch<ManagedAccount>('/api/accounts/map', {
         method: 'POST',
         body: {
-          keycloakId,
+          externalId,
           wowAccountName,
           wowAccountPassword,
         },
@@ -68,7 +68,7 @@ export const useAccountsStore = defineStore('accounts', () => {
   async function removeAccountMapping(mappingId: AccountMapping) {
     try {
       await $fetch(
-        `/api/accounts/map/${mappingId.keycloakId}/${mappingId.wowAccountId}`,
+        `/api/accounts/map/${mappingId.externalId}/${mappingId.wowAccountId}`,
         { method: 'DELETE' }
       )
 

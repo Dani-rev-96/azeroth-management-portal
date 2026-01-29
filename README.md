@@ -1,6 +1,6 @@
 # Azeroth Management Portal
 
-A modern, CMS-independent management and community portal for [AzerothCore](https://www.azerothcore.org/) WoW servers. Built with Nuxt 4, featuring external authentication via Keycloak/OAuth-Proxy, multi-realm support, and comprehensive account/character management.
+A modern, CMS-independent management and community portal for [AzerothCore](https://www.azerothcore.org/) WoW servers. Built with Nuxt 4, featuring flexible authentication (OAuth-Proxy, nginx basic auth, or direct WoW login), multi-realm support, and comprehensive account/character management.
 
 <p align="center">
   <img src="https://img.shields.io/badge/Nuxt-4.x-00DC82?logo=nuxt.js" alt="Nuxt 4" />
@@ -13,7 +13,7 @@ A modern, CMS-independent management and community portal for [AzerothCore](http
 
 ### 👤 Account Management
 
-- **Account Linking** – Link your Keycloak identity to one or more WoW accounts
+- **Account Linking** – Link your external identity to one or more WoW accounts (when using external auth)
 - **Account Creation** – Create new WoW accounts directly from the portal
 - **Password Management** – Change passwords for linked accounts (SRP-6a compliant)
 - **Multi-Account Support** – Manage multiple WoW accounts from a single identity
@@ -37,7 +37,7 @@ A modern, CMS-independent management and community portal for [AzerothCore](http
 
 - **Account Management** – Search, view, and manage all accounts
 - **GM Level Management** – Assign or revoke GM privileges
-- **Account Mappings** – View all Keycloak-to-WoW account links
+- **Account Mappings** – View all external-to-WoW account links
 - **Mass Mailing** – Send in-game mail to players or groups
 - **File Management** – Upload/manage downloadable files (game clients, patches)
 - **Data Export** – Export account and character data
@@ -50,8 +50,10 @@ A modern, CMS-independent management and community portal for [AzerothCore](http
 
 ### 🔐 Authentication
 
-- **Keycloak Integration** – OAuth 2.0 / OIDC via Keycloak
+- **Flexible Auth Modes** – Choose what fits your infrastructure
 - **OAuth-Proxy Support** – Header-based auth for Kubernetes deployments
+- **Nginx Basic Auth** – Simple header-based auth with htpasswd
+- **Direct WoW Login** – Simple mode using WoW account credentials
 - **Mock Mode** – Local development without external auth
 - **GM Detection** – Automatic detection of GM status from game database
 
@@ -109,7 +111,7 @@ A modern, CMS-independent management and community portal for [AzerothCore](http
 - **Node.js** 18+ (20+ recommended)
 - **pnpm** (recommended) or npm
 - **AzerothCore** server with accessible MySQL databases
-- **Keycloak** instance (for production) or use mock mode for development
+- **Authentication**: Choose OAuth-Proxy, nginx basic auth, or direct WoW login
 
 ### Installation
 
@@ -184,7 +186,7 @@ pnpm preview
 | ---------------------------------------- | --------------------------------------------- |
 | [Setup Guide](docs/SETUP.md)             | Detailed installation and configuration       |
 | [Configuration](docs/CONFIGURATION.md)   | Environment variables and realm configuration |
-| [Authentication](docs/AUTHENTICATION.md) | Keycloak setup and auth modes                 |
+| [Authentication](docs/AUTHENTICATION.md) | Auth modes and setup guides                   |
 | [API Reference](docs/API.md)             | Backend API endpoints                         |
 | [Deployment](docs/DEPLOYMENT.md)         | Production deployment guide                   |
 | [Development](docs/DEVELOPMENT.md)       | Contributing and local development            |
@@ -195,7 +197,7 @@ pnpm preview
 - **UI**: [PrimeVue](https://primevue.org/), SCSS
 - **Backend**: [Nitro](https://nitro.unjs.io/) (Nuxt's server engine)
 - **Databases**: MySQL (AzerothCore), SQLite (local data, DBC cache)
-- **Authentication**: Keycloak, OAuth-Proxy, or Mock
+- **Authentication**: OAuth-Proxy, Nginx Basic Auth, Direct WoW Login, or Mock
 - **Security**: SRP-6a password verification (AzerothCore compatible)
 
 ## 📜 License
@@ -206,4 +208,4 @@ This project is open source and available under the [MIT License](LICENSE).
 
 - [AzerothCore](https://www.azerothcore.org/) – The open-source WoW emulator
 - [Nuxt](https://nuxt.com/) – The Vue framework for full-stack applications
-- [Keycloak](https://www.keycloak.org/) – Open-source identity management
+- [OAuth2-Proxy](https://oauth2-proxy.github.io/oauth2-proxy/) – Identity-aware proxy for Kubernetes

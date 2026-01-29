@@ -1,5 +1,5 @@
 <template>
-  <div class="section danger-section">
+  <div v-if="showUnlink" class="section danger-section">
     <h2>Danger Zone</h2>
     <p class="section-description">This action cannot be undone</p>
     <button
@@ -14,6 +14,13 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+
+const props = withDefaults(defineProps<{
+  /** Hide the unlink button (e.g., in direct auth mode) */
+  showUnlink?: boolean
+}>(), {
+  showUnlink: true,
+})
 
 const emit = defineEmits<{
   unlink: []

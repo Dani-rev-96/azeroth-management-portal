@@ -70,12 +70,12 @@ export async function getAllGMAccounts(): Promise<GMAccess[]> {
 
 /**
  * Check if user has GM access based on their mapped accounts
- * @param keycloakId Keycloak user ID
+ * @param externalId External auth user ID (username or unique identifier)
  * @returns Highest GM level found, or 0 if not a GM
  */
-export async function getUserGMLevel(keycloakId: string): Promise<number> {
+export async function getUserGMLevel(externalId: string): Promise<number> {
   const { AccountMappingDB } = await import('#server/utils/db')
-  const mappings = AccountMappingDB.findByKeycloakId(keycloakId)
+  const mappings = AccountMappingDB.findByExternalId(externalId)
 
   if (mappings.length === 0) {
     return 0

@@ -1,4 +1,4 @@
-import { getAuthenticatedUser } from '#server/utils/auth'
+import { getAuthenticatedUser, isDirectAuthMode, getDirectAuthSession } from '#server/utils/auth'
 import type { ManagedAccount, AccountMapping } from '~/types'
 
 /**
@@ -38,20 +38,32 @@ export default defineEventHandler(async (event) => {
       // Not a GM, need to check ownership
     }
 
-    // If not GM, verify ownership via mapping database
+    // If not GM, verify ownership
     if (!isGM) {
-      const { getDatabase } = await import('#server/utils/db')
-      const db = getDatabase()
-      const stmt = db.prepare(
-        'SELECT keycloak_id FROM account_mappings WHERE wow_account_id = ?'
-      )
-      const dbMapping = stmt.get(accountIdNum) as { keycloak_id: string } | undefined
+      // In direct auth mode, verify ownership from session
+      if (isDirectAuthMode()) {
+        const session = await getDirectAuthSession(event)
+        if (!session || session.accountId !== accountIdNum) {
+          throw createError({
+            statusCode: 403,
+            statusMessage: 'Access denied',
+          })
+        }
+      } else {
+        // In external auth mode, verify via mapping database
+        const { getDatabase } = await import('#server/utils/db')
+        const db = getDatabase()
+        const stmt = db.prepare(
+          'SELECT external_id FROM account_mappings WHERE wow_account_id = ?'
+        )
+        const dbMapping = stmt.get(accountIdNum) as { external_id: string } | undefined
 
-      if (!dbMapping || dbMapping.keycloak_id !== authenticatedUser.username) {
-        throw createError({
-          statusCode: 403,
-          statusMessage: 'Access denied',
-        })
+        if (!dbMapping || dbMapping.external_id !== authenticatedUser.id) {
+          throw createError({
+            statusCode: 403,
+            statusMessage: 'Access denied',
+          })
+        }
       }
     }
 
@@ -70,29 +82,48 @@ export default defineEventHandler(async (event) => {
     const { findRealmsWithCharacters } = await import('#server/services/realm')
     const realms = await findRealmsWithCharacters(accountIdNum)
 
-    // Get mapping from database (optional for GM)
-    const { getDatabase } = await import('#server/utils/db')
-    const db = getDatabase()
-    const mappingStmt = db.prepare(
-      'SELECT * FROM account_mappings WHERE wow_account_id = ?'
-    )
-    const dbMapping = mappingStmt.get(accountIdNum) as any
+    // Build mapping based on auth mode
+    let mapping: AccountMapping
 
-    // Build mapping from database or from account data
-    const mapping: AccountMapping = dbMapping ? {
-      keycloakId: dbMapping.keycloak_id,
-      keycloakUsername: dbMapping.keycloak_username,
-      wowAccountId: dbMapping.wow_account_id,
-      wowAccountName: dbMapping.wow_account_username,
-      createdAt: dbMapping.created_at,
-      lastUsed: dbMapping.last_used || undefined,
-    } : {
-      keycloakId: '',
-      keycloakUsername: '',
-      wowAccountId: account.id,
-      wowAccountName: account.username,
-      createdAt: account.joindate,
-      lastUsed: account.last_login,
+    if (isDirectAuthMode()) {
+      // In direct mode, create synthetic mapping from session
+      const session = await getDirectAuthSession(event)
+      mapping = {
+        // Use account ID as the unique external identifier in direct mode
+        externalId: String(session?.accountId || account.id),
+        displayName: session?.username || account.username,
+        email: session?.email,
+        wowAccountId: account.id,
+        wowAccountName: account.username,
+        createdAt: account.joindate,
+        lastUsed: account.last_login || undefined,
+      }
+    } else {
+      // In external auth mode, get mapping from database (optional for GM)
+      const { getDatabase } = await import('#server/utils/db')
+      const db = getDatabase()
+      const mappingStmt = db.prepare(
+        'SELECT * FROM account_mappings WHERE wow_account_id = ?'
+      )
+      const dbMapping = mappingStmt.get(accountIdNum) as any
+
+      // Build mapping from database or from account data
+      mapping = dbMapping ? {
+        externalId: dbMapping.external_id,
+        displayName: dbMapping.display_name,
+        email: dbMapping.email || undefined,
+        wowAccountId: dbMapping.wow_account_id,
+        wowAccountName: dbMapping.wow_account_username,
+        createdAt: dbMapping.created_at,
+        lastUsed: dbMapping.last_used || undefined,
+      } : {
+        externalId: '',
+        displayName: '',
+        wowAccountId: account.id,
+        wowAccountName: account.username,
+        createdAt: account.joindate,
+        lastUsed: account.last_login || undefined,
+      }
     }
 
     const accountData: ManagedAccount = {

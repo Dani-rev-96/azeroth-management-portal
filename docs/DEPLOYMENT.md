@@ -96,8 +96,8 @@ services:
   oauth2-proxy:
     image: quay.io/oauth2-proxy/oauth2-proxy:latest
     command:
-      - --provider=keycloak-oidc
-      - --oidc-issuer-url=https://keycloak.example.com/realms/wow
+      - --provider=oidc # Works with any OIDC provider (Keycloak, Auth0, Google, etc.)
+      - --oidc-issuer-url=https://your-idp.example.com/realms/wow
       - --client-id=azeroth-portal
       - --client-secret=${OAUTH_CLIENT_SECRET}
       - --cookie-secret=${OAUTH_COOKIE_SECRET}
@@ -163,8 +163,6 @@ data:
   # Public settings
   NUXT_PUBLIC_AUTH_MODE: "oauth-proxy"
   NUXT_PUBLIC_APP_BASE_URL: "https://wow.example.com"
-  NUXT_PUBLIC_KEYCLOAK_URL: "https://keycloak.example.com"
-  NUXT_PUBLIC_KEYCLOAK_REALM: "wow"
 ```
 
 ### Secret for Passwords

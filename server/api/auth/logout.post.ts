@@ -1,12 +1,19 @@
 /**
  * POST /api/auth/logout
  * Clears authentication
+ *
+ * For direct auth mode: destroys the session
+ * For oauth-proxy/header modes: just returns success (frontend handles redirect)
  */
-export default defineEventHandler(async (event) => {
-  // In production with oauth-proxy, logout might need to redirect to keycloak
-  // For now, just return success - the frontend will clear local state
+import { destroyDirectAuthSession, isDirectAuthMode } from '#server/utils/auth'
 
+export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-cache')
+
+  // For direct auth mode, destroy the session
+  if (isDirectAuthMode()) {
+    destroyDirectAuthSession(event)
+  }
 
   return {
     success: true,

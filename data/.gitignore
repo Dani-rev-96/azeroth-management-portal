@@ -2,6 +2,7 @@
 *.db
 *.db-shm
 *.db-wal
+*.db.*
 
 # But keep items.db - it's required for the build
 !items.db

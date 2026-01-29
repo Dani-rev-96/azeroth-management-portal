@@ -1,5 +1,5 @@
-// Keycloak User from oauth-proxy
-export type KeycloakUser = {
+// Authenticated User from external auth provider (OAuth-Proxy, Basic Auth, or direct WoW login)
+export type AuthUser = {
   sub: string
   preferred_username: string
   email: string
@@ -9,6 +9,10 @@ export type KeycloakUser = {
   email_verified: boolean
   isGM?: boolean
   gmLevel?: number
+  // True when using direct WoW account login (no account linking)
+  isDirect?: boolean
+  // WoW account ID (only present in direct auth mode)
+  wowAccountId?: number
 }
 
 // WoW Server Realm Configuration
@@ -79,10 +83,11 @@ export type WoWCharacter = {
   deleteDate?: string
 }
 
-// Mapping between Keycloak and WoW Account
+// Mapping between external auth user and WoW Account
 export type AccountMapping = {
-  keycloakId: string
-  keycloakUsername: string
+  externalId: string
+  displayName: string
+  email?: string
   wowAccountId: number
   wowAccountName: string
   createdAt: string

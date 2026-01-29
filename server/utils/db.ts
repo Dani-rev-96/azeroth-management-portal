@@ -38,18 +38,19 @@ function initSchema() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS account_mappings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      keycloak_id TEXT NOT NULL,
-      keycloak_username TEXT NOT NULL,
+      external_id TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      email TEXT,
       wow_account_id INTEGER NOT NULL,
       wow_account_username TEXT NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       last_used DATETIME,
       metadata TEXT,
-      UNIQUE(keycloak_id, wow_account_id)
+      UNIQUE(external_id, wow_account_id)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_keycloak_id
-      ON account_mappings(keycloak_id);
+    CREATE INDEX IF NOT EXISTS idx_external_id
+      ON account_mappings(external_id);
 
     CREATE INDEX IF NOT EXISTS idx_wow_account_id
       ON account_mappings(wow_account_id);
@@ -61,8 +62,9 @@ function initSchema() {
  */
 export interface DBAccountMapping {
   id: number
-  keycloak_id: string
-  keycloak_username: string
+  external_id: string
+  display_name: string
+  email: string | null
   wow_account_id: number
   wow_account_username: string
   created_at: string
@@ -75,31 +77,32 @@ export interface DBAccountMapping {
  */
 export const AccountMappingDB = {
   /**
-   * Find all mappings for a Keycloak user
+   * Find all mappings for an external user
    */
-  findByKeycloakId(keycloakId: string): DBAccountMapping[] {
+  findByExternalId(externalId: string): DBAccountMapping[] {
     const db = getDatabase()
-    const stmt = db.prepare('SELECT * FROM account_mappings WHERE keycloak_id = ?')
-    return stmt.all(keycloakId) as DBAccountMapping[]
+    const stmt = db.prepare('SELECT * FROM account_mappings WHERE external_id = ?')
+    return stmt.all(externalId) as DBAccountMapping[]
   },
 
   /**
    * Find a specific mapping
    */
-  findByIds(keycloakId: string, wowAccountId: number): DBAccountMapping | undefined {
+  findByIds(externalId: string, wowAccountId: number): DBAccountMapping | undefined {
     const db = getDatabase()
     const stmt = db.prepare(
-      'SELECT * FROM account_mappings WHERE keycloak_id = ? AND wow_account_id = ?'
+      'SELECT * FROM account_mappings WHERE external_id = ? AND wow_account_id = ?'
     )
-    return stmt.get(keycloakId, wowAccountId) as DBAccountMapping | undefined
+    return stmt.get(externalId, wowAccountId) as DBAccountMapping | undefined
   },
 
   /**
    * Create a new account mapping
    */
   create(mapping: {
-    keycloakId: string
-    keycloakUsername: string
+    externalId: string
+    displayName: string
+    email?: string
     wowAccountId: number
     wowAccountUsername: string
     metadata?: Record<string, any>
@@ -107,13 +110,14 @@ export const AccountMappingDB = {
     const db = getDatabase()
     const stmt = db.prepare(`
       INSERT INTO account_mappings
-        (keycloak_id, keycloak_username, wow_account_id, wow_account_username, metadata)
-      VALUES (?, ?, ?, ?, ?)
+        (external_id, display_name, email, wow_account_id, wow_account_username, metadata)
+      VALUES (?, ?, ?, ?, ?, ?)
     `)
 
     const result = stmt.run(
-      mapping.keycloakId,
-      mapping.keycloakUsername,
+      mapping.externalId,
+      mapping.displayName,
+      mapping.email || null,
       mapping.wowAccountId,
       mapping.wowAccountUsername,
       mapping.metadata ? JSON.stringify(mapping.metadata) : null
@@ -127,23 +131,23 @@ export const AccountMappingDB = {
   /**
    * Update last_used timestamp
    */
-  updateLastUsed(keycloakId: string, wowAccountId: number): void {
+  updateLastUsed(externalId: string, wowAccountId: number): void {
     const db = getDatabase()
     const stmt = db.prepare(
-      'UPDATE account_mappings SET last_used = CURRENT_TIMESTAMP WHERE keycloak_id = ? AND wow_account_id = ?'
+      'UPDATE account_mappings SET last_used = CURRENT_TIMESTAMP WHERE external_id = ? AND wow_account_id = ?'
     )
-    stmt.run(keycloakId, wowAccountId)
+    stmt.run(externalId, wowAccountId)
   },
 
   /**
    * Delete a mapping
    */
-  delete(keycloakId: string, wowAccountId: number): boolean {
+  delete(externalId: string, wowAccountId: number): boolean {
     const db = getDatabase()
     const stmt = db.prepare(
-      'DELETE FROM account_mappings WHERE keycloak_id = ? AND wow_account_id = ?'
+      'DELETE FROM account_mappings WHERE external_id = ? AND wow_account_id = ?'
     )
-    const result = stmt.run(keycloakId, wowAccountId)
+    const result = stmt.run(externalId, wowAccountId)
     return result.changes > 0
   },
 
@@ -159,12 +163,12 @@ export const AccountMappingDB = {
   /**
    * Check if a mapping exists
    */
-  exists(keycloakId: string, wowAccountId: number): boolean {
+  exists(externalId: string, wowAccountId: number): boolean {
     const db = getDatabase()
     const stmt = db.prepare(
-      'SELECT 1 FROM account_mappings WHERE keycloak_id = ? AND wow_account_id = ? LIMIT 1'
+      'SELECT 1 FROM account_mappings WHERE external_id = ? AND wow_account_id = ? LIMIT 1'
     )
-    return stmt.get(keycloakId, wowAccountId) !== undefined
+    return stmt.get(externalId, wowAccountId) !== undefined
   },
 }
 

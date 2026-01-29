@@ -7,64 +7,80 @@ This guide explains the authentication architecture and how to configure differe
 - [Overview](#overview)
 - [Authentication Modes](#authentication-modes)
 - [Mock Authentication](#mock-authentication)
-- [Keycloak Setup](#keycloak-setup)
-- [OAuth-Proxy Setup](#oauth-proxy-setup)
+- [External Header-Based Auth](#external-header-based-auth)
+  - [OAuth2-Proxy Setup](#oauth2-proxy-setup)
+  - [Nginx Basic Auth](#nginx-basic-auth)
+  - [Any HTTP Header Provider](#any-http-header-provider)
+- [Direct WoW Account Login](#direct-wow-account-login)
 - [GM Level Detection](#gm-level-detection)
 - [Account Linking](#account-linking)
 
 ## Overview
 
-The Azeroth Management Portal uses **external authentication** by design. This means:
+The Azeroth Management Portal supports **flexible authentication** by design. This means:
 
-- **No built-in user database** – Users are managed externally (Keycloak, OAuth-Proxy)
-- **Session-less API** – Each request is authenticated via headers or tokens
-- **Account linking** – External identities are linked to WoW accounts
+- **Multiple auth modes** – Choose the mode that fits your infrastructure
+- **External authentication** – Use OAuth-Proxy, nginx basic auth, or any provider that sets HTTP headers
+- **Direct WoW login** – Simple mode using WoW account credentials directly
+- **Session-less API** – Each request is authenticated via headers or session cookies
+- **Account linking** – External identities can be linked to WoW accounts (when using external auth)
 
 This approach allows the portal to integrate with existing identity infrastructure without duplicating user management.
 
 ### Authentication Flow
 
 ```
-┌─────────────┐     ┌──────────────┐     ┌──────────────────┐
-│   Browser   │────▶│ OAuth-Proxy  │────▶│  Keycloak        │
-│             │◀────│ (or direct)  │◀────│  (Identity)      │
-└─────────────┘     └──────────────┘     └──────────────────┘
-       │                   │
-       │  X-Auth Headers   │
-       ▼                   ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Azeroth Portal                           │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │  /api/auth/me                                        │   │
-│  │  1. Read auth headers (or mock user)                 │   │
-│  │  2. Query GM level from acore_auth.account_access    │   │
-│  │  3. Return user with isGM flag                       │   │
-│  └──────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Authentication Modes                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────┐     ┌──────────────┐     ┌──────────────────┐              │
+│  │   Browser   │────▶│ Auth Proxy   │────▶│  Identity        │              │
+│  │             │◀────│ (nginx/oauth)│◀────│  Provider        │              │
+│  └─────────────┘     └──────────────┘     └──────────────────┘              │
+│         │                   │                                                │
+│         │  X-Auth Headers   │                                                │
+│         ▼                   ▼                                                │
+│  ┌─────────────────────────────────────────────────────────────┐            │
+│  │                    Azeroth Portal                           │            │
+│  │  ┌──────────────────────────────────────────────────────┐   │            │
+│  │  │  /api/auth/me                                        │   │            │
+│  │  │  1. Read auth headers (or session for direct mode)   │   │            │
+│  │  │  2. Query GM level from linked accounts              │   │            │
+│  │  │  3. Return user with isGM flag                       │   │            │
+│  │  └──────────────────────────────────────────────────────┘   │            │
+│  └─────────────────────────────────────────────────────────────┘            │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Authentication Modes
 
-The `authMode` setting in your credentials file determines how authentication works:
+The `authMode` setting determines how authentication works:
 
-| Mode          | Description          | Headers            | Use Case              |
-| ------------- | -------------------- | ------------------ | --------------------- |
-| `mock`        | Simulated user       | None               | Local development     |
-| `oauth-proxy` | OAuth2-Proxy headers | `X-Auth-Request-*` | Kubernetes production |
-| `keycloak`    | Direct Keycloak      | Token              | Staging/testing       |
+| Mode          | Description               | Headers/Session       | Use Case                    |
+| ------------- | ------------------------- | --------------------- | --------------------------- |
+| `mock`        | Simulated user            | None                  | Local development           |
+| `oauth-proxy` | OAuth2-Proxy headers      | `X-Auth-Request-*`    | Kubernetes with OAuth2Proxy |
+| `header`      | Generic header-based auth | `X-Remote-User`, etc. | Nginx basic auth, custom    |
+| `direct`      | Direct WoW account login  | Session cookie        | Simple deployments          |
 
 ### Configuring Auth Mode
 
-```json
-// .db.local.json
-{
-	"env": {
-		"authMode": "mock",
-		"mockUser": "admin",
-		"mockEmail": "admin@localhost",
-		"mockGMLevel": 3
-	}
-}
+Set the `NUXT_PUBLIC_AUTH_MODE` environment variable:
+
+```bash
+# For development
+NUXT_PUBLIC_AUTH_MODE=mock
+
+# For production with OAuth2-Proxy
+NUXT_PUBLIC_AUTH_MODE=oauth-proxy
+
+# For nginx basic auth or similar
+NUXT_PUBLIC_AUTH_MODE=header
+
+# For direct WoW account login
+NUXT_PUBLIC_AUTH_MODE=direct
 ```
 
 ## Mock Authentication
@@ -73,15 +89,11 @@ Mock mode is for **local development only**. It simulates an authenticated user 
 
 ### Configuration
 
-```json
-{
-	"env": {
-		"authMode": "mock",
-		"mockUser": "testuser",
-		"mockEmail": "test@localhost",
-		"mockGMLevel": 3
-	}
-}
+```bash
+NUXT_PUBLIC_AUTH_MODE=mock
+NUXT_PUBLIC_MOCK_USER=testuser
+NUXT_PUBLIC_MOCK_EMAIL=test@localhost
+NUXT_PUBLIC_MOCK_GM_LEVEL=3
 ```
 
 ### Behavior
@@ -100,63 +112,29 @@ Mock mode is for **local development only**. It simulates an authenticated user 
 | 2     | GM             |
 | 3     | Administrator  |
 
-## Keycloak Setup
+## External Header-Based Auth
 
-Keycloak provides enterprise-grade identity management with support for SSO, MFA, and federated identity.
+Both `oauth-proxy` and `header` modes read user information from HTTP headers set by an upstream proxy.
 
-### Prerequisites
+### Supported Headers
 
-- Keycloak 20+ running and accessible
-- Admin access to create realm and clients
+The portal checks these headers (in order of priority):
 
-### 1. Create Realm
+| Header                              | Purpose          |
+| ----------------------------------- | ---------------- |
+| `X-Auth-Request-Preferred-Username` | Username (OAuth) |
+| `X-Forwarded-Preferred-Username`    | Username         |
+| `X-Auth-Request-User`               | Username         |
+| `X-Forwarded-User`                  | Username         |
+| `X-Remote-User`                     | Username (nginx) |
+| `X-Auth-Request-Email`              | Email            |
+| `X-Forwarded-Email`                 | Email            |
 
-1. Log into Keycloak Admin Console
-2. Create a new realm (e.g., `wow`)
-3. Configure realm settings:
-   - **Login** → Enable "User registration" if desired
-   - **Tokens** → Set appropriate lifetimes
-
-### 2. Create Client
-
-1. Go to **Clients** → **Create client**
-2. Configure:
-   - **Client ID**: `azeroth-portal`
-   - **Client Protocol**: `openid-connect`
-   - **Access Type**: `confidential` or `public`
-   - **Valid Redirect URIs**: `https://portal.example.com/*`
-   - **Web Origins**: `https://portal.example.com`
-
-### 3. Configure Portal
-
-```json
-// .db.production.json
-{
-	"env": {
-		"authMode": "keycloak",
-		"keycloakUrl": "https://keycloak.example.com",
-		"keycloakRealm": "wow",
-		"appBaseUrl": "https://portal.example.com"
-	}
-}
-```
-
-### 4. User Attributes
-
-The portal reads these claims from the Keycloak token:
-
-| Claim                | Usage                     |
-| -------------------- | ------------------------- |
-| `sub`                | Unique user identifier    |
-| `preferred_username` | Display name              |
-| `email`              | User email                |
-| `email_verified`     | Email verification status |
-
-## OAuth-Proxy Setup
+### OAuth2-Proxy Setup
 
 OAuth2-Proxy is recommended for Kubernetes deployments as it handles authentication at the ingress level.
 
-### Architecture
+#### Architecture
 
 ```
 ┌────────────┐    ┌───────────────┐    ┌─────────────────┐
@@ -174,7 +152,9 @@ OAuth2-Proxy is recommended for Kubernetes deployments as it handles authenticat
                   └──────────────────┘
 ```
 
-### OAuth2-Proxy Configuration
+#### OAuth2-Proxy Configuration
+
+Works with any OIDC provider (Keycloak, Auth0, Google, GitHub, etc.):
 
 ```yaml
 # oauth2-proxy deployment
@@ -189,8 +169,8 @@ spec:
         - name: oauth2-proxy
           image: quay.io/oauth2-proxy/oauth2-proxy:latest
           args:
-            - --provider=keycloak-oidc
-            - --oidc-issuer-url=https://keycloak.example.com/realms/wow
+            - --provider=oidc # or keycloak-oidc, google, github, etc.
+            - --oidc-issuer-url=https://your-idp.example.com
             - --client-id=azeroth-portal
             - --client-secret=$(CLIENT_SECRET)
             - --cookie-secret=$(COOKIE_SECRET)
@@ -201,7 +181,7 @@ spec:
             - --pass-access-token=true
 ```
 
-### Ingress Configuration
+#### Ingress Configuration
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -211,7 +191,7 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/auth-url: "http://oauth2-proxy.default.svc.cluster.local:4180/oauth2/auth"
     nginx.ingress.kubernetes.io/auth-signin: "https://portal.example.com/oauth2/start?rd=$escaped_request_uri"
-    nginx.ingress.kubernetes.io/auth-response-headers: "X-Auth-Request-User,X-Auth-Request-Email"
+    nginx.ingress.kubernetes.io/auth-response-headers: "X-Auth-Request-User,X-Auth-Request-Email,X-Auth-Request-Preferred-Username"
 spec:
   rules:
     - host: portal.example.com
@@ -226,23 +206,125 @@ spec:
                   number: 3000
 ```
 
-### Portal Configuration
+#### Portal Configuration
 
-```json
-{
-	"env": {
-		"authMode": "oauth-proxy"
-	}
+```bash
+NUXT_PUBLIC_AUTH_MODE=oauth-proxy
+```
+
+### Nginx Basic Auth
+
+For simple deployments, you can use nginx basic auth with the `header` mode.
+
+#### Nginx Configuration
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name portal.example.com;
+
+    # SSL configuration
+    ssl_certificate /etc/nginx/ssl/cert.pem;
+    ssl_certificate_key /etc/nginx/ssl/key.pem;
+
+    # Basic auth
+    auth_basic "Azeroth Portal";
+    auth_basic_user_file /etc/nginx/.htpasswd;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+
+        # Pass authenticated username to the portal
+        proxy_set_header X-Remote-User $remote_user;
+
+        # Optional: You can add custom email header if needed
+        # proxy_set_header X-Auth-Request-Email "$remote_user@example.com";
+    }
 }
 ```
 
-### Headers Used
+#### Create Password File
 
-| Header                        | Description                            |
-| ----------------------------- | -------------------------------------- |
-| `X-Auth-Request-User`         | Username (Keycloak preferred_username) |
-| `X-Auth-Request-Email`        | User email                             |
-| `X-Auth-Request-Access-Token` | JWT access token (optional)            |
+```bash
+# Create password file
+htpasswd -c /etc/nginx/.htpasswd firstuser
+
+# Add more users
+htpasswd /etc/nginx/.htpasswd anotheruser
+```
+
+#### Portal Configuration
+
+```bash
+NUXT_PUBLIC_AUTH_MODE=header
+```
+
+### Any HTTP Header Provider
+
+You can use any upstream service that sets HTTP headers. The portal looks for:
+
+1. `X-Auth-Request-Preferred-Username` (preferred)
+2. `X-Auth-Request-User`
+3. `X-Forwarded-User`
+4. `X-Remote-User`
+
+## Direct WoW Account Login
+
+For simple deployments without external authentication, use `direct` mode. Users log in with their WoW account credentials.
+
+### Configuration
+
+```bash
+NUXT_PUBLIC_AUTH_MODE=direct
+```
+
+### Behavior
+
+- Users log in with their WoW account username/password
+- Password verified using SRP-6a (same as game client)
+- Session stored in HTTP-only cookie
+- **Account linking disabled** (user IS the WoW account)
+- **GM access** based on `account_access` table for the logged-in account
+- Email is **mandatory** for new account creation
+
+### API Endpoints
+
+| Endpoint           | Method | Description          |
+| ------------------ | ------ | -------------------- |
+| `/api/auth/login`  | POST   | Login with WoW creds |
+| `/api/auth/logout` | POST   | Destroy session      |
+| `/api/auth/me`     | GET    | Get current user     |
+
+### Login Request
+
+```json
+POST /api/auth/login
+{
+  "username": "MyWowAccount",
+  "password": "mypassword"
+}
+```
+
+### Login Response
+
+```json
+{
+	"success": true,
+	"user": {
+		"sub": "MYWOWACCOUNT",
+		"preferred_username": "MYWOWACCOUNT",
+		"email": "player@example.com",
+		"email_verified": true,
+		"isGM": true,
+		"gmLevel": 3
+	}
+}
+```
 
 ## GM Level Detection
 
@@ -250,18 +332,25 @@ The portal automatically detects GM status by querying the AzerothCore database.
 
 ### How It Works
 
-1. User authenticates (any mode)
-2. Portal queries `acore_auth.account_access` for matching username
-3. If GM level > 0, user gets `isGM: true` in their session
-4. Admin panel becomes accessible
+#### For External Auth Modes (oauth-proxy, header)
+
+1. User authenticates via external provider
+2. Portal looks up account mappings for this external user
+3. For each linked WoW account, queries `acore_auth.account_access`
+4. Returns the highest GM level found
+
+#### For Direct Mode
+
+1. User logs in with WoW credentials
+2. Portal directly queries `acore_auth.account_access` for that account
+3. Returns the GM level
 
 ### Database Query
 
 ```sql
 SELECT gmlevel
-FROM account_access aa
-JOIN account a ON a.id = aa.id
-WHERE a.username = UPPER('username')
+FROM account_access
+WHERE id = ?
 ORDER BY gmlevel DESC
 LIMIT 1
 ```
@@ -280,14 +369,26 @@ LIMIT 1
 ```sql
 -- Grant GM level 2 to user
 INSERT INTO account_access (id, gmlevel, RealmID)
-SELECT id, 2, -1 FROM account WHERE username = 'USERNAME';
+VALUES (account_id, 2, -1);
 ```
 
 ## Account Linking
 
-Users link their external identity (Keycloak) to WoW accounts stored in `acore_auth`.
+Account linking connects an external identity to WoW accounts. **This is only available when using external authentication modes** (`oauth-proxy` or `header`).
 
-### Linking Flow
+### When Account Linking is Enabled
+
+- Users can link multiple WoW accounts to their external identity
+- Switching between accounts doesn't require re-authentication
+- GM status is determined by the highest level among linked accounts
+
+### When Account Linking is Disabled (Direct Mode)
+
+- User IS the WoW account (no mapping needed)
+- Each session is tied to a single WoW account
+- Switch accounts by logging out and back in
+
+### Linking Flow (External Auth Only)
 
 ```
 ┌─────────────┐
@@ -308,24 +409,24 @@ Users link their external identity (Keycloak) to WoW accounts stored in `acore_a
        ▼
 ┌─────────────────────────┐
 │  SQLite: account_maps   │
-│  keycloak_id → wow_id   │
+│  external_id → wow_id   │
 └─────────────────────────┘
 ```
 
 ### Security Considerations
 
 - **Password Verification**: Uses SRP-6a (same as game client)
-- **One-to-Many**: One Keycloak user can link multiple WoW accounts
-- **Unique Links**: Each WoW account can only be linked to one Keycloak user
+- **One-to-Many**: One external user can link multiple WoW accounts
+- **Unique Links**: Each WoW account can only be linked to one external user
 - **Unlink Anytime**: Users can unlink accounts from the portal
 
-### API Endpoints
+### API Endpoints (External Auth Only)
 
 | Endpoint                                      | Method | Description         |
 | --------------------------------------------- | ------ | ------------------- |
-| `/api/accounts/user/:keycloakId`              | GET    | Get linked accounts |
+| `/api/accounts/user/:externalId`              | GET    | Get linked accounts |
 | `/api/accounts/map`                           | POST   | Link a WoW account  |
-| `/api/accounts/map/:keycloakId/:wowAccountId` | DELETE | Unlink account      |
+| `/api/accounts/map/:externalId/:wowAccountId` | DELETE | Unlink account      |
 
 ### Troubleshooting
 
@@ -337,10 +438,38 @@ Users link their external identity (Keycloak) to WoW accounts stored in `acore_a
 
 **"Account already linked"**
 
-- WoW account is linked to another Keycloak user
+- WoW account is linked to another external user
 - Admin can view/manage mappings in admin panel
 
 **"Account not found"**
 
 - Check username spelling
 - Verify account exists in `acore_auth.account`
+
+## Migration from Keycloak-Specific Setup
+
+If you're migrating from an older version that used Keycloak-specific naming:
+
+### Database Migration
+
+Run the migration script to update your database schema:
+
+```bash
+node scripts/migrate-db-schema.js [path-to-database.db]
+```
+
+This will:
+
+1. Create a backup of your database
+2. Rename `keycloak_id` → `external_id`
+3. Rename `keycloak_username` → `display_name`
+4. Add `email` column
+
+### Environment Variable Changes
+
+| Old Variable                 | New Variable (if changed) |
+| ---------------------------- | ------------------------- |
+| `NUXT_PUBLIC_KEYCLOAK_URL`   | Removed                   |
+| `NUXT_PUBLIC_KEYCLOAK_REALM` | Removed                   |
+
+The portal no longer needs identity-provider-specific configuration. Use OAuth2-Proxy or another auth proxy to handle the OIDC flow.

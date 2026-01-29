@@ -40,7 +40,7 @@ npm run import-dbc
 
 ### Other Files
 
-- `mappings.db` - Keycloak ↔ WoW account mappings (development only)
+- `mappings.db` - External auth ↔ WoW account mappings (development only)
 - `*.sql` - SQL export files for migration
 - `blp/` - WoW texture files (BLP format)
 - `png/` - Converted PNG icons
@@ -76,15 +76,15 @@ CREATE TABLE spell_item_enchantment (
 ```sql
 CREATE TABLE account_mappings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  keycloak_id TEXT NOT NULL,
-  keycloak_username TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  email TEXT,
   wow_account_id INTEGER NOT NULL,
   wow_account_username TEXT NOT NULL,
-  realm_id TEXT NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   last_used DATETIME,
   metadata TEXT,
-  UNIQUE(keycloak_id, wow_account_id, realm_id)
+  UNIQUE(external_id, wow_account_id)
 );
 ```
 

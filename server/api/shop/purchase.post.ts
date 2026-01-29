@@ -92,14 +92,31 @@ export default defineEventHandler(async (event): Promise<ShopPurchaseResponse> =
     const character = (charRows as any[])[0]
     const isOnline = character.online === 1
 
-    // Verify the user owns this character's account using local SQLite database
-    const { getDatabase } = await import('#server/utils/db')
-    const db = getDatabase()
+    // Verify the user owns this character's account
+    const { isDirectAuthMode, getDirectAuthSession } = await import('#server/utils/auth')
 
-    // Get user's linked WoW accounts from local mapping
-    const stmt = db.prepare('SELECT wow_account_id FROM account_mappings WHERE keycloak_id = ?')
-    const mappings = stmt.all(user.username) as { wow_account_id: number }[]
-    const linkedAccountIds = mappings.map(m => m.wow_account_id)
+    let linkedAccountIds: number[]
+
+    if (isDirectAuthMode()) {
+      // In direct auth mode, get account ID directly from session
+      const session = await getDirectAuthSession(event)
+      if (!session) {
+        throw createError({
+          statusCode: 401,
+          statusMessage: 'Not authenticated',
+        })
+      }
+      linkedAccountIds = [session.accountId]
+    } else {
+      // In external auth mode, use local SQLite database for mapping
+      const { getDatabase } = await import('#server/utils/db')
+      const db = getDatabase()
+
+      // Get user's linked WoW accounts from local mapping (use user.id as the key)
+      const stmt = db.prepare('SELECT wow_account_id FROM account_mappings WHERE external_id = ?')
+      const mappings = stmt.all(user.id) as { wow_account_id: number }[]
+      linkedAccountIds = mappings.map(m => m.wow_account_id)
+    }
 
     if (!linkedAccountIds.includes(character.account)) {
       throw createError({

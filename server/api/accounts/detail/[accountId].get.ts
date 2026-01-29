@@ -1,6 +1,6 @@
 import { findAccountById } from '#server/services/account'
 import type { AzerothCoreAccount } from '~/types'
-import { getAuthenticatedUser, getAuthenticatedGM } from '#server/utils/auth'
+import { getAuthenticatedUser, getAuthenticatedGM, isDirectAuthMode, getDirectAuthSession } from '#server/utils/auth'
 
 /**
  * GET /api/accounts/detail/:accountId
@@ -41,19 +41,31 @@ export default defineEventHandler(async (event) => {
 
     // If not GM, check if user owns this account
     if (!isGM) {
-      const { getDatabase } = await import('#server/utils/db')
-      const db = getDatabase()
+      // In direct auth mode, verify ownership from session
+      if (isDirectAuthMode()) {
+        const session = await getDirectAuthSession(event)
+        if (!session || session.accountId !== accountIdNum) {
+          throw createError({
+            statusCode: 403,
+            statusMessage: 'Access denied',
+          })
+        }
+      } else {
+        // In external auth mode, use mapping database
+        const { getDatabase } = await import('#server/utils/db')
+        const db = getDatabase()
 
-      const stmt = db.prepare(
-        'SELECT keycloak_id FROM account_mappings WHERE wow_account_id = ?'
-      )
-      const mapping = stmt.get(accountIdNum) as { keycloak_id: string } | undefined
+        const stmt = db.prepare(
+          'SELECT external_id FROM account_mappings WHERE wow_account_id = ?'
+        )
+        const mapping = stmt.get(accountIdNum) as { external_id: string } | undefined
 
-      if (!mapping || mapping.keycloak_id !== authenticatedUser.username) {
-        throw createError({
-          statusCode: 403,
-          statusMessage: 'Access denied',
-        })
+        if (!mapping || mapping.external_id !== authenticatedUser.id) {
+          throw createError({
+            statusCode: 403,
+            statusMessage: 'Access denied',
+          })
+        }
       }
     }
 

@@ -29,8 +29,9 @@ Complete installation and configuration guide for the Azeroth Management Portal.
 | -------- | ------- | ---------------------------------- |
 | SOPS     | 3.7+    | Encrypted credentials (production) |
 | age      | 1.0+    | Encryption for SOPS                |
-| Keycloak | 20+     | Identity management (production)   |
 | Docker   | 24+     | Containerized deployment           |
+
+> **Note:** For authentication options (OAuth proxy, nginx basic auth, or direct WoW login), see [AUTHENTICATION.md](AUTHENTICATION.md).
 
 ### AzerothCore Requirements
 
@@ -74,7 +75,7 @@ pnpm postinstall
 
 The portal connects to AzerothCore's MySQL databases for account and character data, and uses local SQLite databases for:
 
-- **Account Mappings** – Links between Keycloak users and WoW accounts
+- **Account Mappings** – Links between external users and WoW accounts
 - **DBC Data Cache** – Item icons, spell info, talents, enchantments
 
 ```

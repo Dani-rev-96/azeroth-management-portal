@@ -41,9 +41,22 @@
 
         <div class="nav-right">
           <div class="nav-user">
-            <div v-if="authStore.isAuthenticated" class="user-info">
-              <span class="username">{{ authStore.user?.preferred_username }}</span>
-              <span v-if="isGM" class="gm-badge">GM</span>
+            <div v-if="authStore.isAuthenticated" class="user-menu" @click="toggleUserMenu">
+              <div class="user-info">
+                <span class="username">{{ authStore.user?.preferred_username }}</span>
+                <span v-if="isGM" class="gm-badge">GM</span>
+                <span class="dropdown-arrow">▼</span>
+              </div>
+              <div v-if="userMenuOpen" class="user-dropdown">
+                <NuxtLink to="/account" class="dropdown-item" @click="userMenuOpen = false">
+                  <span class="dropdown-icon">👤</span>
+                  My Account
+                </NuxtLink>
+                <button class="dropdown-item logout-item" @click="handleLogout">
+                  <span class="dropdown-icon">🚪</span>
+                  Logout
+                </button>
+              </div>
             </div>
             <NuxtLink v-else to="/login" class="btn-login">
               Sign In
@@ -93,6 +106,10 @@
           <span class="nav-icon">🛡️</span>
           Admin
         </NuxtLink>
+        <button class="mobile-nav-link mobile-nav-link-logout" @click="handleLogout">
+          <span class="nav-icon">🚪</span>
+          Logout
+        </button>
       </div>
     </div>
 
@@ -115,6 +132,30 @@
 const authStore = useAuthStore()
 const isGM = computed(() => authStore.user?.isGM || false)
 const mobileMenuOpen = ref(false)
+const userMenuOpen = ref(false)
+
+const toggleUserMenu = () => {
+  userMenuOpen.value = !userMenuOpen.value
+}
+
+// Close user menu when clicking outside
+const closeUserMenu = (event: MouseEvent) => {
+  const target = event.target as HTMLElement
+  if (!target.closest('.user-menu')) {
+    userMenuOpen.value = false
+  }
+}
+
+const handleLogout = async () => {
+  userMenuOpen.value = false
+  try {
+    await $fetch('/api/auth/logout', { method: 'POST' })
+  } catch {
+    // Ignore logout errors
+  }
+  authStore.clearAuth()
+  navigateTo('/login')
+}
 
 onMounted(async () => {
   const isAuthenticated = await authStore.initializeAuth()
@@ -124,6 +165,13 @@ onMounted(async () => {
       navigateTo('/login')
     }
   }
+
+  // Add global click listener to close menu
+  document.addEventListener('click', closeUserMenu)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', closeUserMenu)
 })
 </script>
 
@@ -255,10 +303,78 @@ onMounted(async () => {
   gap: 1rem;
 }
 
+.user-menu {
+  position: relative;
+  cursor: pointer;
+}
+
 .user-info {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  transition: background 0.2s;
+}
+
+.user-info:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.dropdown-arrow {
+  font-size: 0.625rem;
+  color: #94a3b8;
+  transition: transform 0.2s;
+}
+
+.user-menu:hover .dropdown-arrow {
+  transform: rotate(180deg);
+}
+
+.user-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 0.5rem;
+  min-width: 180px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+  z-index: 200;
+  overflow: hidden;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: none;
+  border: none;
+  color: #e2e8f0;
+  text-decoration: none;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.dropdown-icon {
+  font-size: 1rem;
+}
+
+.logout-item {
+  border-top: 1px solid #334155;
+  color: #fca5a5;
+}
+
+.logout-item:hover {
+  background: rgba(239, 68, 68, 0.1);
 }
 
 .username {
@@ -471,6 +587,22 @@ onMounted(async () => {
   color: #f59e0b;
   background: rgba(245, 158, 11, 0.1);
   border-left-color: #f59e0b;
+}
+
+.mobile-nav-link-logout {
+  color: #fca5a5;
+  border-top: 1px solid #334155;
+  margin-top: 1rem;
+  width: 100%;
+  text-align: left;
+  background: none;
+  cursor: pointer;
+}
+
+.mobile-nav-link-logout:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  border-left-color: #ef4444;
 }
 
 @media (max-width: 768px) {

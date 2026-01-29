@@ -17,7 +17,7 @@
 
       <!-- Accounts Section -->
       <div class="section accounts-section">
-        <h2>Your WoW Accounts</h2>
+        <h2>{{ authConfig.isDirectAuth ? 'Your WoW Account' : 'Your WoW Accounts' }}</h2>
 
         <div v-if="accountsStore.hasAccounts" class="accounts-grid">
           <div
@@ -29,7 +29,9 @@
               <h3 @click="selectAccount(account.mapping.wowAccountId)">
                 {{ account.mapping.wowAccountName }}
               </h3>
+              <!-- Only show unlink button when account linking is enabled (external auth) -->
               <button
+                v-if="authConfig.accountLinkingEnabled"
                 @click.stop="handleUnlinkAccount(account)"
                 class="unlink-button"
                 title="Unlink account"
@@ -67,18 +69,23 @@
         </div>
 
         <div v-else class="no-accounts">
-          <p>No WoW accounts linked yet. Link your first account to get started!</p>
+          <p v-if="authConfig.isDirectAuth">
+            No account found. Please log in again or contact support.
+          </p>
+          <p v-else>
+            No WoW accounts linked yet. Link your first account to get started!
+          </p>
         </div>
       </div>
 
-      <!-- Add Account Section -->
-      <div class="section add-account-section">
+      <!-- Add Account Section - Only show when account linking is enabled (external auth) -->
+      <div v-if="authConfig.accountLinkingEnabled" class="section add-account-section">
         <h2>Link WoW Account</h2>
         <LinkAccountForm @success="onAccountLinked" />
       </div>
 
-      <!-- Create Account Section -->
-      <div class="section create-account-section">
+      <!-- Create Account Section - Only show when using external auth (in direct mode, registration is on login page) -->
+      <div v-if="!authConfig.isDirectAuth" class="section create-account-section">
         <h2>Create New WoW Account</h2>
         <p class="section-description">
           Don't have a WoW account yet? Create one here and link it to your profile.
@@ -93,8 +100,9 @@
 import { ref } from 'vue'
 import { useAuthStore } from '~/stores/auth'
 import { useAccountsStore } from '~/stores/accounts'
+import { useAuthConfig } from '~/composables/useAuthConfig'
 import type { ManagedAccount } from '~/types'
-import { computed, watchEffect } from 'vue'
+import { computed, watchEffect, onMounted } from 'vue'
 import CreateAccountForm from '~/components/CreateAccountForm.vue'
 import LinkAccountForm from '~/components/LinkAccountForm.vue'
 
@@ -104,6 +112,7 @@ definePageMeta({
 
 const authStore = useAuthStore()
 const accountsStore = useAccountsStore()
+const { config: authConfig, fetchConfig } = useAuthConfig()
 const loading = ref(true)
 
 const userId = computed(() => authStore.userId)
@@ -148,6 +157,11 @@ const handleUnlinkAccount = async (account: ManagedAccount) => {
     alert(err instanceof Error ? err.message : 'Failed to unlink account')
   }
 }
+
+// Fetch auth config to determine what UI elements to show
+onMounted(() => {
+  fetchConfig()
+})
 
 watchEffect(async () => {
   if (authStore.isAuthenticated && userId.value) {
