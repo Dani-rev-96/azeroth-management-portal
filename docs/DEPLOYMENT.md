@@ -136,7 +136,7 @@ docker compose logs -f portal
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: wow-frontend-env
+  name: azeroth-portal-env
   namespace: wow
 data:
   # Auth Database
@@ -171,7 +171,7 @@ data:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: wow-frontend-secrets
+  name: azeroth-portal-secrets
   namespace: wow
 type: Opaque
 stringData:
@@ -184,21 +184,21 @@ stringData:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: wow-frontend
+  name: azeroth-portal
   namespace: wow
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: wow-frontend
+      app: azeroth-portal
   template:
     metadata:
       labels:
-        app: wow-frontend
+        app: azeroth-portal
     spec:
       containers:
-        - name: wow-frontend
-          image: your-registry/wow-frontend:latest
+        - name: azeroth-portal
+          image: your-registry/azeroth-portal:latest
           ports:
             - containerPort: 80
           env:
@@ -208,22 +208,22 @@ spec:
             - name: NUXT_DB_AUTH_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: wow-frontend-secrets
+                  name: azeroth-portal-secrets
                   key: acore-password
             - name: NUXT_DB_REALM_0_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: wow-frontend-secrets
+                  name: azeroth-portal-secrets
                   key: acore-password
             - name: NUXT_DB_REALM_1_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: wow-frontend-secrets
+                  name: azeroth-portal-secrets
                   key: acore-password
           envFrom:
             # Non-sensitive config from ConfigMap
             - configMapRef:
-                name: wow-frontend-env
+                name: azeroth-portal-env
           volumeMounts:
             - name: data
               mountPath: /data

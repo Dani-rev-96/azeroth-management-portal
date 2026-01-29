@@ -200,7 +200,7 @@ Adding a new realm is simple - just add environment variables:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: wow-frontend-env
+  name: azeroth-portal-env
   namespace: wow
 data:
   NUXT_DB_AUTH_HOST: "wow-acore-auth-db"
@@ -222,7 +222,7 @@ data:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: wow-frontend-secrets
+  name: azeroth-portal-secrets
   namespace: wow
 type: Opaque
 stringData:
@@ -236,25 +236,25 @@ stringData:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: wow-frontend
+  name: azeroth-portal
 spec:
   template:
     spec:
       containers:
-        - name: wow-frontend
+        - name: azeroth-portal
           envFrom:
             - configMapRef:
-                name: wow-frontend-env
+                name: azeroth-portal-env
           env:
             - name: NUXT_DB_AUTH_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: wow-frontend-secrets
+                  name: azeroth-portal-secrets
                   key: NUXT_DB_AUTH_PASSWORD
             - name: NUXT_DB_REALM_0_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: wow-frontend-secrets
+                  name: azeroth-portal-secrets
                   key: NUXT_DB_REALM_0_PASSWORD
 ```
 

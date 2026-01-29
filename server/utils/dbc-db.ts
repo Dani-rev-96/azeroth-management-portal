@@ -40,7 +40,7 @@ async function getDatabase(dbName: string): Promise<Database.Database> {
       }
 
       // Write to temp file since better-sqlite3 needs a file path
-      const tempDir = join(tmpdir(), 'wow-frontend')
+      const tempDir = join(tmpdir(), 'azeroth-portal')
       mkdirSync(tempDir, { recursive: true })
       dbPath = join(tempDir, dbName)
 

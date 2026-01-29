@@ -5,7 +5,7 @@ Thank you for your interest in contributing! This document provides guidelines a
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/wow-frontend.git`
+2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/azeroth-management-portal.git`
 3. Create a branch: `git checkout -b feature/your-feature-name`
 4. Install dependencies: `pnpm install`
 5. Copy environment: `cp .env.example .env.local`

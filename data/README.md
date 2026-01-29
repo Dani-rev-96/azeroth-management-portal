@@ -129,5 +129,5 @@ volumeMounts:
 volumes:
   - name: mappings-data
     persistentVolumeClaim:
-      claimName: wow-frontend-mappings
+      claimName: azeroth-portal-mappings
 ```
