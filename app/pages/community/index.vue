@@ -58,8 +58,13 @@ watch(activeTab, (newTab) => {
   if (newTab === 'stats' && !communityStore.hasStatsData) {
     communityStore.fetchAllStats()
   }
-  if (newTab === 'directory' && communityStore.directoryPlayers.length === 0) {
-    communityStore.fetchDirectoryPlayers()
+  if (newTab === 'directory') {
+    if (communityStore.directoryPlayers.length === 0) {
+      communityStore.fetchDirectoryPlayers()
+    }
+    if (communityStore.availableZones.length === 0) {
+      communityStore.fetchZones()
+    }
   }
 }, { immediate: true })
 
@@ -139,11 +144,20 @@ function getMetricLabel(): string {
         :search-query="communityStore.directorySearch"
         :class-filter="communityStore.directoryClassFilter"
         :race-filter="communityStore.directoryRaceFilter"
+        :zone-filter="communityStore.directoryZoneFilter"
+        :min-level="communityStore.directoryMinLevel"
+        :max-level="communityStore.directoryMaxLevel"
+        :online-only="communityStore.directoryOnlineOnly"
+        :available-zones="communityStore.availableZones"
+        :zones-loading="communityStore.zonesLoading"
         @refresh="refreshDirectoryPlayers"
         @update:search-query="communityStore.setDirectorySearch"
         @update:page="communityStore.setDirectoryPage"
         @update:class-filter="communityStore.setDirectoryClassFilter"
         @update:race-filter="communityStore.setDirectoryRaceFilter"
+        @update:zone-filter="communityStore.setDirectoryZoneFilter"
+        @update:level-range="communityStore.setDirectoryLevelRange"
+        @update:online-only="communityStore.setDirectoryOnlineOnly"
         @clear-filters="communityStore.clearDirectoryFilters"
       />
     </UiTabPanel>

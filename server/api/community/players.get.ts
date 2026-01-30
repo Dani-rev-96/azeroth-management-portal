@@ -1,7 +1,7 @@
 /**
  * GET /api/community/players
  * Search and browse all players with pagination
- * Query params: search, page, limit, realmId, classId, raceId (all optional)
+ * Query params: search, page, limit, realmId, classId, raceId, zoneId, minLevel, maxLevel, onlineOnly (all optional)
  */
 import { searchAllPlayers } from '#server/services/community'
 import { handleApiError } from '#server/utils/api-errors'
@@ -19,6 +19,10 @@ export default defineEventHandler(async (event) => {
       realmId: query.realmId as string | undefined,
       classId: query.classId ? parseInt(query.classId as string, 10) : undefined,
       raceId: query.raceId ? parseInt(query.raceId as string, 10) : undefined,
+      zoneId: query.zoneId ? parseInt(query.zoneId as string, 10) : undefined,
+      minLevel: query.minLevel ? parseInt(query.minLevel as string, 10) : undefined,
+      maxLevel: query.maxLevel ? parseInt(query.maxLevel as string, 10) : undefined,
+      onlineOnly: query.onlineOnly === 'true',
     }
 
     return await searchAllPlayers(realms, options)

@@ -47,12 +47,20 @@ export interface DirectoryPlayer {
   level: number
   race: number
   class: number
+  zone: number
+  zoneName: string
   playtime: number
   achievementCount: number
   totalKills: number
   online: boolean
   realm: string
   realmId: string
+}
+
+export interface ZoneInfo {
+  id: number
+  name: string
+  playerCount: number
 }
 
 export interface DirectoryPagination {
@@ -134,6 +142,12 @@ export const useCommunityStore = defineStore('community', () => {
   })
   const directoryClassFilter = ref<number | null>(null)
   const directoryRaceFilter = ref<number | null>(null)
+  const directoryZoneFilter = ref<number | null>(null)
+  const directoryMinLevel = ref<number>(1)
+  const directoryMaxLevel = ref<number>(80)
+  const directoryOnlineOnly = ref(false)
+  const availableZones = ref<ZoneInfo[]>([])
+  const zonesLoading = ref(false)
 
   // ==========================================================================
   // Computed - Delegate to characters store
@@ -335,6 +349,18 @@ export const useCommunityStore = defineStore('community', () => {
   // Actions - Player Directory
   // ==========================================================================
 
+  async function fetchZones() {
+    zonesLoading.value = true
+    try {
+      const data = await $fetch<ZoneInfo[]>('/api/community/zones')
+      availableZones.value = data || []
+    } catch (error) {
+      console.error('Failed to fetch zones:', error)
+    } finally {
+      zonesLoading.value = false
+    }
+  }
+
   async function fetchDirectoryPlayers() {
     directoryLoading.value = true
     directoryError.value = undefined
@@ -346,6 +372,10 @@ export const useCommunityStore = defineStore('community', () => {
       if (selectedRealm.value) params.append('realmId', selectedRealm.value)
       if (directoryClassFilter.value) params.append('classId', String(directoryClassFilter.value))
       if (directoryRaceFilter.value) params.append('raceId', String(directoryRaceFilter.value))
+      if (directoryZoneFilter.value) params.append('zoneId', String(directoryZoneFilter.value))
+      if (directoryMinLevel.value > 1) params.append('minLevel', String(directoryMinLevel.value))
+      if (directoryMaxLevel.value < 80) params.append('maxLevel', String(directoryMaxLevel.value))
+      if (directoryOnlineOnly.value) params.append('onlineOnly', 'true')
       if (directorySearch.value) params.append('search', directorySearch.value)
 
       const response = await $fetch<{
@@ -391,10 +421,33 @@ export const useCommunityStore = defineStore('community', () => {
     fetchDirectoryPlayers()
   }
 
+  function setDirectoryZoneFilter(zoneId: number | null) {
+    directoryZoneFilter.value = zoneId
+    directoryPage.value = 1
+    fetchDirectoryPlayers()
+  }
+
+  function setDirectoryLevelRange(min: number, max: number) {
+    directoryMinLevel.value = min
+    directoryMaxLevel.value = max
+    directoryPage.value = 1
+    fetchDirectoryPlayers()
+  }
+
+  function setDirectoryOnlineOnly(online: boolean) {
+    directoryOnlineOnly.value = online
+    directoryPage.value = 1
+    fetchDirectoryPlayers()
+  }
+
   function clearDirectoryFilters() {
     directorySearch.value = ''
     directoryClassFilter.value = null
     directoryRaceFilter.value = null
+    directoryZoneFilter.value = null
+    directoryMinLevel.value = 1
+    directoryMaxLevel.value = 80
+    directoryOnlineOnly.value = false
     directoryPage.value = 1
     fetchDirectoryPlayers()
   }
@@ -419,6 +472,10 @@ export const useCommunityStore = defineStore('community', () => {
     directoryPage.value = 1
     directoryClassFilter.value = null
     directoryRaceFilter.value = null
+    directoryZoneFilter.value = null
+    directoryMinLevel.value = 1
+    directoryMaxLevel.value = 80
+    directoryOnlineOnly.value = false
     directoryPagination.value = { page: 1, limit: 24, total: 0, totalPages: 0 }
   }
 
@@ -450,6 +507,12 @@ export const useCommunityStore = defineStore('community', () => {
     directoryPagination,
     directoryClassFilter,
     directoryRaceFilter,
+    directoryZoneFilter,
+    directoryMinLevel,
+    directoryMaxLevel,
+    directoryOnlineOnly,
+    availableZones,
+    zonesLoading,
 
     // State - Stats
     generalStats,
@@ -480,6 +543,7 @@ export const useCommunityStore = defineStore('community', () => {
     fetchPvPStats,
     fetchAllStats,
     fetchDirectoryPlayers,
+    fetchZones,
     setRealm,
     setClass,
     setRace,
@@ -491,6 +555,9 @@ export const useCommunityStore = defineStore('community', () => {
     setDirectoryPage,
     setDirectoryClassFilter,
     setDirectoryRaceFilter,
+    setDirectoryZoneFilter,
+    setDirectoryLevelRange,
+    setDirectoryOnlineOnly,
     clearDirectoryFilters,
     $reset,
   }

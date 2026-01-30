@@ -103,58 +103,58 @@ export async function getOnlinePlayers(
   options: OnlinePlayersOptions = {}
 ): Promise<OnlinePlayersResponse> {
   const { realmId: realmIdFilter, search, page = 1, limit = 50 } = options
-  const authPool = await getAuthDbPool()
-
-  // Get online non-bot accounts
-  const [onlineAccounts] = await authPool.query<RowDataPacket[]>(
-    'SELECT id, username, online FROM account WHERE online = 1 AND username NOT LIKE "RNDBOT%"'
-  )
-
-  if (onlineAccounts.length === 0) {
-    return {
-      players: [],
-      pagination: { page, limit, total: 0, totalPages: 0 }
-    }
-  }
-
+  const accountFilter = await buildNonBotAccountFilter()
   const realmsToQuery = getRealmsToQuery(realms, realmIdFilter)
   const onlinePlayers: Array<Omit<OnlinePlayer, 'zoneName'> & { zone: number }> = []
+  const accountIds = new Set<number>()
 
+  // Query online characters directly from each realm
   for (const [realmId, realm] of Object.entries(realmsToQuery)) {
     const charsPool = await getCharactersDbPool(realmId)
 
-    for (const account of onlineAccounts) {
-      const [chars] = await charsPool.query<RowDataPacket[]>(
-        `SELECT
-          guid,
-          name,
-          level,
-          race,
-          class,
-          zone,
-          online,
-          totaltime,
-          account as accountId
-         FROM characters
-         WHERE account = ? AND online = 1
-         LIMIT 10`,
-        [account.id]
-      )
+    const [chars] = await charsPool.query<RowDataPacket[]>(
+      `SELECT
+        guid,
+        name,
+        level,
+        race,
+        class,
+        zone,
+        totaltime,
+        account as accountId
+       FROM characters
+       WHERE online = 1 AND ${accountFilter}`
+    )
 
-      for (const char of chars) {
-        onlinePlayers.push({
-          guid: char.guid,
-          characterName: char.name,
-          level: char.level,
-          race: char.race,
-          class: char.class,
-          zone: char.zone,
-          accountName: account.username,
-          realm: realm.name,
-          realmId: realmId,
-          playtime: char.totaltime,
-        })
-      }
+    for (const char of chars) {
+      accountIds.add(char.accountId)
+      onlinePlayers.push({
+        guid: char.guid,
+        characterName: char.name,
+        level: char.level,
+        race: char.race,
+        class: char.class,
+        zone: char.zone,
+        accountName: '', // Will be filled in below
+        realm: realm.name,
+        realmId: realmId,
+        playtime: char.totaltime,
+      })
+    }
+  }
+
+  // Batch lookup account names
+  if (accountIds.size > 0) {
+    const authPool = await getAuthDbPool()
+    const [accounts] = await authPool.query<RowDataPacket[]>(
+      `SELECT id, username FROM account WHERE id IN (${[...accountIds].join(',')})`
+    )
+    const accountMap = new Map(accounts.map(a => [a.id, a.username]))
+
+    // Fill in account names
+    for (const player of onlinePlayers) {
+      const accountId = (player as any).accountId
+      player.accountName = accountMap.get(accountId) || 'Unknown'
     }
   }
 
@@ -468,6 +468,8 @@ export interface DirectoryPlayer {
   level: number
   race: number
   class: number
+  zone: number
+  zoneName: string
   playtime: number
   achievementCount: number
   totalKills: number
@@ -486,6 +488,10 @@ export interface SearchPlayersOptions {
   realmId?: string
   classId?: number
   raceId?: number
+  zoneId?: number
+  minLevel?: number
+  maxLevel?: number
+  onlineOnly?: boolean
 }
 
 /**
@@ -508,7 +514,18 @@ export async function searchAllPlayers(
   realms: Record<string, any>,
   options: SearchPlayersOptions = {}
 ): Promise<SearchPlayersResponse> {
-  const { search, page = 1, limit = 24, realmId, classId, raceId } = options
+  const {
+    search,
+    page = 1,
+    limit = 24,
+    realmId,
+    classId,
+    raceId,
+    zoneId,
+    minLevel,
+    maxLevel,
+    onlineOnly
+  } = options
   const accountFilter = await buildNonBotAccountFilter()
   const realmsToQuery = getRealmsToQuery(realms, realmId)
 
@@ -516,6 +533,10 @@ export async function searchAllPlayers(
   const additionalFilters: string[] = []
   if (classId) additionalFilters.push(`c.class = ${classId}`)
   if (raceId) additionalFilters.push(`c.race = ${raceId}`)
+  if (zoneId) additionalFilters.push(`c.zone = ${zoneId}`)
+  if (minLevel !== undefined && minLevel > 0) additionalFilters.push(`c.level >= ${minLevel}`)
+  if (maxLevel !== undefined && maxLevel > 0 && maxLevel < 80) additionalFilters.push(`c.level <= ${maxLevel}`)
+  if (onlineOnly) additionalFilters.push(`c.online = 1`)
   if (search) {
     // Escape the search term for SQL LIKE
     const escapedSearch = search.replace(/[%_\\]/g, '\\$&')
@@ -541,7 +562,7 @@ export async function searchAllPlayers(
   const offset = (page - 1) * limit
 
   // Determine which realm(s) to query based on offset
-  const players: DirectoryPlayer[] = []
+  const playersRaw: Array<Omit<DirectoryPlayer, 'zoneName'> & { zone: number }> = []
   let currentOffset = offset
   let remainingLimit = limit
 
@@ -564,6 +585,7 @@ export async function searchAllPlayers(
         c.level,
         c.race,
         c.class,
+        c.zone,
         c.totaltime as playtime,
         c.totalKills,
         c.online,
@@ -576,12 +598,13 @@ export async function searchAllPlayers(
     )
 
     for (const row of rows) {
-      players.push({
+      playersRaw.push({
         guid: row.guid,
         name: row.name,
         level: row.level,
         race: row.race,
         class: row.class,
+        zone: row.zone,
         playtime: row.playtime || 0,
         achievementCount: row.achievementCount || 0,
         totalKills: row.totalKills || 0,
@@ -594,6 +617,16 @@ export async function searchAllPlayers(
     remainingLimit -= rows.length
     currentOffset = 0 // After processing first realm, offset is 0 for subsequent realms
   }
+
+  // Resolve zone names
+  const zoneIds = [...new Set(playersRaw.map(p => p.zone).filter(z => z > 0))]
+  const zoneNames = await getAreaNameBatch(zoneIds)
+
+  // Add zone names to players
+  const players: DirectoryPlayer[] = playersRaw.map(player => ({
+    ...player,
+    zoneName: zoneNames.get(player.zone) || (player.zone > 0 ? `Zone ${player.zone}` : 'Unknown'),
+  }))
 
   return {
     players,
