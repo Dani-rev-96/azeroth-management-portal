@@ -69,8 +69,16 @@ CREATE TABLE IF NOT EXISTS web_item_requests (
 ]]
 
 -- Migration: Add items_json column if it doesn't exist
+-- We check if the column exists first since MySQL doesn't support ADD COLUMN IF NOT EXISTS
+local CHECK_ITEMS_JSON_COLUMN_SQL = [[
+SELECT COUNT(*) FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+AND TABLE_NAME = 'web_item_requests'
+AND COLUMN_NAME = 'items_json'
+]]
+
 local ADD_ITEMS_JSON_COLUMN_SQL = [[
-ALTER TABLE web_item_requests ADD COLUMN IF NOT EXISTS items_json TEXT NULL AFTER item_count
+ALTER TABLE web_item_requests ADD COLUMN items_json TEXT NULL AFTER item_count
 ]]
 
 local CREATE_BAG_TABLE_SQL = [[
@@ -99,8 +107,17 @@ local SELECT_PENDING_MONEY_SQL = string.format(
     BATCH_SIZE
 )
 
-local SELECT_PENDING_ITEM_SQL = string.format(
+-- Note: items_json column may not exist on older installations
+-- The query is built dynamically in initialize() after migration check
+local SELECT_PENDING_ITEM_SQL = nil
+
+local SELECT_PENDING_ITEM_WITH_JSON_SQL = string.format(
     "SELECT id, character_guid, item_entry, item_count, items_json, mail_subject, mail_body, money, reason FROM web_item_requests WHERE status='pending' ORDER BY id ASC LIMIT %d",
+    BATCH_SIZE
+)
+
+local SELECT_PENDING_ITEM_LEGACY_SQL = string.format(
+    "SELECT id, character_guid, item_entry, item_count, NULL as items_json, mail_subject, mail_body, money, reason FROM web_item_requests WHERE status='pending' ORDER BY id ASC LIMIT %d",
     BATCH_SIZE
 )
 
@@ -804,17 +821,30 @@ local function initialize()
     CharDBExecute(CREATE_BAG_TABLE_SQL)
     PrintInfo(string.format("[%s] Ensured all queue tables exist", SCRIPT_NAME))
 
-    -- Run migration to add items_json column (if not exists)
-    -- This uses a pcall because the syntax "ADD COLUMN IF NOT EXISTS" may not be supported
-    -- on all MariaDB versions. If it fails, we try without the IF NOT EXISTS clause.
-    local migrationOk = pcall(function()
-        CharDBExecute(ADD_ITEMS_JSON_COLUMN_SQL)
-    end)
-    if not migrationOk then
-        -- Column might already exist, that's fine
-        PrintInfo(string.format("[%s] items_json column migration skipped (may already exist)", SCRIPT_NAME))
+    -- Check if items_json column exists and add it if not
+    local hasItemsJson = false
+    local checkQuery = CharDBQuery(CHECK_ITEMS_JSON_COLUMN_SQL)
+    if checkQuery then
+        local count = checkQuery:GetUInt32(0)
+        hasItemsJson = (count and count > 0)
+    end
+
+    if hasItemsJson then
+        PrintInfo(string.format("[%s] items_json column already exists", SCRIPT_NAME))
+        SELECT_PENDING_ITEM_SQL = SELECT_PENDING_ITEM_WITH_JSON_SQL
     else
-        PrintInfo(string.format("[%s] Ensured items_json column exists", SCRIPT_NAME))
+        -- Try to add the column
+        local ok, err = pcall(function()
+            CharDBExecute(ADD_ITEMS_JSON_COLUMN_SQL)
+        end)
+        if ok then
+            PrintInfo(string.format("[%s] Added items_json column to web_item_requests", SCRIPT_NAME))
+            SELECT_PENDING_ITEM_SQL = SELECT_PENDING_ITEM_WITH_JSON_SQL
+        else
+            PrintError(string.format("[%s] Failed to add items_json column: %s", SCRIPT_NAME, tostring(err)))
+            PrintInfo(string.format("[%s] Falling back to legacy mode (single item per mail)", SCRIPT_NAME))
+            SELECT_PENDING_ITEM_SQL = SELECT_PENDING_ITEM_LEGACY_SQL
+        end
     end
 
     -- Register the unified polling event
