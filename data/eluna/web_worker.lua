@@ -140,7 +140,8 @@ local function escapeSql(str)
 end
 
 --- Simple JSON array parser for items
---- Parses: [{"entry":12345,"count":1},{"entry":67890,"count":2}]
+--- Parses: [[1019,1],[2576,1]] (array of [entry, count] pairs)
+--- Also supports legacy format: [{"entry":12345,"count":1},{"entry":67890,"count":2}]
 ---@param jsonStr string|nil
 ---@return table|nil items Array of {entry=number, count=number} or nil on error
 local function parseItemsJson(jsonStr)
@@ -150,8 +151,9 @@ local function parseItemsJson(jsonStr)
 
     local items = {}
 
-    -- Match each object in the array: {"entry":12345,"count":1}
-    for entryStr, countStr in jsonStr:gmatch('"entry"%s*:%s*(%d+)%s*,%s*"count"%s*:%s*(%d+)') do
+    -- Try array format first: [[1019,1],[2576,1]]
+    -- Match pairs like [1019,1] inside the outer array
+    for entryStr, countStr in jsonStr:gmatch('%[%s*(%d+)%s*,%s*(%d+)%s*%]') do
         local entry = tonumber(entryStr)
         local count = tonumber(countStr)
         if entry and entry > 0 and count and count > 0 then
@@ -159,28 +161,43 @@ local function parseItemsJson(jsonStr)
         end
     end
 
-    -- Also try reverse order: {"count":1,"entry":12345}
-    for countStr, entryStr in jsonStr:gmatch('"count"%s*:%s*(%d+)%s*,%s*"entry"%s*:%s*(%d+)') do
-        local entry = tonumber(entryStr)
-        local count = tonumber(countStr)
-        if entry and entry > 0 and count and count > 0 then
-            -- Check if already added (avoid duplicates)
-            local exists = false
-            for _, item in ipairs(items) do
-                if item.entry == entry and item.count == count then
-                    exists = true
-                    break
-                end
-            end
-            if not exists then
+    -- If array format didn't find anything, try object format: {"entry":12345,"count":1}
+    if #items == 0 then
+        for entryStr, countStr in jsonStr:gmatch('"entry"%s*:%s*(%d+)%s*,%s*"count"%s*:%s*(%d+)') do
+            local entry = tonumber(entryStr)
+            local count = tonumber(countStr)
+            if entry and entry > 0 and count and count > 0 then
                 table.insert(items, { entry = entry, count = count })
+            end
+        end
+
+        -- Also try reverse order: {"count":1,"entry":12345}
+        for countStr, entryStr in jsonStr:gmatch('"count"%s*:%s*(%d+)%s*,%s*"entry"%s*:%s*(%d+)') do
+            local entry = tonumber(entryStr)
+            local count = tonumber(countStr)
+            if entry and entry > 0 and count and count > 0 then
+                -- Check if already added (avoid duplicates)
+                local exists = false
+                for _, item in ipairs(items) do
+                    if item.entry == entry and item.count == count then
+                        exists = true
+                        break
+                    end
+                end
+                if not exists then
+                    table.insert(items, { entry = entry, count = count })
+                end
             end
         end
     end
 
     if #items > 0 then
+        PrintInfo(string.format("[%s] parseItemsJson: Parsed %d items from '%s'",
+            SCRIPT_NAME, #items, jsonStr:sub(1, 50)))
         return items
     end
+
+    PrintError(string.format("[%s] parseItemsJson: Failed to parse '%s'", SCRIPT_NAME, jsonStr:sub(1, 100)))
     return nil
 end
 
@@ -825,7 +842,7 @@ local function initialize()
     local hasItemsJson = false
     local checkQuery = CharDBQuery(CHECK_ITEMS_JSON_COLUMN_SQL)
     if checkQuery then
-        local count = checkQuery:GetUInt32(0)
+        local count = checkQuery:GetUInt64(0)
         hasItemsJson = (count and count > 0)
     end
 
