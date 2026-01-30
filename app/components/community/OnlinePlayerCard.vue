@@ -3,7 +3,7 @@
  * OnlinePlayerCard - Card displaying an online player
  */
 import { getClassName, getRaceName, formatPlaytime } from '~/utils/wow'
-import type { OnlinePlayer } from '~/stores/community'
+import type { OnlinePlayer } from '~/stores/characters'
 import UiBadge from '~/components/ui/UiBadge.vue'
 
 export interface Props {
@@ -11,11 +11,6 @@ export interface Props {
 }
 
 defineProps<Props>()
-
-// Zone names would ideally come from DBC data
-function getZoneName(zoneId: number): string {
-  return `Zone ${zoneId}`
-}
 </script>
 
 <template>
@@ -41,7 +36,7 @@ function getZoneName(zoneId: number): string {
       </div>
       <div class="online-player-card__row">
         <dt class="sr-only">Zone</dt>
-        <dd class="online-player-card__zone">{{ getZoneName(player.zone) }}</dd>
+        <dd class="online-player-card__zone">{{ player.zoneName }}</dd>
       </div>
       <div class="online-player-card__row">
         <dt class="sr-only">Playtime</dt>

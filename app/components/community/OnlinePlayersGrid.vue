@@ -2,7 +2,7 @@
 /**
  * OnlinePlayersGrid - Grid of online player cards
  */
-import type { OnlinePlayer } from '~/stores/community'
+import type { OnlinePlayer } from '~/stores/characters'
 import UiSectionHeader from '~/components/ui/UiSectionHeader.vue'
 import UiButton from '~/components/ui/UiButton.vue'
 import UiEmptyState from '~/components/ui/UiEmptyState.vue'

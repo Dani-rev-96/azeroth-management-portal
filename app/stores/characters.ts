@@ -32,6 +32,7 @@ export interface OnlinePlayer {
   race: number
   class: number
   zone: number
+  zoneName: string
   accountName: string
   realm: string
   realmId: string

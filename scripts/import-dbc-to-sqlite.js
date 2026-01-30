@@ -436,6 +436,35 @@ const dbcConfigs = {
       duration_per_level: row.DurationPerLevel || 0,
       max_duration: row.MaxDuration || 0
     })
+  },
+
+  AreaTable: {
+    jsonFile: 'AreaTable.json',
+    dbFile: 'area_table.db',
+    tableName: 'area_table',
+    schema: `
+      CREATE TABLE area_table (
+        id INTEGER PRIMARY KEY,
+        continent_id INTEGER,
+        parent_area_id INTEGER,
+        area_name TEXT,
+        area_name_deDE TEXT,
+        exploration_level INTEGER,
+        faction_group_mask INTEGER
+      );
+      CREATE INDEX idx_parent_area ON area_table(parent_area_id);
+    `,
+    mapping: (row) => ({
+      id: row.ID,
+      continent_id: row.ContinentID,
+      parent_area_id: row.ParentAreaID,
+      // enUS is usually empty in this export, frFR contains German names (mangled headers)
+      area_name: row.AreaName_Lang_enUS || row.AreaName_Lang_enGB || row.AreaName_Lang_frFR || '',
+      // German names are in frFR field due to export issue
+      area_name_deDE: row.AreaName_Lang_frFR || row.AreaName_Lang_deDE || '',
+      exploration_level: row.ExplorationLevel || 0,
+      faction_group_mask: row.FactionGroupMask || 0
+    })
   }
 }
 

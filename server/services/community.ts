@@ -7,6 +7,7 @@ import type { RowDataPacket, Pool } from 'mysql2/promise'
 import { getAuthDbPool, getCharactersDbPool } from '#server/utils/mysql'
 import { getNonBotAccountIds, buildNonBotAccountFilter } from '#server/utils/account-filter'
 import { getRealmsToQuery } from '#server/utils/realm-query'
+import { getAreaNameBatch } from '#server/utils/dbc-db'
 
 // Types
 export interface OnlinePlayer {
@@ -16,6 +17,7 @@ export interface OnlinePlayer {
   race: number
   class: number
   zone: number
+  zoneName: string
   accountName: string
   realm: string
   realmId: string
@@ -89,7 +91,7 @@ export async function getOnlinePlayers(
   }
 
   const realmsToQuery = getRealmsToQuery(realms, realmIdFilter)
-  const onlinePlayers: OnlinePlayer[] = []
+  const onlinePlayers: Array<Omit<OnlinePlayer, 'zoneName'> & { zone: number }> = []
 
   for (const [realmId, realm] of Object.entries(realmsToQuery)) {
     const charsPool = await getCharactersDbPool(realmId)
@@ -129,7 +131,14 @@ export async function getOnlinePlayers(
     }
   }
 
-  return onlinePlayers
+  // Resolve zone names
+  const zoneIds = [...new Set(onlinePlayers.map(p => p.zone).filter(z => z > 0))]
+  const zoneNames = await getAreaNameBatch(zoneIds)
+
+  return onlinePlayers.map(player => ({
+    ...player,
+    zoneName: zoneNames.get(player.zone) || `Zone ${player.zone}`,
+  }))
 }
 
 /**

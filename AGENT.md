@@ -25,6 +25,7 @@ This project is a web application for managing and interacting with World of War
 - shared utilities should be imported from utils folder instead of re-exporting from other stores.
 - remove any unused or redundant code, especially in styles and store exports.
 - always try to unify styles and reuse code where possible.
+- prefer "types" over "interfaces".
 
 ## frontend
 

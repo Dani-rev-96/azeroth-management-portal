@@ -370,3 +370,65 @@ export async function getSpellDurationBatch(durationIds: number[]): Promise<Spel
   const stmt = db.prepare(`SELECT * FROM spell_duration WHERE id IN (${placeholders})`)
   return stmt.all(...uniqueIds) as SpellDuration[]
 }
+
+// ==================== Area Table (Zones) ====================
+
+export interface AreaTableEntry {
+  id: number
+  continent_id: number
+  parent_area_id: number
+  area_name: string
+  area_name_deDE: string
+  exploration_level: number
+  faction_group_mask: number
+}
+
+export async function getAreaName(areaId: number): Promise<string | undefined> {
+  try {
+    const db = await getDatabase('area_table.db')
+    const stmt = db.prepare('SELECT area_name, area_name_deDE FROM area_table WHERE id = ?')
+    const result = stmt.get(areaId) as { area_name: string; area_name_deDE: string } | undefined
+    if (!result) return undefined
+    // Prefer German name (stored in area_name_deDE due to export issue), fall back to area_name
+    return result.area_name_deDE || result.area_name || undefined
+  } catch {
+    // Database not available
+    return undefined
+  }
+}
+
+export async function getAreaNameBatch(areaIds: number[]): Promise<Map<number, string>> {
+  const result = new Map<number, string>()
+  if (areaIds.length === 0) return result
+
+  try {
+    const db = await getDatabase('area_table.db')
+    const uniqueIds = [...new Set(areaIds.filter(id => id > 0))]
+    if (uniqueIds.length === 0) return result
+
+    const placeholders = uniqueIds.map(() => '?').join(',')
+    const stmt = db.prepare(`SELECT id, area_name, area_name_deDE FROM area_table WHERE id IN (${placeholders})`)
+    const rows = stmt.all(...uniqueIds) as Array<{ id: number; area_name: string; area_name_deDE: string }>
+
+    for (const row of rows) {
+      const name = row.area_name_deDE || row.area_name
+      if (name) {
+        result.set(row.id, name)
+      }
+    }
+  } catch {
+    // Database not available, return empty map
+  }
+
+  return result
+}
+
+export async function getAreaTableEntry(areaId: number): Promise<AreaTableEntry | undefined> {
+  try {
+    const db = await getDatabase('area_table.db')
+    const stmt = db.prepare('SELECT * FROM area_table WHERE id = ?')
+    return stmt.get(areaId) as AreaTableEntry | undefined
+  } catch {
+    return undefined
+  }
+}
