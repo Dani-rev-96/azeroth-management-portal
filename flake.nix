@@ -41,8 +41,8 @@
           name = name;
           version = version;
           src = src;
+
           buildInputs = [
-            pkgs.node-gyp
             pkgs.nodejs
             pkgs.vips
           ];
@@ -60,23 +60,44 @@
           npmConfigHook = pkgs.importNpmLock.npmConfigHook;
           npmFlags = [ "--legacy-peer-deps" ];
 
+          # Ensure node_modules is writable - required for Nuxt/Nitro build
+          # which needs to write package.json files during bundling
+          preBuild = ''
+            # Remove any existing .output to ensure clean build
+            rm -rf .output
+
+            # The npmConfigHook creates node_modules as symlinks to the nix store
+            # We need to make them writable for Nitro to write package.json files
+            # Convert the symlinked node_modules to a writable copy
+            if [ -L node_modules ] || [ -d node_modules ]; then
+              tmp_modules=$(mktemp -d)
+              cp -rL node_modules/* "$tmp_modules/" || true
+              rm -rf node_modules
+              mv "$tmp_modules" node_modules
+              chmod -R u+w node_modules
+            fi
+          '';
+
           buildPhase = ''
-            # each phase has pre/postHooks. When you make your own phase be sure to still call the hooks
             runHook preBuild
 
-            MINIMAL=1 npm run build
+            # Set HOME to a writable directory for npm cache
+            export HOME=$(mktemp -d)
+
+            # Run nuxt build directly via node (bypasses broken .bin symlinks)
+            MINIMAL=1 node node_modules/nuxt/bin/nuxt.mjs build
 
             runHook postBuild
           '';
 
           installPhase = ''
-            						runHook preInstall
+            runHook preInstall
 
-            						mkdir -p $out/
-            						cp -r .output $out/
+            mkdir -p $out/
+            cp -r .output/* $out/
 
-            						runHook postInstall
-            					'';
+            runHook postInstall
+          '';
         };
 
         src-root = pkgs.runCommand "src-base" { } ''
@@ -149,11 +170,11 @@
       {
         devShells = {
           default = pkgs.mkShell {
-            postShellHook = ''
-                          export SOPS_AGE_KEY_FILE=$(pwd)/secrets/private-age-key.txt;
-              						${pkgs.importNpmLock.hooks.linkNodeModulesHook}/nix-support/setup-hook
-            '';
-            packages = defaultPkgs ++ [ pkgs.importNpmLock.hooks.linkNodeModulesHook ];
+            packages = defaultPkgs;
+
+            # nativeBuildInputs triggers the setup-hooks from linkNodeModulesHook
+            nativeBuildInputs = [ pkgs.importNpmLock.hooks.linkNodeModulesHook ];
+
             npmDeps = pkgs.importNpmLock.buildNodeModules {
               npmRoot = src;
               nodejs = pkgs.nodejs;
@@ -162,13 +183,25 @@
                 npmFlags = [ "--legacy-peer-deps" ];
               };
             };
+
+            shellHook = ''
+              export SOPS_AGE_KEY_FILE=$(pwd)/secrets/private-age-key.txt
+
+              # Manually trigger node_modules linking for direnv compatibility
+              if [ -n "$npmDeps" ] && [ ! -e node_modules ]; then
+                ln -s "$npmDeps/node_modules" node_modules
+              fi
+
+              # Add node_modules/.bin to PATH for direct access to binaries
+              export PATH="$PWD/node_modules/.bin:$PATH"
+            '';
           };
         };
 
         packages = {
           default = prod-package;
           image = prod-image;
-          dev-iamge = dev-image;
+          dev-image = dev-image;
         };
 
         apps = {
