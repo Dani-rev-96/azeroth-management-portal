@@ -12,7 +12,7 @@
     The tables are auto-created if they don't exist.
 
     Author: AzerothCore Nix Flake Project
-    Version: 2.0
+    Version: 2.1
 ]]
 
 local SCRIPT_NAME = "web_worker"
@@ -21,6 +21,7 @@ local BATCH_SIZE = 50
 
 -- Mail constants
 local MAIL_STATIONERY_DEFAULT = 61 -- GM stationery
+local MAX_MAIL_ITEMS = 12 -- Maximum items per mail (WoW limit)
 
 --------------------------------------------------------------------------------
 -- Table Creation SQL (runs once on startup)
@@ -270,6 +271,62 @@ end
 -- Mail Item Request Processing
 --------------------------------------------------------------------------------
 
+--- Send mail with items using the global SendMail function
+---@param guid number Character GUID (low)
+---@param subject string Mail subject
+---@param body string Mail body
+---@param money number Money in copper
+---@param itemEntry number Item entry ID (0 for money-only)
+---@param itemCount number Number of items
+---@return boolean success, string|nil errorMessage
+local function sendMailWithItems(guid, subject, body, money, itemEntry, itemCount)
+    local isMoneyOnly = (itemEntry == 0)
+
+    -- Build items table: { {entry, count}, ... }
+    -- Each sub-table = one item stack
+    local itemsTable = {}
+    if not isMoneyOnly then
+        -- For items, Eluna expects { {entry, count}, {entry2, count2}, ... }
+        table.insert(itemsTable, {itemEntry, itemCount})
+    end
+
+    -- Debug logging
+    PrintInfo(string.format("[%s] sendMailWithItems: guid=%d, item=%d, count=%d, money=%d, itemsTable size=%d",
+        SCRIPT_NAME, guid, itemEntry, itemCount, money, #itemsTable))
+
+    -- Log items table structure for debugging
+    if #itemsTable > 0 then
+        for idx, item in ipairs(itemsTable) do
+            PrintInfo(string.format("[%s] sendMailWithItems: itemsTable[%d] = {%d, %d}",
+                SCRIPT_NAME, idx, item[1], item[2]))
+        end
+    end
+
+    -- Use global SendMail function
+    -- Signature: SendMail(subject, text, receiverGUIDLow, senderGUIDLow, stationary, delay, money, cod, items)
+    local ok, err = pcall(function()
+        SendMail(
+            subject,                    -- 1: subject (string)
+            body,                       -- 2: text/body (string)
+            guid,                       -- 3: receiver GUID low (number)
+            0,                          -- 4: sender GUID low (0 = system)
+            MAIL_STATIONERY_DEFAULT,    -- 5: stationery type (number)
+            0,                          -- 6: delay in seconds (number)
+            money,                      -- 7: money in copper (number)
+            0,                          -- 8: COD amount (number)
+            itemsTable                  -- 9: items table { {entry, count}, ... }
+        )
+    end)
+
+    if not ok then
+        PrintError(string.format("[%s] sendMailWithItems: SendMail error: %s", SCRIPT_NAME, tostring(err)))
+        return false, tostring(err)
+    end
+
+    PrintInfo(string.format("[%s] sendMailWithItems: Mail sent successfully to guid %d", SCRIPT_NAME, guid))
+    return true, nil
+end
+
 --- Process a single mail item request row
 ---@param row userdata Query row
 ---@return boolean success
@@ -319,41 +376,40 @@ local function processItemRow(row)
         return false
     end
 
-    -- Build items table
-    local itemsTable = {}
-    if not isMoneyOnly then
-        table.insert(itemsTable, {itemEntry, itemCount})
-    end
-
-    -- SendMail properly allocates item GUIDs via the server
-    local success = SendMail(
-        mailSubject,
-        mailBody,
-        guid,
-        0, -- sender = system
-        MAIL_STATIONERY_DEFAULT,
-        0, -- delay
-        money,
-        0, -- COD
-        itemsTable
-    )
-
-    if success then
-        -- Notify if online
-        local player = GetPlayerByGUID(guid)
-        if player then
-            local msg = reason or string.format("You have new mail with %dx item(s)!", itemCount)
-            player:SendBroadcastMessage(string.format("|cff00ff00[Shop]|r %s", msg))
-        end
-
-        PrintInfo(string.format("[%s] Mail: Processed %d for %s - item %d x%d",
-            SCRIPT_NAME, id, charName, itemEntry, itemCount))
-        markDone("web_item_requests", id)
-        return true
-    else
-        markError("web_item_requests", id, "SendMail failed")
+    -- Limit item count to prevent abuse (WoW mail limit is 12 items)
+    if itemCount > MAX_MAIL_ITEMS then
+        markError("web_item_requests", id, string.format(
+            "item_count %d exceeds maximum %d", itemCount, MAX_MAIL_ITEMS
+        ))
         return false
     end
+
+    -- Send the mail using the helper function
+    local success, errMsg = sendMailWithItems(
+        guid,
+        mailSubject,
+        mailBody,
+        money,
+        itemEntry,
+        itemCount
+    )
+
+    if not success then
+        markError("web_item_requests", id, errMsg or "SendMail failed")
+        return false
+    end
+
+    -- Notify if online
+    local player = GetPlayerByGUID(guid)
+    if player then
+        local msg = reason or string.format("You have new mail with %dx item(s)!", itemCount)
+        player:SendBroadcastMessage(string.format("|cff00ff00[Shop]|r %s", msg))
+    end
+
+    PrintInfo(string.format("[%s] Mail: Processed %d for %s - item %d x%d",
+        SCRIPT_NAME, id, charName, itemEntry, itemCount))
+    markDone("web_item_requests", id)
+    return true
 end
 
 --------------------------------------------------------------------------------
