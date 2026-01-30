@@ -77,11 +77,30 @@ export const WOW_RACES: Record<number, string> = {
   22: 'Worgen',
 }
 
+export const WOW_RACE_ICONS: Record<number, string> = {
+  1: '👤',   // Human
+  2: '💪',   // Orc
+  3: '⛏️',   // Dwarf
+  4: '🌙',   // Night Elf
+  5: '☠️',   // Undead
+  6: '🐃',   // Tauren
+  7: '🔧',   // Gnome
+  8: '🏝️',   // Troll
+  9: '💰',   // Goblin
+  10: '✨',  // Blood Elf
+  11: '🔷',  // Draenei
+  22: '🐺',  // Worgen
+}
+
 export const ALLIANCE_RACES = [1, 3, 4, 7, 11, 22] // Human, Dwarf, Night Elf, Gnome, Draenei, Worgen
 export const HORDE_RACES = [2, 5, 6, 8, 9, 10]    // Orc, Undead, Tauren, Troll, Goblin, Blood Elf
 
 export function getRaceName(raceId: number): string {
   return WOW_RACES[raceId] || `Race ${raceId}`
+}
+
+export function getRaceIcon(raceId: number): string {
+  return WOW_RACE_ICONS[raceId] || '❓'
 }
 
 export function getFaction(raceId: number): 'Alliance' | 'Horde' | 'Unknown' {

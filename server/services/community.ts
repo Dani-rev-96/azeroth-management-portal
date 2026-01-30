@@ -73,12 +73,36 @@ export interface CommunityFilters {
 }
 
 /**
+ * Options for online players query
+ */
+export interface OnlinePlayersOptions {
+  realmId?: string
+  search?: string
+  page?: number
+  limit?: number
+}
+
+/**
+ * Paginated response for online players
+ */
+export interface OnlinePlayersResponse {
+  players: OnlinePlayer[]
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+  }
+}
+
+/**
  * Get list of online players across realms
  */
 export async function getOnlinePlayers(
   realms: Record<string, any>,
-  realmIdFilter?: string
-): Promise<OnlinePlayer[]> {
+  options: OnlinePlayersOptions = {}
+): Promise<OnlinePlayersResponse> {
+  const { realmId: realmIdFilter, search, page = 1, limit = 50 } = options
   const authPool = await getAuthDbPool()
 
   // Get online non-bot accounts
@@ -87,7 +111,10 @@ export async function getOnlinePlayers(
   )
 
   if (onlineAccounts.length === 0) {
-    return []
+    return {
+      players: [],
+      pagination: { page, limit, total: 0, totalPages: 0 }
+    }
   }
 
   const realmsToQuery = getRealmsToQuery(realms, realmIdFilter)
@@ -135,10 +162,33 @@ export async function getOnlinePlayers(
   const zoneIds = [...new Set(onlinePlayers.map(p => p.zone).filter(z => z > 0))]
   const zoneNames = await getAreaNameBatch(zoneIds)
 
-  return onlinePlayers.map(player => ({
+  // Add zone names to players
+  let playersWithZones = onlinePlayers.map(player => ({
     ...player,
     zoneName: zoneNames.get(player.zone) || `Zone ${player.zone}`,
   }))
+
+  // Apply search filter if provided
+  if (search) {
+    const searchLower = search.toLowerCase()
+    playersWithZones = playersWithZones.filter(player =>
+      player.characterName.toLowerCase().includes(searchLower) ||
+      player.zoneName.toLowerCase().includes(searchLower) ||
+      player.guid.toString().includes(searchLower) ||
+      player.realm.toLowerCase().includes(searchLower)
+    )
+  }
+
+  // Calculate pagination
+  const total = playersWithZones.length
+  const totalPages = Math.ceil(total / limit)
+  const startIndex = (page - 1) * limit
+  const paginatedPlayers = playersWithZones.slice(startIndex, startIndex + limit)
+
+  return {
+    players: paginatedPlayers,
+    pagination: { page, limit, total, totalPages }
+  }
 }
 
 /**
@@ -407,4 +457,146 @@ export async function getPvPStats(
   stats.topPlayers = stats.topPlayers.slice(0, 20)
 
   return stats
+}
+
+/**
+ * Player info for the player directory
+ */
+export interface DirectoryPlayer {
+  guid: number
+  name: string
+  level: number
+  race: number
+  class: number
+  playtime: number
+  achievementCount: number
+  totalKills: number
+  online: boolean
+  realm: string
+  realmId: string
+}
+
+/**
+ * Options for searching all players
+ */
+export interface SearchPlayersOptions {
+  search?: string
+  page?: number
+  limit?: number
+  realmId?: string
+  classId?: number
+  raceId?: number
+}
+
+/**
+ * Paginated response for player search
+ */
+export interface SearchPlayersResponse {
+  players: DirectoryPlayer[]
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+  }
+}
+
+/**
+ * Search all players in the database with optional filters
+ */
+export async function searchAllPlayers(
+  realms: Record<string, any>,
+  options: SearchPlayersOptions = {}
+): Promise<SearchPlayersResponse> {
+  const { search, page = 1, limit = 24, realmId, classId, raceId } = options
+  const accountFilter = await buildNonBotAccountFilter()
+  const realmsToQuery = getRealmsToQuery(realms, realmId)
+
+  // Build additional filters
+  const additionalFilters: string[] = []
+  if (classId) additionalFilters.push(`c.class = ${classId}`)
+  if (raceId) additionalFilters.push(`c.race = ${raceId}`)
+  if (search) {
+    // Escape the search term for SQL LIKE
+    const escapedSearch = search.replace(/[%_\\]/g, '\\$&')
+    additionalFilters.push(`c.name LIKE '%${escapedSearch}%'`)
+  }
+  const extraFilter = additionalFilters.length > 0 ? ` AND ${additionalFilters.join(' AND ')}` : ''
+
+  // First, count total matching players across all realms
+  let totalCount = 0
+  const realmCounts: Array<{ realmId: string; realm: any; count: number }> = []
+
+  for (const [rId, realm] of Object.entries(realmsToQuery)) {
+    const charsPool = await getCharactersDbPool(rId)
+    const [countResult] = await charsPool.query<RowDataPacket[]>(
+      `SELECT COUNT(*) as total FROM characters c WHERE ${accountFilter}${extraFilter}`
+    )
+    const count = countResult[0]?.total ?? 0
+    realmCounts.push({ realmId: rId, realm, count })
+    totalCount += count
+  }
+
+  const totalPages = Math.ceil(totalCount / limit)
+  const offset = (page - 1) * limit
+
+  // Determine which realm(s) to query based on offset
+  const players: DirectoryPlayer[] = []
+  let currentOffset = offset
+  let remainingLimit = limit
+
+  for (const { realmId: rId, realm, count } of realmCounts) {
+    if (remainingLimit <= 0) break
+
+    // Skip this realm if offset is beyond its count
+    if (currentOffset >= count) {
+      currentOffset -= count
+      continue
+    }
+
+    const charsPool = await getCharactersDbPool(rId)
+    const queryLimit = Math.min(remainingLimit, count - currentOffset)
+
+    const [rows] = await charsPool.query<RowDataPacket[]>(
+      `SELECT
+        c.guid,
+        c.name,
+        c.level,
+        c.race,
+        c.class,
+        c.totaltime as playtime,
+        c.totalKills,
+        c.online,
+        (SELECT COUNT(*) FROM character_achievement WHERE guid = c.guid) as achievementCount
+       FROM characters c
+       WHERE ${accountFilter}${extraFilter}
+       ORDER BY c.level DESC, c.totaltime DESC
+       LIMIT ? OFFSET ?`,
+      [queryLimit, currentOffset]
+    )
+
+    for (const row of rows) {
+      players.push({
+        guid: row.guid,
+        name: row.name,
+        level: row.level,
+        race: row.race,
+        class: row.class,
+        playtime: row.playtime || 0,
+        achievementCount: row.achievementCount || 0,
+        totalKills: row.totalKills || 0,
+        online: row.online === 1,
+        realm: realm.name,
+        realmId: rId,
+      })
+    }
+
+    remainingLimit -= rows.length
+    currentOffset = 0 // After processing first realm, offset is 0 for subsequent realms
+  }
+
+  return {
+    players,
+    pagination: { page, limit, total: totalCount, totalPages }
+  }
 }

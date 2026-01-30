@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * Community Hub Page
- * Shows online players and server statistics with URL-synced tabs
+ * Shows online players, player directory, and server statistics with URL-synced tabs
  */
 import { useCommunityStore } from '~/stores/community'
 import { useUrlTab } from '~/composables/useUrlTab'
@@ -9,6 +9,7 @@ import UiTabs from '~/components/ui/UiTabs.vue'
 import UiTabPanel from '~/components/ui/UiTabPanel.vue'
 import UiPageHeader from '~/components/ui/UiPageHeader.vue'
 import OnlinePlayersGrid from '~/components/community/OnlinePlayersGrid.vue'
+import PlayerDirectoryBrowser from '~/components/community/PlayerDirectoryBrowser.vue'
 import StatsOverview from '~/components/community/StatsOverview.vue'
 import DistributionChart from '~/components/community/DistributionChart.vue'
 import TopPlayersLeaderboard from '~/components/community/TopPlayersLeaderboard.vue'
@@ -20,6 +21,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 // Tab configuration
 const tabs = [
   { id: 'online', label: 'Online Players', icon: '👥' },
+  { id: 'directory', label: 'Player Directory', icon: '📚' },
   { id: 'stats', label: 'Player Stats', icon: '📊' },
 ]
 
@@ -56,11 +58,18 @@ watch(activeTab, (newTab) => {
   if (newTab === 'stats' && !communityStore.hasStatsData) {
     communityStore.fetchAllStats()
   }
+  if (newTab === 'directory' && communityStore.directoryPlayers.length === 0) {
+    communityStore.fetchDirectoryPlayers()
+  }
 }, { immediate: true })
 
 // Refresh handlers
 function refreshOnlinePlayers() {
   communityStore.fetchOnlinePlayers()
+}
+
+function refreshDirectoryPlayers() {
+  communityStore.fetchDirectoryPlayers()
 }
 
 function refreshStats() {
@@ -110,7 +119,32 @@ function getMetricLabel(): string {
       <OnlinePlayersGrid
         :players="communityStore.onlinePlayers"
         :loading="communityStore.onlinePlayersLoading"
+        :search-query="communityStore.onlinePlayersSearch"
+        :current-page="communityStore.onlinePlayersPage"
+        :total-pages="communityStore.onlinePlayersTotalPages"
+        :filtered-count="communityStore.onlinePlayersFilteredCount"
+        :total-count="communityStore.onlinePlayersTotalCount"
         @refresh="refreshOnlinePlayers"
+        @update:search-query="communityStore.setOnlinePlayersSearch"
+        @update:current-page="communityStore.setOnlinePlayersPage"
+      />
+    </UiTabPanel>
+
+    <!-- Player Directory Tab -->
+    <UiTabPanel id="directory" :active="activeTab === 'directory'">
+      <PlayerDirectoryBrowser
+        :players="communityStore.directoryPlayers"
+        :loading="communityStore.directoryLoading"
+        :pagination="communityStore.directoryPagination"
+        :search-query="communityStore.directorySearch"
+        :class-filter="communityStore.directoryClassFilter"
+        :race-filter="communityStore.directoryRaceFilter"
+        @refresh="refreshDirectoryPlayers"
+        @update:search-query="communityStore.setDirectorySearch"
+        @update:page="communityStore.setDirectoryPage"
+        @update:class-filter="communityStore.setDirectoryClassFilter"
+        @update:race-filter="communityStore.setDirectoryRaceFilter"
+        @clear-filters="communityStore.clearDirectoryFilters"
       />
     </UiTabPanel>
 

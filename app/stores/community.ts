@@ -41,6 +41,27 @@ export interface PvPStats {
   }>
 }
 
+export interface DirectoryPlayer {
+  guid: number
+  name: string
+  level: number
+  race: number
+  class: number
+  playtime: number
+  achievementCount: number
+  totalKills: number
+  online: boolean
+  realm: string
+  realmId: string
+}
+
+export interface DirectoryPagination {
+  page: number
+  limit: number
+  total: number
+  totalPages: number
+}
+
 export type LeaderboardMetric = 'level' | 'playtime' | 'achievements'
 
 /**
@@ -90,11 +111,67 @@ export const useCommunityStore = defineStore('community', () => {
   const selectedRace = ref<number | null>(null)
 
   // ==========================================================================
+  // State - Online Players Pagination & Search
+  // ==========================================================================
+  const onlinePlayersSearch = ref('')
+  const onlinePlayersPage = ref(1)
+  const onlinePlayersPerPage = ref(24) // 4x6 or 3x8 grid
+
+  // ==========================================================================
+  // State - Player Directory
+  // ==========================================================================
+  const directoryPlayers = ref<DirectoryPlayer[]>([])
+  const directoryLoading = ref(false)
+  const directoryError = ref<string | undefined>(undefined)
+  const directorySearch = ref('')
+  const directoryPage = ref(1)
+  const directoryPerPage = ref(24)
+  const directoryPagination = ref<DirectoryPagination>({
+    page: 1,
+    limit: 24,
+    total: 0,
+    totalPages: 0
+  })
+  const directoryClassFilter = ref<number | null>(null)
+  const directoryRaceFilter = ref<number | null>(null)
+
+  // ==========================================================================
   // Computed - Delegate to characters store
   // ==========================================================================
 
-  /** Online players from characters store */
-  const onlinePlayers = computed(() => charactersStore.onlinePlayers)
+  /** All online players from characters store */
+  const allOnlinePlayers = computed(() => charactersStore.onlinePlayers)
+
+  /** Filtered online players based on search */
+  const filteredOnlinePlayers = computed(() => {
+    const search = onlinePlayersSearch.value.toLowerCase().trim()
+    if (!search) {
+      return allOnlinePlayers.value
+    }
+    return allOnlinePlayers.value.filter(player =>
+      player.characterName.toLowerCase().includes(search) ||
+      player.zoneName.toLowerCase().includes(search) ||
+      player.guid.toString().includes(search) ||
+      player.realm.toLowerCase().includes(search)
+    )
+  })
+
+  /** Paginated online players for display */
+  const onlinePlayers = computed(() => {
+    const start = (onlinePlayersPage.value - 1) * onlinePlayersPerPage.value
+    return filteredOnlinePlayers.value.slice(start, start + onlinePlayersPerPage.value)
+  })
+
+  /** Total pages for online players */
+  const onlinePlayersTotalPages = computed(() =>
+    Math.ceil(filteredOnlinePlayers.value.length / onlinePlayersPerPage.value)
+  )
+
+  /** Total filtered count */
+  const onlinePlayersFilteredCount = computed(() => filteredOnlinePlayers.value.length)
+
+  /** Total count */
+  const onlinePlayersTotalCount = computed(() => allOnlinePlayers.value.length)
 
   /** Loading state from characters store */
   const onlinePlayersLoading = computed(() => charactersStore.onlinePlayersLoading)
@@ -236,7 +313,94 @@ export const useCommunityStore = defineStore('community', () => {
     fetchTopPlayers(metric)
   }
 
+  // ==========================================================================
+  // Actions - Online Players Pagination & Search
+  // ==========================================================================
+
+  function setOnlinePlayersSearch(search: string) {
+    onlinePlayersSearch.value = search
+    onlinePlayersPage.value = 1 // Reset to first page on search
+  }
+
+  function setOnlinePlayersPage(page: number) {
+    onlinePlayersPage.value = page
+  }
+
+  function resetOnlinePlayersFilters() {
+    onlinePlayersSearch.value = ''
+    onlinePlayersPage.value = 1
+  }
+
+  // ==========================================================================
+  // Actions - Player Directory
+  // ==========================================================================
+
+  async function fetchDirectoryPlayers() {
+    directoryLoading.value = true
+    directoryError.value = undefined
+
+    try {
+      const params = new URLSearchParams()
+      params.append('page', String(directoryPage.value))
+      params.append('limit', String(directoryPerPage.value))
+      if (selectedRealm.value) params.append('realmId', selectedRealm.value)
+      if (directoryClassFilter.value) params.append('classId', String(directoryClassFilter.value))
+      if (directoryRaceFilter.value) params.append('raceId', String(directoryRaceFilter.value))
+      if (directorySearch.value) params.append('search', directorySearch.value)
+
+      const response = await $fetch<{
+        players: DirectoryPlayer[]
+        pagination: DirectoryPagination
+      }>(`/api/community/players?${params}`)
+
+      directoryPlayers.value = response?.players || []
+      directoryPagination.value = response?.pagination || {
+        page: 1,
+        limit: 24,
+        total: 0,
+        totalPages: 0
+      }
+    } catch (error) {
+      directoryError.value = 'Failed to fetch players'
+      console.error('Failed to fetch directory players:', error)
+    } finally {
+      directoryLoading.value = false
+    }
+  }
+
+  function setDirectorySearch(search: string) {
+    directorySearch.value = search
+    directoryPage.value = 1
+    fetchDirectoryPlayers()
+  }
+
+  function setDirectoryPage(page: number) {
+    directoryPage.value = page
+    fetchDirectoryPlayers()
+  }
+
+  function setDirectoryClassFilter(classId: number | null) {
+    directoryClassFilter.value = classId
+    directoryPage.value = 1
+    fetchDirectoryPlayers()
+  }
+
+  function setDirectoryRaceFilter(raceId: number | null) {
+    directoryRaceFilter.value = raceId
+    directoryPage.value = 1
+    fetchDirectoryPlayers()
+  }
+
+  function clearDirectoryFilters() {
+    directorySearch.value = ''
+    directoryClassFilter.value = null
+    directoryRaceFilter.value = null
+    directoryPage.value = 1
+    fetchDirectoryPlayers()
+  }
+
   function $reset() {
+    // Reset stats
     generalStats.value = {}
     topPlayers.value = []
     pvpStats.value = {}
@@ -244,6 +408,18 @@ export const useCommunityStore = defineStore('community', () => {
     selectedClass.value = null
     selectedRace.value = null
     selectedMetric.value = 'level'
+
+    // Reset online players pagination
+    onlinePlayersSearch.value = ''
+    onlinePlayersPage.value = 1
+
+    // Reset directory
+    directoryPlayers.value = []
+    directorySearch.value = ''
+    directoryPage.value = 1
+    directoryClassFilter.value = null
+    directoryRaceFilter.value = null
+    directoryPagination.value = { page: 1, limit: 24, total: 0, totalPages: 0 }
   }
 
   return {
@@ -257,6 +433,23 @@ export const useCommunityStore = defineStore('community', () => {
     onlinePlayersLoading,
     onlinePlayersError,
     onlineCount,
+    // Online Players Pagination & Search
+    onlinePlayersSearch,
+    onlinePlayersPage,
+    onlinePlayersPerPage,
+    onlinePlayersTotalPages,
+    onlinePlayersFilteredCount,
+    onlinePlayersTotalCount,
+
+    // State - Player Directory
+    directoryPlayers,
+    directoryLoading,
+    directoryError,
+    directorySearch,
+    directoryPage,
+    directoryPagination,
+    directoryClassFilter,
+    directoryRaceFilter,
 
     // State - Stats
     generalStats,
@@ -286,10 +479,19 @@ export const useCommunityStore = defineStore('community', () => {
     fetchTopPlayers,
     fetchPvPStats,
     fetchAllStats,
+    fetchDirectoryPlayers,
     setRealm,
     setClass,
     setRace,
     changeMetric,
+    setOnlinePlayersSearch,
+    setOnlinePlayersPage,
+    resetOnlinePlayersFilters,
+    setDirectorySearch,
+    setDirectoryPage,
+    setDirectoryClassFilter,
+    setDirectoryRaceFilter,
+    clearDirectoryFilters,
     $reset,
   }
 })

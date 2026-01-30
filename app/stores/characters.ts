@@ -40,6 +40,24 @@ export interface OnlinePlayer {
 }
 
 /**
+ * Online players pagination info
+ */
+export interface OnlinePlayersPagination {
+  page: number
+  limit: number
+  total: number
+  totalPages: number
+}
+
+/**
+ * Online players API response
+ */
+export interface OnlinePlayersResponse {
+  players: OnlinePlayer[]
+  pagination: OnlinePlayersPagination
+}
+
+/**
  * Characters Store
  *
  * Entity store for managing characters and online players.
@@ -128,8 +146,9 @@ export const useCharactersStore = defineStore('characters', () => {
     onlinePlayersError.value = undefined
 
     try {
-      const data = await $fetch<OnlinePlayer[]>('/api/community/online')
-      onlinePlayers.value = data || []
+      // Fetch with high limit to get all players for online status tracking
+      const response = await $fetch<OnlinePlayersResponse>('/api/community/online?limit=1000')
+      onlinePlayers.value = response?.players || []
 
       // Update online status on user's characters
       updateCharactersOnlineStatus()
