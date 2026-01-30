@@ -46,6 +46,9 @@ export default defineNuxtConfig({
   },
 
 	vite: {
+		// Use a writable cache directory outside node_modules
+		// This is needed for Nix/direnv where node_modules is symlinked to read-only store
+		cacheDir: '.vite-cache',
 		css: {
 			preprocessorOptions: {
 				scss: {

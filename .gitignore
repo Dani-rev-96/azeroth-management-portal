@@ -4,6 +4,7 @@
 .nuxt
 .nitro
 .cache
+.vite-cache
 dist
 certs
 
