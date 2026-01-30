@@ -1,6 +1,6 @@
 {
   "name": "azeroth-management-portal",
-  "version": "1.9.3",
+  "version": "1.9.4",
   "type": "module",
   "description": "A modern, CMS-independent management and community portal for AzerothCore WoW servers",
   "repository": {
