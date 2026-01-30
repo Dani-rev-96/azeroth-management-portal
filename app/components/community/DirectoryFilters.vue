@@ -464,6 +464,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 .search-input {
   flex: 1;
   position: relative;
+	padding: 0;
 
   &__icon {
     position: absolute;
