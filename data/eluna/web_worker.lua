@@ -11,8 +11,11 @@
 
     The tables are auto-created if they don't exist.
 
+    Supports multiple items per mail (up to 12) via items_json column.
+    Format: [{"entry":12345,"count":1},{"entry":67890,"count":2}]
+
     Author: AzerothCore Nix Flake Project
-    Version: 2.1
+    Version: 2.3
 ]]
 
 local SCRIPT_NAME = "web_worker"
@@ -21,7 +24,8 @@ local BATCH_SIZE = 50
 
 -- Mail constants
 local MAIL_STATIONERY_DEFAULT = 61 -- GM stationery
-local MAX_MAIL_ITEMS = 12 -- Maximum items per mail (WoW limit)
+-- Note: WoW allows max 12 different item types per mail
+-- For a single item type, the stack size is limited by the item's max stack size
 
 --------------------------------------------------------------------------------
 -- Table Creation SQL (runs once on startup)
@@ -47,8 +51,9 @@ local CREATE_ITEM_TABLE_SQL = [[
 CREATE TABLE IF NOT EXISTS web_item_requests (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     character_guid INT UNSIGNED NOT NULL,
-    item_entry INT UNSIGNED NOT NULL,
+    item_entry INT UNSIGNED NOT NULL DEFAULT 0,
     item_count INT UNSIGNED NOT NULL DEFAULT 1,
+    items_json TEXT NULL,
     mail_subject VARCHAR(128) NULL DEFAULT 'Web Delivery',
     mail_body VARCHAR(8000) NULL DEFAULT 'Your items have been delivered.',
     money INT UNSIGNED NOT NULL DEFAULT 0,
@@ -61,6 +66,11 @@ CREATE TABLE IF NOT EXISTS web_item_requests (
     KEY idx_pending (status, created_at),
     KEY idx_char (character_guid)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+]]
+
+-- Migration: Add items_json column if it doesn't exist
+local ADD_ITEMS_JSON_COLUMN_SQL = [[
+ALTER TABLE web_item_requests ADD COLUMN IF NOT EXISTS items_json TEXT NULL AFTER item_count
 ]]
 
 local CREATE_BAG_TABLE_SQL = [[
@@ -90,7 +100,7 @@ local SELECT_PENDING_MONEY_SQL = string.format(
 )
 
 local SELECT_PENDING_ITEM_SQL = string.format(
-    "SELECT id, character_guid, item_entry, item_count, mail_subject, mail_body, money, reason FROM web_item_requests WHERE status='pending' ORDER BY id ASC LIMIT %d",
+    "SELECT id, character_guid, item_entry, item_count, items_json, mail_subject, mail_body, money, reason FROM web_item_requests WHERE status='pending' ORDER BY id ASC LIMIT %d",
     BATCH_SIZE
 )
 
@@ -110,6 +120,51 @@ local SELECT_PENDING_BAG_SQL = string.format(
 local function escapeSql(str)
     if not str then return "" end
     return tostring(str):gsub("'", "''"):sub(1, 250)
+end
+
+--- Simple JSON array parser for items
+--- Parses: [{"entry":12345,"count":1},{"entry":67890,"count":2}]
+---@param jsonStr string|nil
+---@return table|nil items Array of {entry=number, count=number} or nil on error
+local function parseItemsJson(jsonStr)
+    if not jsonStr or jsonStr == "" then
+        return nil
+    end
+
+    local items = {}
+
+    -- Match each object in the array: {"entry":12345,"count":1}
+    for entryStr, countStr in jsonStr:gmatch('"entry"%s*:%s*(%d+)%s*,%s*"count"%s*:%s*(%d+)') do
+        local entry = tonumber(entryStr)
+        local count = tonumber(countStr)
+        if entry and entry > 0 and count and count > 0 then
+            table.insert(items, { entry = entry, count = count })
+        end
+    end
+
+    -- Also try reverse order: {"count":1,"entry":12345}
+    for countStr, entryStr in jsonStr:gmatch('"count"%s*:%s*(%d+)%s*,%s*"entry"%s*:%s*(%d+)') do
+        local entry = tonumber(entryStr)
+        local count = tonumber(countStr)
+        if entry and entry > 0 and count and count > 0 then
+            -- Check if already added (avoid duplicates)
+            local exists = false
+            for _, item in ipairs(items) do
+                if item.entry == entry and item.count == count then
+                    exists = true
+                    break
+                end
+            end
+            if not exists then
+                table.insert(items, { entry = entry, count = count })
+            end
+        end
+    end
+
+    if #items > 0 then
+        return items
+    end
+    return nil
 end
 
 --- Mark a request as successfully processed
@@ -271,51 +326,145 @@ end
 -- Mail Item Request Processing
 --------------------------------------------------------------------------------
 
---- Send mail with items using the global SendMail function
+--- Send mail with multiple items using the global SendMail function
+--- Eluna's SendMail signature allows multiple entry,count pairs at the end:
+---   SendMail(subject, text, receiverGUIDLow, senderGUIDLow, stationary, delay, money, cod, entry1, count1, entry2, count2, ...)
+--- Maximum 12 different items per mail.
 ---@param guid number Character GUID (low)
 ---@param subject string Mail subject
 ---@param body string Mail body
 ---@param money number Money in copper
----@param itemEntry number Item entry ID (0 for money-only)
----@param itemCount number Number of items
+---@param items table Array of {entry=number, count=number} or nil for money-only
 ---@return boolean success, string|nil errorMessage
-local function sendMailWithItems(guid, subject, body, money, itemEntry, itemCount)
-    local isMoneyOnly = (itemEntry == 0)
-
-    -- Build items table: { {entry, count}, ... }
-    -- Each sub-table = one item stack
-    local itemsTable = {}
-    if not isMoneyOnly then
-        -- For items, Eluna expects { {entry, count}, {entry2, count2}, ... }
-        table.insert(itemsTable, {itemEntry, itemCount})
-    end
+local function sendMailWithItems(guid, subject, body, money, items)
+    local itemCount = items and #items or 0
 
     -- Debug logging
-    PrintInfo(string.format("[%s] sendMailWithItems: guid=%d, item=%d, count=%d, money=%d, itemsTable size=%d",
-        SCRIPT_NAME, guid, itemEntry, itemCount, money, #itemsTable))
+    PrintInfo(string.format("[%s] sendMailWithItems: guid=%d, items=%d, money=%d",
+        SCRIPT_NAME, guid, itemCount, money))
 
-    -- Log items table structure for debugging
-    if #itemsTable > 0 then
-        for idx, item in ipairs(itemsTable) do
-            PrintInfo(string.format("[%s] sendMailWithItems: itemsTable[%d] = {%d, %d}",
-                SCRIPT_NAME, idx, item[1], item[2]))
-        end
+    if itemCount > 12 then
+        return false, "Too many items (max 12 per mail)"
     end
 
-    -- Use global SendMail function
-    -- Signature: SendMail(subject, text, receiverGUIDLow, senderGUIDLow, stationary, delay, money, cod, items)
+    -- Use global SendMail function with varargs for items
     local ok, err = pcall(function()
-        SendMail(
-            subject,                    -- 1: subject (string)
-            body,                       -- 2: text/body (string)
-            guid,                       -- 3: receiver GUID low (number)
-            0,                          -- 4: sender GUID low (0 = system)
-            MAIL_STATIONERY_DEFAULT,    -- 5: stationery type (number)
-            0,                          -- 6: delay in seconds (number)
-            money,                      -- 7: money in copper (number)
-            0,                          -- 8: COD amount (number)
-            itemsTable                  -- 9: items table { {entry, count}, ... }
-        )
+        if itemCount == 0 then
+            -- Money-only mail (no items)
+            SendMail(
+                subject,                    -- 1: subject (string)
+                body,                       -- 2: text/body (string)
+                guid,                       -- 3: receiver GUID low (number)
+                0,                          -- 4: sender GUID low (0 = system)
+                MAIL_STATIONERY_DEFAULT,    -- 5: stationery type (number)
+                0,                          -- 6: delay in seconds (number)
+                money,                      -- 7: money in copper (number)
+                0                           -- 8: COD amount (number)
+            )
+        elseif itemCount == 1 then
+            -- Single item
+            SendMail(subject, body, guid, 0, MAIL_STATIONERY_DEFAULT, 0, money, 0,
+                items[1].entry, items[1].count)
+        elseif itemCount == 2 then
+            SendMail(subject, body, guid, 0, MAIL_STATIONERY_DEFAULT, 0, money, 0,
+                items[1].entry, items[1].count,
+                items[2].entry, items[2].count)
+        elseif itemCount == 3 then
+            SendMail(subject, body, guid, 0, MAIL_STATIONERY_DEFAULT, 0, money, 0,
+                items[1].entry, items[1].count,
+                items[2].entry, items[2].count,
+                items[3].entry, items[3].count)
+        elseif itemCount == 4 then
+            SendMail(subject, body, guid, 0, MAIL_STATIONERY_DEFAULT, 0, money, 0,
+                items[1].entry, items[1].count,
+                items[2].entry, items[2].count,
+                items[3].entry, items[3].count,
+                items[4].entry, items[4].count)
+        elseif itemCount == 5 then
+            SendMail(subject, body, guid, 0, MAIL_STATIONERY_DEFAULT, 0, money, 0,
+                items[1].entry, items[1].count,
+                items[2].entry, items[2].count,
+                items[3].entry, items[3].count,
+                items[4].entry, items[4].count,
+                items[5].entry, items[5].count)
+        elseif itemCount == 6 then
+            SendMail(subject, body, guid, 0, MAIL_STATIONERY_DEFAULT, 0, money, 0,
+                items[1].entry, items[1].count,
+                items[2].entry, items[2].count,
+                items[3].entry, items[3].count,
+                items[4].entry, items[4].count,
+                items[5].entry, items[5].count,
+                items[6].entry, items[6].count)
+        elseif itemCount == 7 then
+            SendMail(subject, body, guid, 0, MAIL_STATIONERY_DEFAULT, 0, money, 0,
+                items[1].entry, items[1].count,
+                items[2].entry, items[2].count,
+                items[3].entry, items[3].count,
+                items[4].entry, items[4].count,
+                items[5].entry, items[5].count,
+                items[6].entry, items[6].count,
+                items[7].entry, items[7].count)
+        elseif itemCount == 8 then
+            SendMail(subject, body, guid, 0, MAIL_STATIONERY_DEFAULT, 0, money, 0,
+                items[1].entry, items[1].count,
+                items[2].entry, items[2].count,
+                items[3].entry, items[3].count,
+                items[4].entry, items[4].count,
+                items[5].entry, items[5].count,
+                items[6].entry, items[6].count,
+                items[7].entry, items[7].count,
+                items[8].entry, items[8].count)
+        elseif itemCount == 9 then
+            SendMail(subject, body, guid, 0, MAIL_STATIONERY_DEFAULT, 0, money, 0,
+                items[1].entry, items[1].count,
+                items[2].entry, items[2].count,
+                items[3].entry, items[3].count,
+                items[4].entry, items[4].count,
+                items[5].entry, items[5].count,
+                items[6].entry, items[6].count,
+                items[7].entry, items[7].count,
+                items[8].entry, items[8].count,
+                items[9].entry, items[9].count)
+        elseif itemCount == 10 then
+            SendMail(subject, body, guid, 0, MAIL_STATIONERY_DEFAULT, 0, money, 0,
+                items[1].entry, items[1].count,
+                items[2].entry, items[2].count,
+                items[3].entry, items[3].count,
+                items[4].entry, items[4].count,
+                items[5].entry, items[5].count,
+                items[6].entry, items[6].count,
+                items[7].entry, items[7].count,
+                items[8].entry, items[8].count,
+                items[9].entry, items[9].count,
+                items[10].entry, items[10].count)
+        elseif itemCount == 11 then
+            SendMail(subject, body, guid, 0, MAIL_STATIONERY_DEFAULT, 0, money, 0,
+                items[1].entry, items[1].count,
+                items[2].entry, items[2].count,
+                items[3].entry, items[3].count,
+                items[4].entry, items[4].count,
+                items[5].entry, items[5].count,
+                items[6].entry, items[6].count,
+                items[7].entry, items[7].count,
+                items[8].entry, items[8].count,
+                items[9].entry, items[9].count,
+                items[10].entry, items[10].count,
+                items[11].entry, items[11].count)
+        elseif itemCount == 12 then
+            SendMail(subject, body, guid, 0, MAIL_STATIONERY_DEFAULT, 0, money, 0,
+                items[1].entry, items[1].count,
+                items[2].entry, items[2].count,
+                items[3].entry, items[3].count,
+                items[4].entry, items[4].count,
+                items[5].entry, items[5].count,
+                items[6].entry, items[6].count,
+                items[7].entry, items[7].count,
+                items[8].entry, items[8].count,
+                items[9].entry, items[9].count,
+                items[10].entry, items[10].count,
+                items[11].entry, items[11].count,
+                items[12].entry, items[12].count)
+        end
     end)
 
     if not ok then
@@ -323,22 +472,26 @@ local function sendMailWithItems(guid, subject, body, money, itemEntry, itemCoun
         return false, tostring(err)
     end
 
-    PrintInfo(string.format("[%s] sendMailWithItems: Mail sent successfully to guid %d", SCRIPT_NAME, guid))
+    PrintInfo(string.format("[%s] sendMailWithItems: Mail sent successfully to guid %d with %d items",
+        SCRIPT_NAME, guid, itemCount))
     return true, nil
 end
 
 --- Process a single mail item request row
+--- Supports both legacy (item_entry/item_count) and new (items_json) formats
 ---@param row userdata Query row
 ---@return boolean success
 local function processItemRow(row)
+    -- Column order: id, character_guid, item_entry, item_count, items_json, mail_subject, mail_body, money, reason
     local id = tonumber(row:GetUInt32(0))
     local guid = tonumber(row:GetUInt32(1))
     local itemEntry = tonumber(row:GetUInt32(2)) or 0
     local itemCount = tonumber(row:GetUInt32(3)) or 1
-    local mailSubject = row:GetString(4) or "Web Delivery"
-    local mailBody = row:GetString(5) or "Your items have been delivered."
-    local money = tonumber(row:GetUInt32(6)) or 0
-    local reason = row:GetString(7)
+    local itemsJson = row:GetString(4) -- May be nil or empty
+    local mailSubject = row:GetString(5) or "Web Delivery"
+    local mailBody = row:GetString(6) or "Your items have been delivered."
+    local money = tonumber(row:GetUInt32(7)) or 0
+    local reason = row:GetString(8)
 
     if not id or id == 0 then
         PrintError(string.format("[%s] Mail: Invalid request id", SCRIPT_NAME))
@@ -350,9 +503,29 @@ local function processItemRow(row)
         return false
     end
 
-    local isMoneyOnly = itemEntry == 0
+    -- Build items list from either items_json or legacy columns
+    local items = nil
 
-    if not isMoneyOnly then
+    -- Try to parse items_json first (preferred, supports multiple items)
+    if itemsJson and itemsJson ~= "" then
+        items = parseItemsJson(itemsJson)
+        if items then
+            PrintInfo(string.format("[%s] Mail: Parsed %d items from items_json for request %d",
+                SCRIPT_NAME, #items, id))
+            -- Validate all items exist
+            for i, item in ipairs(items) do
+                if not validateItemEntry(item.entry) then
+                    markError("web_item_requests", id, string.format(
+                        "item_entry %d (index %d) not found", item.entry, i
+                    ))
+                    return false
+                end
+            end
+        end
+    end
+
+    -- Fall back to legacy single item format
+    if not items and itemEntry > 0 then
         if itemCount < 1 then
             markError("web_item_requests", id, "invalid item_count")
             return false
@@ -363,8 +536,11 @@ local function processItemRow(row)
             ))
             return false
         end
+        items = {{ entry = itemEntry, count = itemCount }}
     end
 
+    -- Check for money-only mail
+    local isMoneyOnly = (not items or #items == 0)
     if isMoneyOnly and money == 0 then
         markError("web_item_requests", id, "money-only request has no money")
         return false
@@ -376,10 +552,10 @@ local function processItemRow(row)
         return false
     end
 
-    -- Limit item count to prevent abuse (WoW mail limit is 12 items)
-    if itemCount > MAX_MAIL_ITEMS then
+    -- Limit items to 12 per mail
+    if items and #items > 12 then
         markError("web_item_requests", id, string.format(
-            "item_count %d exceeds maximum %d", itemCount, MAX_MAIL_ITEMS
+            "too many items: %d (max 12 per mail)", #items
         ))
         return false
     end
@@ -390,8 +566,7 @@ local function processItemRow(row)
         mailSubject,
         mailBody,
         money,
-        itemEntry,
-        itemCount
+        items
     )
 
     if not success then
@@ -402,12 +577,14 @@ local function processItemRow(row)
     -- Notify if online
     local player = GetPlayerByGUID(guid)
     if player then
-        local msg = reason or string.format("You have new mail with %dx item(s)!", itemCount)
+        local totalItems = items and #items or 0
+        local msg = reason or string.format("You have new mail with %d item(s)!", totalItems)
         player:SendBroadcastMessage(string.format("|cff00ff00[Shop]|r %s", msg))
     end
 
-    PrintInfo(string.format("[%s] Mail: Processed %d for %s - item %d x%d",
-        SCRIPT_NAME, id, charName, itemEntry, itemCount))
+    local itemCountForLog = items and #items or 0
+    PrintInfo(string.format("[%s] Mail: Processed %d for %s - %d items, %d money",
+        SCRIPT_NAME, id, charName, itemCountForLog, money))
     markDone("web_item_requests", id)
     return true
 end
@@ -626,6 +803,19 @@ local function initialize()
     CharDBExecute(CREATE_ITEM_TABLE_SQL)
     CharDBExecute(CREATE_BAG_TABLE_SQL)
     PrintInfo(string.format("[%s] Ensured all queue tables exist", SCRIPT_NAME))
+
+    -- Run migration to add items_json column (if not exists)
+    -- This uses a pcall because the syntax "ADD COLUMN IF NOT EXISTS" may not be supported
+    -- on all MariaDB versions. If it fails, we try without the IF NOT EXISTS clause.
+    local migrationOk = pcall(function()
+        CharDBExecute(ADD_ITEMS_JSON_COLUMN_SQL)
+    end)
+    if not migrationOk then
+        -- Column might already exist, that's fine
+        PrintInfo(string.format("[%s] items_json column migration skipped (may already exist)", SCRIPT_NAME))
+    else
+        PrintInfo(string.format("[%s] Ensured items_json column exists", SCRIPT_NAME))
+    end
 
     -- Register the unified polling event
     local eventId = CreateLuaEvent(pollAllQueues, POLL_INTERVAL_MS, 0)

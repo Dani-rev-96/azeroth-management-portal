@@ -137,58 +137,58 @@ export default defineEventHandler(async (event) => {
     // Queue items via web_item_requests table
     // The Eluna script (web_worker.lua) will process this and use SendMail
     // to properly allocate item GUIDs through the server's internal systems
+    //
+    // We now use items_json to batch ALL items (up to 12) into a single mail request.
+    // This reduces mail spam and ensures money + all items arrive in one mail.
     const queuedItems: { itemId: number, itemCount: number, name: string }[] = []
 
-    for (const item of itemsToSend) {
-      const template = itemTemplates.get(item.itemId)!
-      const reason = `GM Mail from ${username}: ${item.itemCount}x ${template.name}`
+    if (itemsToSend.length > 0) {
+      // Build items array with names for logging
+      for (const item of itemsToSend) {
+        const template = itemTemplates.get(item.itemId)!
+        queuedItems.push({
+          itemId: item.itemId,
+          itemCount: item.itemCount,
+          name: template.name
+        })
+      }
 
+      // Build items_json array: [[entry, count], [entry, count], ...]
+      const itemsJsonArray = itemsToSend.map(item => [item.itemId, item.itemCount])
+      const itemsJson = JSON.stringify(itemsJsonArray)
+
+      // Build human-readable reason
+      const itemsList = queuedItems.map(i => `${i.itemCount}x ${i.name}`).join(', ')
+      const reason = `GM Mail from ${username}: ${itemsList}`
+
+      // Single INSERT with all items as JSON, plus money
       await pool.query(
         `INSERT INTO web_item_requests
-         (character_guid, item_entry, item_count, mail_subject, mail_body, reason, status)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
+         (character_guid, item_entry, item_count, items_json, mail_subject, mail_body, money, reason, status)
+         VALUES (?, 0, 0, ?, ?, ?, ?, ?, 'pending')`,
         [
           receiverGuid,
-          item.itemId,
-          item.itemCount,
+          itemsJson,
           subject.substring(0, 128),
           mailBody.substring(0, 8000),
+          moneyToSend,
           reason,
         ]
       )
-
-      queuedItems.push({
-        itemId: item.itemId,
-        itemCount: item.itemCount,
-        name: template.name
-      })
-    }
-
-    // If money is being sent without items, queue it via web_money_requests
-    // If money is being sent with items, we need to handle it separately
-    if (moneyToSend > 0) {
-      // Queue money delivery via web_item_requests (it supports money field)
-      // We'll send money-only request if there are no items, or add it to the first item request
-      if (itemsToSend.length === 0) {
-        // Money-only mail - create a request with item_entry=0 and money
-        // Actually, the Eluna script expects a valid item, so we'll use web_money_requests instead
-        // But for GM mail, we want to send money via mail, not add to character directly
-        // Let's create a special request for money-only delivery
-        await pool.query(
-          `INSERT INTO web_item_requests
-           (character_guid, item_entry, item_count, mail_subject, mail_body, money, reason, status)
-           VALUES (?, 0, 0, ?, ?, ?, ?, 'pending')`,
-          [
-            receiverGuid,
-            subject.substring(0, 128),
-            mailBody.substring(0, 8000),
-            moneyToSend,
-            `GM Mail money from ${username}`,
-          ]
-        )
-      }
-      // Note: If sending items + money together, we'd need to update the Eluna script
-      // to support combining them. For now, money with items will be separate mails.
+    } else if (moneyToSend > 0) {
+      // Money-only mail - create a request with no items
+      await pool.query(
+        `INSERT INTO web_item_requests
+         (character_guid, item_entry, item_count, mail_subject, mail_body, money, reason, status)
+         VALUES (?, 0, 0, ?, ?, ?, ?, 'pending')`,
+        [
+          receiverGuid,
+          subject.substring(0, 128),
+          mailBody.substring(0, 8000),
+          moneyToSend,
+          `GM Mail money from ${username}`,
+        ]
+      )
     }
 
     // Build log message
