@@ -2,29 +2,29 @@
  * GET /api/shop/config
  * Get shop configuration (public, no auth required)
  *
- * For per-realm SOAP availability, the purchase endpoint validates at purchase time.
- * The shop config returns the configured delivery method and the frontend shows
- * the appropriate UI. If a specific realm doesn't have SOAP configured, the purchase
- * will fall back to mail delivery.
+ * All delivery methods (mail and bag) use Eluna scripts for proper item GUID allocation.
+ * Bag delivery is queued and processed when the player is online.
  */
 
-import { getShopConfig, hasAnySoapEnabled } from '#server/utils/config'
+import { getShopConfig, isElunaShopEnabled } from '#server/utils/config'
 
 export default defineEventHandler(async () => {
   const shopConfig = getShopConfig()
+  const elunaEnabled = isElunaShopEnabled()
 
-  // If delivery method requires SOAP but no realm has it enabled,
-  // fall back to mail-only in the exposed config
-  let effectiveDeliveryMethod = shopConfig.deliveryMethod
-  if (shopConfig.deliveryMethod !== 'mail' && !hasAnySoapEnabled()) {
-    effectiveDeliveryMethod = 'mail'
-    console.warn('[Shop] No realms have SOAP enabled, falling back to mail-only delivery')
+  // Shop is disabled if Eluna features are not enabled
+  const effectiveEnabled = shopConfig.enabled && elunaEnabled
+
+  if (!elunaEnabled && shopConfig.enabled) {
+    console.warn('[Shop] Shop is enabled but Eluna features are disabled. Shop will be unavailable.')
   }
 
   return {
-    enabled: shopConfig.enabled,
+    enabled: effectiveEnabled,
     priceMarkupPercent: shopConfig.priceMarkupPercent,
-    deliveryMethod: effectiveDeliveryMethod,
+    deliveryMethod: shopConfig.deliveryMethod,
     categories: shopConfig.categories,
+    elunaRequired: true,
+    elunaEnabled: elunaEnabled,
   }
 })

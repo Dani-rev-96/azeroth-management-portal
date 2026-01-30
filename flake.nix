@@ -54,11 +54,10 @@
             pkgs.vips
           ];
 
-          npmDepsHash = "sha256-urXMCHR2pC67ob0el/+zVncdUu6+oF7jQpag1NXU9K4=";
-          # npmDepsHash = "";
-
-          npmPackFlags = [ "--ignore-scripts" ];
-          makeCacheWritable = true;
+          npmDeps = pkgs.importNpmLock {
+            npmRoot = src;
+          };
+          npmConfigHook = pkgs.importNpmLock.npmConfigHook;
           npmFlags = [ "--legacy-peer-deps" ];
 
           buildPhase = ''
@@ -71,12 +70,13 @@
           '';
 
           installPhase = ''
-            runHook preInstall
+            						runHook preInstall
 
-            cp -r .output $out/
+            						mkdir -p $out/
+            						cp -r .output $out/
 
-            runHook postInstall
-          '';
+            						runHook postInstall
+            					'';
         };
 
         src-root = pkgs.runCommand "src-base" { } ''
@@ -147,11 +147,22 @@
         '';
       in
       {
-        devShell = pkgs.mkShell {
-          shellHook = ''
-            export SOPS_AGE_KEY_FILE=$(pwd)/secrets/private-age-key.txt;
-          '';
-          buildInputs = defaultPkgs;
+        devShells = {
+          default = pkgs.mkShell {
+            postShellHook = ''
+                          export SOPS_AGE_KEY_FILE=$(pwd)/secrets/private-age-key.txt;
+              						${pkgs.importNpmLock.hooks.linkNodeModulesHook}/nix-support/setup-hook
+            '';
+            packages = defaultPkgs ++ [ pkgs.importNpmLock.hooks.linkNodeModulesHook ];
+            npmDeps = pkgs.importNpmLock.buildNodeModules {
+              npmRoot = src;
+              nodejs = pkgs.nodejs;
+              derivationArgs = {
+                nativeBuildInputs = [ ];
+                npmFlags = [ "--legacy-peer-deps" ];
+              };
+            };
+          };
         };
 
         packages = {

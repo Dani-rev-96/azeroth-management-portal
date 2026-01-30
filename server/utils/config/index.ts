@@ -200,3 +200,41 @@ export const hasAnySoapEnabled = (): boolean => {
   const realms = getRealms()
   return Object.values(realms).some(r => r.soap?.enabled)
 }
+
+/**
+ * Get Eluna features configuration
+ * Controls whether features that require Eluna scripts are enabled
+ *
+ * IMPORTANT: These features require the Eluna Lua engine to be installed on the
+ * game server, along with the unified worker script:
+ * - web_worker.lua - Processes money, mail items, and bag items
+ *
+ * When disabled, the shop and GM mail features will return 503 errors.
+ */
+export const getElunaConfig = () => {
+  return {
+    // Master switch for all Eluna-dependent features
+    enabled: process.env.NUXT_ELUNA_ENABLED !== 'false',
+    // Individual feature toggles (only apply if enabled=true)
+    shopEnabled: process.env.NUXT_ELUNA_SHOP_ENABLED !== 'false',
+    gmMailEnabled: process.env.NUXT_ELUNA_GM_MAIL_ENABLED !== 'false',
+  }
+}
+
+/**
+ * Check if Eluna shop features are available
+ * Shop requires both Eluna and shop to be enabled
+ */
+export const isElunaShopEnabled = (): boolean => {
+  const config = getElunaConfig()
+  return config.enabled && config.shopEnabled
+}
+
+/**
+ * Check if Eluna GM mail features are available
+ * GM mail requires both Eluna and gmMail to be enabled
+ */
+export const isElunaGmMailEnabled = (): boolean => {
+  const config = getElunaConfig()
+  return config.enabled && config.gmMailEnabled
+}

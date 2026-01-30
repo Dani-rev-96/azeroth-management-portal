@@ -268,3 +268,70 @@ These are additional runtime configuration options:
 | `NITRO_PORT` | Server port          | `3000`             |
 | `DB_PATH`    | SQLite database path | `data/mappings.db` |
 | `NODE_ENV`   | Environment mode     | `development`      |
+
+## Eluna Features Configuration
+
+Some features require the Eluna Lua engine to be installed on your AzerothCore game server. These features use queue tables that are processed by an Eluna worker script running on the game server.
+
+### Required Eluna Script
+
+Copy this script to your AzerothCore `lua_scripts` directory:
+
+| Script           | Purpose                                             |
+| ---------------- | --------------------------------------------------- |
+| `web_worker.lua` | Unified worker for money, mail items, and bag items |
+
+This script is located in `data/eluna/` in this repository.
+
+The unified script uses a **single polling timer** to efficiently process all queue types:
+
+- `web_money_requests` - Money additions/deductions
+- `web_item_requests` - Item delivery via mail
+- `web_bag_requests` - Direct-to-bag item delivery
+
+### Features Requiring Eluna
+
+| Feature     | Description                        | Queue Tables Used                    |
+| ----------- | ---------------------------------- | ------------------------------------ |
+| **Shop**    | In-game item purchases with gold   | money + item/bag (based on delivery) |
+| **GM Mail** | Send items to players via GM panel | item                                 |
+
+### Delivery Methods
+
+The shop supports two delivery methods, both powered by Eluna:
+
+| Method   | Description                                  | Player Status                         |
+| -------- | -------------------------------------------- | ------------------------------------- |
+| **mail** | Items sent via in-game mail using `SendMail` | Online/Offline                        |
+| **bag**  | Items added directly to bags using `AddItem` | Queued if offline, delivered on login |
+
+### Environment Variables
+
+| Variable                     | Description                      | Default |
+| ---------------------------- | -------------------------------- | ------- |
+| `NUXT_ELUNA_ENABLED`         | Master switch for Eluna features | `true`  |
+| `NUXT_ELUNA_SHOP_ENABLED`    | Enable shop (requires Eluna)     | `true`  |
+| `NUXT_ELUNA_GM_MAIL_ENABLED` | Enable GM Mail (requires Eluna)  | `true`  |
+
+### Why Eluna is Required
+
+The AzerothCore world server maintains an internal counter for `item_instance` GUIDs. When the server starts, it reads the highest GUID from the database and allocates new GUIDs from there.
+
+**Problem**: If you insert items directly into `item_instance` via SQL while the server is running, the server doesn't know about these new GUIDs. When it tries to create new items, it may reuse GUIDs that were already assigned by your SQL inserts, causing item duplication or loss.
+
+**Solution**: The Eluna worker script uses the server's native APIs (`SendMail`, `Player:AddItem()`) which properly allocate GUIDs through the server's internal systems, ensuring no GUID conflicts.
+
+### Disabling Eluna Features
+
+If your server doesn't have Eluna installed, disable these features to prevent errors:
+
+```bash
+# Disable all Eluna-dependent features
+NUXT_ELUNA_ENABLED=false
+
+# Or disable individual features
+NUXT_ELUNA_SHOP_ENABLED=false
+NUXT_ELUNA_GM_MAIL_ENABLED=false
+```
+
+When disabled, the shop and GM mail endpoints will return 503 errors with a message explaining that Eluna is required.

@@ -47,3 +47,4 @@ This project is a web application for managing and interacting with World of War
 - world database, called acore_world: https://www.azerothcore.org/wiki/database-world
 - characters database, called acore_characters: https://www.azerothcore.org/wiki/database-characters
 - gm commands for soap calls: https://www.azerothcore.org/wiki/gm-commands
+- eluna api documentation: https://www.azerothcore.org/eluna/
