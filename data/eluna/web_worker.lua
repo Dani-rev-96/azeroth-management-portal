@@ -5,6 +5,7 @@
     - Money additions/deductions (web_money_requests)
     - Item delivery via mail (web_item_requests)
     - Direct-to-bag item delivery (web_bag_requests)
+    - Spell learning (web_spell_requests)
 
     Using a single polling timer is more efficient than separate scripts,
     reduces database connections, and shares common utility functions.
@@ -15,7 +16,7 @@
     Format: [{"entry":12345,"count":1},{"entry":67890,"count":2}]
 
     Author: AzerothCore Nix Flake Project
-    Version: 2.3
+    Version: 2.4
 ]]
 
 local SCRIPT_NAME = "web_worker"
@@ -98,6 +99,22 @@ CREATE TABLE IF NOT EXISTS web_bag_requests (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 ]]
 
+local CREATE_SPELL_TABLE_SQL = [[
+CREATE TABLE IF NOT EXISTS web_spell_requests (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    character_guid INT UNSIGNED NOT NULL,
+    spell_id INT UNSIGNED NOT NULL,
+    reason VARCHAR(255) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP NULL DEFAULT NULL,
+    status ENUM('pending','done','error','waiting') NOT NULL DEFAULT 'pending',
+    error_text VARCHAR(255) NULL,
+    PRIMARY KEY (id),
+    KEY idx_pending (status, created_at),
+    KEY idx_char (character_guid)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+]]
+
 --------------------------------------------------------------------------------
 -- SQL Queries
 --------------------------------------------------------------------------------
@@ -124,6 +141,12 @@ local SELECT_PENDING_ITEM_LEGACY_SQL = string.format(
 -- For bag requests, we also select 'waiting' status (player was offline, retry)
 local SELECT_PENDING_BAG_SQL = string.format(
     "SELECT id, character_guid, item_entry, item_count, reason FROM web_bag_requests WHERE status IN ('pending', 'waiting') ORDER BY id ASC LIMIT %d",
+    BATCH_SIZE
+)
+
+-- For spell requests, we also select 'waiting' status (player was offline, retry)
+local SELECT_PENDING_SPELL_SQL = string.format(
+    "SELECT id, character_guid, spell_id, reason FROM web_spell_requests WHERE status IN ('pending', 'waiting') ORDER BY id ASC LIMIT %d",
     BATCH_SIZE
 )
 
@@ -228,6 +251,15 @@ end
 local function markWaiting(id)
     CharDBExecute(string.format(
         "UPDATE web_bag_requests SET status='waiting' WHERE id=%d",
+        id
+    ))
+end
+
+--- Mark a spell request as waiting (player offline)
+---@param id number
+local function markWaitingSpell(id)
+    CharDBExecute(string.format(
+        "UPDATE web_spell_requests SET status='waiting' WHERE id=%d",
         id
     ))
 end
@@ -700,6 +732,69 @@ local function processBagRow(row)
 end
 
 --------------------------------------------------------------------------------
+-- Spell Request Processing
+--------------------------------------------------------------------------------
+
+--- Process a single spell request row
+---@param row userdata Query row
+---@return boolean success
+local function processSpellRow(row)
+    local id = tonumber(row:GetUInt32(0))
+    local guid = tonumber(row:GetUInt32(1))
+    local spellId = tonumber(row:GetUInt32(2))
+    local reason = row:GetString(3)
+
+    if not id or id == 0 then
+        PrintError(string.format("[%s] Spell: Invalid request id", SCRIPT_NAME))
+        return false
+    end
+
+    if not guid or guid == 0 then
+        markError("web_spell_requests", id, "invalid character_guid")
+        return false
+    end
+
+    if not spellId or spellId == 0 then
+        markError("web_spell_requests", id, "invalid spell_id")
+        return false
+    end
+
+    -- Player MUST be online to learn a spell
+    local player = GetPlayerByGUID(guid)
+    if not player then
+        -- Mark as waiting - will be retried when player is online
+        markWaitingSpell(id)
+        return false -- Not an error, just waiting
+    end
+
+    -- Check if player already knows the spell
+    if player:HasSpell(spellId) then
+        PrintInfo(string.format("[%s] Spell: Player %d already knows spell %d, marking done",
+            SCRIPT_NAME, guid, spellId))
+        markDone("web_spell_requests", id)
+        return true
+    end
+
+    -- Teach the spell
+    player:LearnSpell(spellId)
+    player:SaveToDB()
+
+    -- Notify player
+    if reason and reason ~= "" then
+        player:SendBroadcastMessage(string.format("|cff00ff00[System]|r %s", reason))
+    else
+        player:SendBroadcastMessage(string.format(
+            "|cff00ff00[System]|r You have learned a new spell!"
+        ))
+    end
+
+    PrintInfo(string.format("[%s] Spell: Processed %d for player %d - spell %d",
+        SCRIPT_NAME, id, guid, spellId))
+    markDone("web_spell_requests", id)
+    return true
+end
+
+--------------------------------------------------------------------------------
 -- Main Polling Function
 --------------------------------------------------------------------------------
 
@@ -762,6 +857,23 @@ local function pollAllQueues(eventId, delay, repeats)
         until not bagQuery:NextRow()
     end
 
+    -- Process spell requests
+    local spellQuery = CharDBQuery(SELECT_PENDING_SPELL_SQL)
+    if spellQuery then
+        repeat
+            local ok, result = pcall(processSpellRow, spellQuery)
+            if not ok then
+                totalErrors = totalErrors + 1
+                PrintError(string.format("[%s] Spell error: %s", SCRIPT_NAME, tostring(result)))
+            elseif result then
+                totalProcessed = totalProcessed + 1
+            else
+                -- Spell requests return false when player is offline (waiting state)
+                totalWaiting = totalWaiting + 1
+            end
+        until not spellQuery:NextRow()
+    end
+
     -- Only log if something happened
     if totalProcessed > 0 or totalErrors > 0 then
         PrintInfo(string.format("[%s] Poll complete: %d processed, %d errors, %d waiting",
@@ -818,9 +930,39 @@ local function onPlayerLogin(event, player)
         end
     until not query:NextRow()
 
+    -- Check for waiting spell requests for this player
+    local spellQuery = CharDBQuery(string.format(
+        "SELECT id, spell_id, reason FROM web_spell_requests WHERE character_guid = %d AND status = 'waiting' ORDER BY id ASC LIMIT %d",
+        guid, BATCH_SIZE
+    ))
+
+    if spellQuery then
+        PrintInfo(string.format("[%s] Processing waiting spell requests for player %d on login", SCRIPT_NAME, guid))
+
+        repeat
+            local spellReqId = tonumber(spellQuery:GetUInt32(0))
+            local spellId = tonumber(spellQuery:GetUInt32(1))
+            local spellReason = spellQuery:GetString(2)
+
+            if player:HasSpell(spellId) then
+                markDone("web_spell_requests", spellReqId)
+                processed = processed + 1
+            else
+                player:LearnSpell(spellId)
+                if spellReason and spellReason ~= "" then
+                    player:SendBroadcastMessage(string.format("|cff00ff00[System]|r %s", spellReason))
+                else
+                    player:SendBroadcastMessage("|cff00ff00[System]|r You have learned a new spell!")
+                end
+                markDone("web_spell_requests", spellReqId)
+                processed = processed + 1
+            end
+        until not spellQuery:NextRow()
+    end
+
     if processed > 0 then
         player:SaveToDB()
-        PrintInfo(string.format("[%s] Login delivery for %d: %d items delivered, %d failed",
+        PrintInfo(string.format("[%s] Login delivery for %d: %d items/spells delivered, %d failed",
             SCRIPT_NAME, guid, processed, errors))
     end
 end
@@ -836,6 +978,7 @@ local function initialize()
     CharDBExecute(CREATE_MONEY_TABLE_SQL)
     CharDBExecute(CREATE_ITEM_TABLE_SQL)
     CharDBExecute(CREATE_BAG_TABLE_SQL)
+    CharDBExecute(CREATE_SPELL_TABLE_SQL)
     PrintInfo(string.format("[%s] Ensured all queue tables exist", SCRIPT_NAME))
 
     -- Check if items_json column exists and add it if not

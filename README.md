@@ -109,7 +109,7 @@ A modern, CMS-independent management and community portal for [AzerothCore](http
 ### Prerequisites
 
 - **Node.js** 18+ (20+ recommended)
-- **pnpm** (recommended) or npm
+- **npm** (included with Node.js)
 - **AzerothCore** server with accessible MySQL databases
 - **Authentication**: Choose OAuth-Proxy, nginx basic auth, or direct WoW login
 
@@ -121,7 +121,7 @@ git clone https://github.com/Dani-rev-96/azeroth-management-portal.git
 cd azeroth-management-portal
 
 # Install dependencies
-pnpm install
+npm install
 
 # Copy and configure environment
 cp .env.example .env.local
@@ -165,7 +165,7 @@ NUXT_PUBLIC_APP_BASE_URL=http://localhost:3000
 
 ```bash
 # Start development server with mock authentication
-pnpm dev
+npm run dev
 
 # Open http://localhost:3000
 ```
@@ -174,10 +174,10 @@ pnpm dev
 
 ```bash
 # Build for production
-pnpm build:production
+npm run build:production
 
 # Preview production build
-pnpm preview
+npm run preview
 ```
 
 ## 📖 Documentation

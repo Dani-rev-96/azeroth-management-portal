@@ -356,6 +356,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 </template>
 
 <style scoped lang="scss">
+@use 'sass:color';
 @use '~/styles/variables' as *;
 @use '~/styles/mixins' as *;
 
@@ -384,7 +385,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   }
 
   &:hover {
-    background: lighten($bg-tertiary, 3%);
+    background: color.adjust($bg-tertiary, $lightness: 3%);
   }
 
   &__title {
@@ -591,13 +592,13 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   &--alliance.active {
     background: rgba($faction-alliance, 0.15);
     border-color: $faction-alliance;
-    color: lighten($faction-alliance, 25%);
+    color: color.adjust($faction-alliance, $lightness: 25%);
   }
 
   &--horde.active {
     background: rgba($faction-horde, 0.12);
-    border-color: lighten($faction-horde, 10%);
-    color: lighten($faction-horde, 35%);
+    border-color: color.adjust($faction-horde, $lightness: 10%);
+    color: color.adjust($faction-horde, $lightness: 35%);
   }
 
   &__icon {

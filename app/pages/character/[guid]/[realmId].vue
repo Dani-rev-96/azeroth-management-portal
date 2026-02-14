@@ -42,6 +42,43 @@
         </div>
       </div>
 
+      <!-- Old World Flying (visible only to owner or GM) -->
+      <div v-if="canLearnMount" class="old-world-flying-section" :class="{ locked: !meetsLevelRequirement, offline: meetsLevelRequirement && !isCharacterOnline }">
+        <div class="flying-content">
+          <div class="flying-icon-wrapper">
+            <span class="flying-icon">🦅</span>
+          </div>
+          <div class="flying-info">
+            <h3>Old World Flying</h3>
+            <p v-if="!meetsLevelRequirement" class="flying-description locked-text">
+              Requires level 60 to unlock. Current level: {{ data.character.level }}.
+            </p>
+            <p v-else-if="!isCharacterOnline" class="flying-description offline-text">
+              Character must be online to learn this spell.
+            </p>
+            <p v-else-if="mountLearned" class="flying-description success-text">
+              {{ mountMessage }}
+            </p>
+            <p v-else class="flying-description">
+              Learn the ability to fly in Kalimdor and the Eastern Kingdoms.
+            </p>
+          </div>
+          <div class="flying-action">
+            <button
+              class="flying-button"
+              :disabled="!meetsLevelRequirement || !isCharacterOnline || mountLoading || mountLearned"
+              :class="{ learned: mountLearned }"
+              @click="learnOldWorldFlying"
+            >
+              <span v-if="mountLoading" class="button-spinner">⏳</span>
+              <span v-else-if="mountLearned">✓ Learned</span>
+              <span v-else>Learn Spell</span>
+            </button>
+          </div>
+        </div>
+        <p v-if="mountError" class="flying-error">{{ mountError }}</p>
+      </div>
+
       <!-- Equipment Section - Full Width -->
       <div class="equipment-section">
         <h2>Equipped Items</h2>
@@ -248,6 +285,7 @@
             :talents="data.talents"
             :character-class="data.character.class"
             :active-spec="data.character.activeSpec"
+						:spec-count="data.character.specCount"
           />
         </div>
       </div>
@@ -256,7 +294,10 @@
 </template>
 
 <script setup lang="ts">
+import { ref, computed } from 'vue'
 import type { CharacterDetailResponse } from '~/types'
+import { useCharactersStore } from '~/stores/characters'
+import { useAuthStore } from '~/stores/auth'
 import CharacterEquipmentSlot from '~/components/character/CharacterEquipmentSlot.vue'
 import CharacterTalentTree from '~/components/character/CharacterTalentTree.vue'
 
@@ -268,6 +309,60 @@ const realmId = computed(() => route.params.realmId as string)
 const { data, pending, error } = await useFetch<CharacterDetailResponse>(
   `/api/characters/${guid.value}/${realmId.value}`
 )
+
+// Characters store for online status
+const charactersStore = useCharactersStore()
+const authStore = useAuthStore()
+
+// Old World Flying: only visible to the account owner or a GM
+const canLearnMount = computed(() => {
+  const isOwner = !!charactersStore.getCharacter(guid.value, realmId.value)
+  const isGM = !!authStore.user?.isGM
+  return isOwner || isGM
+})
+
+// Online status from the store (single source of truth)
+const isCharacterOnline = computed(() => {
+  return charactersStore.isOnline(guid.value, realmId.value)
+})
+
+// Level requirement check
+const meetsLevelRequirement = computed(() => {
+  return (data.value?.character.level ?? 0) >= 60
+})
+
+// Old World Flying mount state
+const mountLoading = ref(false)
+const mountLearned = ref(false)
+const mountError = ref('')
+const mountMessage = ref('')
+
+async function learnOldWorldFlying() {
+  if (!data.value || mountLoading.value || mountLearned.value) return
+
+  mountLoading.value = true
+  mountError.value = ''
+
+  try {
+    const response = await $fetch<{ success: boolean; message: string; alreadyKnown?: boolean }>('/api/characters/learn-mount', {
+      method: 'POST',
+      body: {
+        characterGuid: guid.value,
+        realmId: realmId.value,
+      },
+    })
+
+    if (response.success) {
+      mountLearned.value = true
+      mountMessage.value = response.message
+    }
+  } catch (err: any) {
+    const errorMessage = err?.data?.message || err?.statusMessage || err?.message || 'Failed to learn the spell'
+    mountError.value = errorMessage
+  } finally {
+    mountLoading.value = false
+  }
+}
 
 // Get stats object
 const stats = computed(() => {
@@ -516,26 +611,38 @@ function formatPlaytime(seconds: number) {
 .equipment-paperdoll {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 2rem;
+  gap: 0.5rem;
   max-width: 1000px;
   margin: 0 auto;
-  padding: 1rem;
+  padding: 0.75rem;
   background: linear-gradient(135deg, rgba(30, 41, 59, 0.5), rgba(15, 23, 42, 0.5));
   border-radius: 1rem;
   border: 1px solid #334155;
 }
 
-@media (max-width: 768px) {
+@media (min-width: 480px) {
   .equipment-paperdoll {
-    grid-template-columns: 1fr;
     gap: 1rem;
+    padding: 1rem;
+  }
+}
+
+@media (min-width: 900px) {
+  .equipment-paperdoll {
+    gap: 2rem;
   }
 }
 
 .equipment-column {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.5rem;
+}
+
+@media (min-width: 480px) {
+  .equipment-column {
+    gap: 0.75rem;
+  }
 }
 
 .center-column {
@@ -554,12 +661,18 @@ function formatPlaytime(seconds: number) {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 479px) {
   .character-placeholder {
     display: none;
+  }
+}
+
+@media (min-width: 480px) {
+  .character-placeholder {
+    margin-bottom: 1rem;
   }
 }
 
@@ -568,11 +681,23 @@ function formatPlaytime(seconds: number) {
   opacity: 0.3;
 }
 
+@media (max-width: 479px) {
+  .character-icon {
+    font-size: 2rem;
+  }
+}
+
 .weapon-slots {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.5rem;
   width: 100%;
+}
+
+@media (min-width: 480px) {
+  .weapon-slots {
+    gap: 0.75rem;
+  }
 }
 
 .stats-section,
@@ -587,12 +712,6 @@ function formatPlaytime(seconds: number) {
   color: #f1f5f9;
   margin-bottom: 1rem;
   font-size: 1.5rem;
-}
-
-.equipment-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 1rem;
 }
 
 .info-section {
@@ -651,5 +770,171 @@ function formatPlaytime(seconds: number) {
 .currency-value {
   color: #60a5fa;
   font-weight: 600;
+}
+
+// Old World Flying Section
+.old-world-flying-section {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(51, 65, 85, 0.6) 100%);
+  border: 1px solid #475569;
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  margin-bottom: 2rem;
+  transition: all 0.3s ease;
+
+  &:not(.locked):not(.offline) {
+    border-color: #a78bfa;
+    background: linear-gradient(135deg, rgba(167, 139, 250, 0.08) 0%, rgba(139, 92, 246, 0.04) 100%);
+  }
+
+  &.locked {
+    opacity: 0.6;
+  }
+
+  &.offline {
+    opacity: 0.75;
+  }
+}
+
+.flying-content {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.flying-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 0.5rem;
+  background: rgba(167, 139, 250, 0.15);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  flex-shrink: 0;
+
+  .locked & {
+    background: rgba(100, 116, 139, 0.15);
+    border-color: rgba(100, 116, 139, 0.3);
+  }
+}
+
+.flying-icon {
+  font-size: 1.5rem;
+
+  .locked & {
+    filter: grayscale(1);
+    opacity: 0.5;
+  }
+}
+
+.flying-info {
+  flex: 1;
+  min-width: 0;
+
+  h3 {
+    margin: 0 0 0.25rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #c4b5fd;
+
+    .locked & {
+      color: #94a3b8;
+    }
+  }
+}
+
+.flying-description {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  line-height: 1.4;
+
+  &.locked-text {
+    color: #64748b;
+  }
+
+  &.offline-text {
+    color: #fbbf24;
+  }
+
+  &.success-text {
+    color: #86efac;
+  }
+}
+
+.flying-action {
+  flex-shrink: 0;
+}
+
+.flying-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1.25rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+  background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+  color: white;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(167, 139, 250, 0.4);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: #334155;
+    color: #64748b;
+  }
+
+  &.learned {
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    opacity: 1;
+    color: white;
+  }
+}
+
+.button-spinner {
+  animation: spin 1s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.flying-error {
+  margin: 0.75rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.8rem;
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+@media (max-width: 640px) {
+  .flying-content {
+    flex-wrap: wrap;
+  }
+
+  .flying-action {
+    width: 100%;
+
+    .flying-button {
+      width: 100%;
+    }
+  }
 }
 </style>

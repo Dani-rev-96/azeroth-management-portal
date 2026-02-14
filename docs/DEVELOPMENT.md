@@ -17,7 +17,7 @@ Guide for developers who want to contribute to or customize the Azeroth Manageme
 ### Prerequisites
 
 - Node.js 18+ (20 recommended)
-- pnpm 8+ (recommended)
+- npm 10+ (included with Node.js)
 - Git
 - MySQL client (for testing)
 - VS Code (recommended)
@@ -30,7 +30,7 @@ git clone https://github.com/your-org/azeroth-management-portal.git
 cd azeroth-management-portal
 
 # Install dependencies
-pnpm install
+npm install
 
 # Create local environment configuration
 cp .env.example .env.local
@@ -41,7 +41,7 @@ cp .env.example .env.local
 # - NUXT_DB_REALM_0_* (at least one realm)
 
 # Start development server
-pnpm dev
+npm run dev
 ```
 
 ### VS Code Extensions
@@ -62,13 +62,13 @@ Recommended extensions for development:
 
 ### Development Commands
 
-| Command           | Description               |
-| ----------------- | ------------------------- |
-| `pnpm dev`        | Start dev server          |
-| `pnpm dev:ssl`    | Start with HTTPS          |
-| `pnpm build`      | Build for production      |
-| `pnpm preview`    | Preview production build  |
-| `pnpm import-dbc` | Import DBC data to SQLite |
+| Command              | Description               |
+| -------------------- | ------------------------- |
+| `npm run dev`        | Start dev server          |
+| `npm run dev:ssl`    | Start with HTTPS          |
+| `npm run build`      | Build for production      |
+| `npm run preview`    | Preview production build  |
+| `npm run import-dbc` | Import DBC data to SQLite |
 
 ## Project Structure
 
@@ -334,7 +334,7 @@ Realms are configured via environment variables at runtime. No code changes are 
 
 ```bash
 # Start dev server
-pnpm dev:local
+npm run dev:local
 
 # Test API endpoints
 curl http://localhost:3000/api/auth/me

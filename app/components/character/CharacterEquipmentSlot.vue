@@ -136,14 +136,22 @@ function getStatName(statType: number): string {
   background: #0f172a;
   border: 2px solid #334155;
   border-radius: 0.5rem;
-  padding: 0.75rem;
+  padding: 0.5rem;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
   transition: all 0.2s;
-  min-height: 80px;
-  min-width: 80px;
+  min-height: 56px;
+  min-width: 56px;
+}
+
+@media (min-width: 480px) {
+  .equipment-slot {
+    padding: 0.75rem;
+    min-height: 80px;
+    min-width: 80px;
+  }
 }
 
 .equipment-slot.empty {
@@ -179,21 +187,36 @@ function getStatName(statType: number): string {
 }
 
 .item-icon {
-  width: 48px;
-  height: 48px;
+  width: 36px;
+  height: 36px;
   border-radius: 0.375rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+@media (min-width: 480px) {
+  .item-icon {
+    width: 48px;
+    height: 48px;
+  }
+}
+
 .item-icon-placeholder {
-  width: 48px;
-  height: 48px;
+  width: 36px;
+  height: 36px;
   border-radius: 0.375rem;
   background: rgba(59, 130, 246, 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.5rem;
+  font-size: 1.25rem;
+}
+
+@media (min-width: 480px) {
+  .item-icon-placeholder {
+    width: 48px;
+    height: 48px;
+    font-size: 1.5rem;
+  }
 }
 
 .item-level {
@@ -203,10 +226,17 @@ function getStatName(statType: number): string {
   background: #1e293b;
   border: 1px solid #60a5fa;
   border-radius: 0.25rem;
-  padding: 0.125rem 0.375rem;
-  font-size: 0.75rem;
+  padding: 0.0625rem 0.25rem;
+  font-size: 0.625rem;
   font-weight: 700;
   color: #fbbf24;
+}
+
+@media (min-width: 480px) {
+  .item-level {
+    padding: 0.125rem 0.375rem;
+    font-size: 0.75rem;
+  }
 }
 
 .empty-slot {
@@ -216,13 +246,26 @@ function getStatName(statType: number): string {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: 36px;
+  height: 36px;
+}
+
+@media (min-width: 480px) {
+  .empty-slot {
+    width: 48px;
+    height: 48px;
+  }
 }
 
 .slot-icon {
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   line-height: 1;
+}
+
+@media (min-width: 480px) {
+  .slot-icon {
+    font-size: 1.5rem;
+  }
 }
 
 .slot-name {
@@ -241,10 +284,22 @@ function getStatName(statType: number): string {
   border: 2px solid #334155;
   border-radius: 0.5rem;
   padding: 1rem;
-  min-width: 250px;
-  max-width: 350px;
+  min-width: 220px;
+  max-width: 320px;
   z-index: 1000;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+@media (max-width: 640px) {
+  .item-tooltip {
+    position: fixed;
+    top: auto;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100vw - 2rem);
+    max-width: 320px;
+  }
 }
 
 .equipment-slot:hover {

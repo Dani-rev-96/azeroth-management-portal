@@ -13,6 +13,28 @@
 
     <!-- Talent tree content -->
     <template v-else-if="talentTree">
+      <!-- Dual Spec Switcher -->
+      <div v-if="props.specCount >= 2" class="dual-spec-switcher">
+        <button
+          class="spec-switcher-btn"
+          :class="{ active: viewingSpec === 0 }"
+          @click="viewingSpec = 0"
+        >
+          <span class="spec-switcher-label">Primary</span>
+          <span class="spec-switcher-points">{{ getSpecSummary(0) }}</span>
+          <span v-if="props.activeSpec === 0" class="spec-active-badge">Active</span>
+        </button>
+        <button
+          class="spec-switcher-btn"
+          :class="{ active: viewingSpec === 1 }"
+          @click="viewingSpec = 1"
+        >
+          <span class="spec-switcher-label">Secondary</span>
+          <span class="spec-switcher-points">{{ getSpecSummary(1) }}</span>
+          <span v-if="props.activeSpec === 1" class="spec-active-badge">Active</span>
+        </button>
+      </div>
+
       <!-- Spec tabs -->
       <div class="spec-tabs">
         <button
@@ -138,6 +160,7 @@ const props = defineProps<{
   talents: CharacterTalent[]
   characterClass: number
   activeSpec: number
+  specCount: number
 }>()
 
 // Fetch complete talent tree for the class
@@ -146,8 +169,11 @@ const { data: talentTree, pending: treePending, error: treeError } = await useFe
   { key: `talent-tree-${props.characterClass}` }
 )
 
-// Active tab state
+// Active tab state (which talent tree tab: e.g. Arms/Fury/Protection)
 const activeTabIndex = ref(0)
+
+// Dual spec: which spec we're viewing (0 = primary, 1 = secondary)
+const viewingSpec = ref(props.activeSpec)
 
 // Get the current tab
 const currentTab = computed(() => {
@@ -166,10 +192,12 @@ const maxTiers = computed(() => {
 })
 
 // Create a map of character's learned talents for quick lookup
+// Filter by specMask: spec 0 (primary) = specMask & 1, spec 1 (secondary) = specMask & 2
 const learnedTalents = computed(() => {
   const map = new Map<number, number>() // talentId -> currentRank
+  const specBit = viewingSpec.value === 0 ? 1 : 2
   for (const talent of props.talents) {
-    if (talent.talentId !== undefined) {
+    if (talent.talentId !== undefined && (talent.specMask & specBit)) {
       map.set(talent.talentId, talent.currentRank)
     }
   }
@@ -421,6 +449,23 @@ function getTabPointsSpent(tab: TalentTreeTab): number {
   return points
 }
 
+// Get spec summary string like "21/30/0" for the dual spec switcher
+function getSpecSummary(specIndex: number): string {
+  if (!talentTree.value?.tabs) return ''
+  const specBit = specIndex === 0 ? 1 : 2
+  return talentTree.value.tabs.map(tab => {
+    let points = 0
+    for (const talent of tab.talents) {
+      // Find the talent in character's learned talents for this spec
+      const charTalent = props.talents.find(
+        t => t.talentId === talent.talentId && (t.specMask & specBit)
+      )
+      if (charTalent) points += charTalent.currentRank
+    }
+    return points
+  }).join('/')
+}
+
 // Calculate required level for spent points
 function getRequiredLevel(tab: TalentTreeTab): number {
   const points = getTabPointsSpent(tab)
@@ -578,6 +623,71 @@ function onTooltipBackdropClick() {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* Dual Spec Switcher */
+.dual-spec-switcher {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  background: var(--bg-primary, #0f172a);
+  border: 1px solid var(--border-primary, #334155);
+  border-radius: 0.5rem;
+  padding: 0.25rem;
+}
+
+.spec-switcher-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.spec-switcher-btn:hover {
+  background: rgba(59, 130, 246, 0.05);
+  color: var(--text-primary, #e2e8f0);
+}
+
+.spec-switcher-btn.active {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: var(--blue-primary, #3b82f6);
+  color: var(--blue-light, #60a5fa);
+}
+
+.spec-switcher-label {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.spec-switcher-points {
+  font-size: 0.8125rem;
+  color: var(--text-muted, #64748b);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.spec-switcher-btn.active .spec-switcher-points {
+  color: var(--text-secondary, #94a3b8);
+}
+
+.spec-active-badge {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--success, #22c55e);
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(34, 197, 94, 0.3);
 }
 
 /* Spec Tabs */
@@ -883,6 +993,24 @@ function onTooltipBackdropClick() {
 @media (max-width: 768px) {
   .talent-tree-viewer {
     padding: 1rem;
+  }
+
+  .dual-spec-switcher {
+    gap: 0.375rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .spec-switcher-btn {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .spec-switcher-label {
+    font-size: 0.8125rem;
+  }
+
+  .spec-active-badge {
+    font-size: 0.625rem;
+    padding: 0.0625rem 0.375rem;
   }
 
   .spec-tabs {

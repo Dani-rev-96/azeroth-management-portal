@@ -30,12 +30,12 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install dependencies
-COPY package.json pnpm-lock.yaml ./
-RUN corepack enable && pnpm install --frozen-lockfile
+COPY package.json package-lock.json ./
+RUN npm ci
 
 # Copy source and build
 COPY . .
-RUN pnpm build
+RUN npm run build
 
 # Production image
 FROM node:20-alpine
@@ -428,7 +428,7 @@ cd certs
 mkcert -cert-file localhost.pem -key-file localhost-key.pem localhost
 
 # Run with SSL
-pnpm dev:ssl
+npm run dev:ssl
 ```
 
 ## Production Checklist

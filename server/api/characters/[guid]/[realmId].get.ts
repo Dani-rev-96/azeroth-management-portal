@@ -41,7 +41,8 @@ export default defineEventHandler(async (event) => {
         totaltime, leveltime, logout_time, is_logout_resting,
         arenaPoints, totalHonorPoints, totalKills,
         chosenTitle, knownTitles,
-        equipmentCache
+        equipmentCache,
+        activeTalentGroup, talentGroupsCount
       FROM characters
       WHERE guid = ?
     `, [guid])
@@ -465,8 +466,8 @@ export default defineEventHandler(async (event) => {
         chosenTitle: character.chosenTitle,
         knownTitles: character.knownTitles,
         equipmentCache: character.equipmentCache,
-        specCount: 1, // Default value
-        activeSpec: 0 // Default value
+        specCount: character.talentGroupsCount ?? 1,
+        activeSpec: character.activeTalentGroup ?? 0
       },
       items: enrichedItems,
       talents: enrichedTalents || [],

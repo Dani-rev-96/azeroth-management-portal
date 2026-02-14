@@ -17,11 +17,11 @@ Complete installation and configuration guide for the Azeroth Management Portal.
 
 ### Required Software
 
-| Software      | Version               | Purpose                       |
-| ------------- | --------------------- | ----------------------------- |
-| Node.js       | 18+ (20+ recommended) | JavaScript runtime            |
-| pnpm          | 8+                    | Package manager (recommended) |
-| MySQL/MariaDB | 8.0+ / 10.5+          | AzerothCore databases         |
+| Software      | Version               | Purpose                                 |
+| ------------- | --------------------- | --------------------------------------- |
+| Node.js       | 18+ (20+ recommended) | JavaScript runtime                      |
+| npm           | 10+                   | Package manager (included with Node.js) |
+| MySQL/MariaDB | 8.0+ / 10.5+          | AzerothCore databases                   |
 
 ### Optional Software
 
@@ -55,10 +55,6 @@ cd azeroth-management-portal
 ### 2. Install Dependencies
 
 ```bash
-# Using pnpm (recommended)
-pnpm install
-
-# Or using npm
 npm install
 ```
 
@@ -66,7 +62,7 @@ npm install
 
 ```bash
 # Run postinstall to prepare Nuxt
-pnpm postinstall
+npm run postinstall
 ```
 
 ## Database Setup
@@ -238,7 +234,7 @@ The portal uses DBC (DataBase Client) data for displaying item icons, spell tool
 # These can be extracted from WoW client using tools like WDBX
 
 # Run the import script
-pnpm import-dbc
+npm run import-dbc
 ```
 
 This creates SQLite databases in `server/assets/`:
@@ -270,23 +266,23 @@ Place PNG icons in `data/png/Icons/` for item display. These can be extracted fr
 
 ```bash
 # Start with mock authentication
-pnpm dev:local
+npm run dev:local
 
 # Start with HTTPS (requires certificates)
-pnpm dev:ssl
+npm run dev:ssl
 ```
 
 ### Production Mode
 
 ```bash
 # Build for production
-pnpm build:production
+npm run build:production
 
 # Start production server
 node .output/server/index.mjs
 
 # Or use the preview command
-pnpm preview
+npm run preview
 ```
 
 ### Environment Variables
@@ -339,8 +335,8 @@ sops -d .db.production.enc.json
 ```bash
 # Rebuild dependencies
 rm -rf node_modules .nuxt .output
-pnpm install
-pnpm postinstall
+npm install
+npm run postinstall
 ```
 
 ### Getting Help
