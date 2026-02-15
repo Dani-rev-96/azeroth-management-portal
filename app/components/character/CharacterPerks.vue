@@ -7,8 +7,13 @@
  *
  * Each perk card is rendered from the config with a unified activation handler
  * that calls the generic /api/characters/activate-perk endpoint.
+ *
+ * Features:
+ * - Level-based visibility: perks with requiredLevel > character level are hidden
+ * - Collapsible groups for better navigation
+ * - Online status polling for live online/offline feedback
  */
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import type { CharacterDetailResponse } from '~/types'
 import { useCharactersStore } from '~/stores/characters'
 import { useAuthStore } from '~/stores/auth'
@@ -34,8 +39,35 @@ const isCharacterOnline = computed(() => {
   return charactersStore.isOnline(props.characterGuid, props.realmId)
 })
 
+// ── Online status polling (mirrors shop behaviour) ──
+onMounted(() => {
+  charactersStore.startOnlinePolling(30000)
+})
+onUnmounted(() => {
+  charactersStore.stopOnlinePolling()
+})
+
 // ── Perk config from server (registry + env overrides) ──
 const { data: perkConfig } = await useFetch('/api/characters/perk-config')
+
+// ── Collapsible group state (collapsed by default) ──
+const collapsedGroups = ref<Set<string>>(
+  new Set(perkConfig.value?.groups?.map(g => g.id) ?? []),
+)
+
+function toggleGroup(groupId: string) {
+  if (collapsedGroups.value.has(groupId)) {
+    collapsedGroups.value.delete(groupId)
+  } else {
+    collapsedGroups.value.add(groupId)
+  }
+  // trigger reactivity on the Set
+  collapsedGroups.value = new Set(collapsedGroups.value)
+}
+
+function isGroupCollapsed(groupId: string): boolean {
+  return collapsedGroups.value.has(groupId)
+}
 
 // ── Daily usage from server ──
 const { data: perkStatus, refresh: refreshStatus } = await useFetch('/api/characters/perk-status', {
@@ -142,6 +174,41 @@ function diceInfoText(diceSides: number, rollThreshold: number): string {
 function meetsLevel(requiredLevel: number): boolean {
   return (props.character.character.level ?? 0) >= requiredLevel
 }
+
+/**
+ * Filter perks to only show those the character's level qualifies for.
+ * For perks sharing a rankGroup, only the highest applicable rank is shown.
+ */
+function visiblePerks(perks: any[]): any[] {
+  const charLevel = props.character.character.level ?? 0
+
+  // First: filter to only level-qualified perks
+  const qualified = perks.filter(p => charLevel >= p.requiredLevel)
+
+  // Second: for perks with a rankGroup, keep only the highest requiredLevel one
+  const bestByRankGroup: Record<string, any> = {}
+  const result: any[] = []
+
+  for (const perk of qualified) {
+    if (perk.rankGroup) {
+      const existing = bestByRankGroup[perk.rankGroup]
+      if (!existing || perk.requiredLevel > existing.requiredLevel) {
+        bestByRankGroup[perk.rankGroup] = perk
+      }
+    } else {
+      result.push(perk)
+    }
+  }
+
+  // Add the best rank for each group
+  result.push(...Object.values(bestByRankGroup))
+
+  // Preserve original display order
+  const idOrder = perks.map(p => p.id)
+  result.sort((a, b) => idOrder.indexOf(a.id) - idOrder.indexOf(b.id))
+
+  return result
+}
 </script>
 
 <template>
@@ -152,18 +219,21 @@ function meetsLevel(requiredLevel: number): boolean {
 
     <template v-if="perkConfig?.groups?.length">
       <div v-for="group in perkConfig.groups" :key="group.id" class="perks-group">
-        <div class="perks-group__header">
-          <span class="perks-group__icon">{{ group.icon }}</span>
-          <div>
-            <h3 class="perks-group__title">{{ group.label }}</h3>
-            <p class="perks-group__description">{{ group.description }}</p>
+        <!-- Only show groups that have at least one visible perk for the character's level -->
+        <template v-if="visiblePerks(group.perks).length > 0">
+          <div class="perks-group__header" @click="toggleGroup(group.id)">
+            <span class="perks-group__icon">{{ group.icon }}</span>
+            <div class="perks-group__info">
+              <h3 class="perks-group__title">{{ group.label }}</h3>
+              <p class="perks-group__description">{{ group.description }}</p>
+            </div>
+            <span class="perks-group__chevron" :class="{ 'perks-group__chevron--collapsed': isGroupCollapsed(group.id) }">▼</span>
           </div>
-        </div>
 
-        <div class="perks-grid">
-          <CharacterPerkCard
-            v-for="perk in group.perks"
-            :key="perk.id"
+          <div v-show="!isGroupCollapsed(group.id)" class="perks-grid">
+            <CharacterPerkCard
+              v-for="perk in visiblePerks(group.perks)"
+              :key="perk.id"
             :icon="perk.icon"
             :title="perk.name"
             :description="perk.description"
@@ -181,11 +251,12 @@ function meetsLevel(requiredLevel: number): boolean {
             :daily-limit="perk.dailyLimit"
             :one-time="perk.oneTime"
             :button-label="perk.oneTime ? 'Roll the Dice' : '🎲 Roll'"
-            :button-unlocked-label="perk.deliveryType === 'item' ? '✓ Sent' : '✓ Applied'"
+            :button-unlocked-label="perk.deliveryType === 'item' || perk.deliveryType === 'bag-item' ? '✓ Sent' : '✓ Applied'"
             :accent="perk.accent"
             @unlock="activatePerk(perk.id)"
           />
-        </div>
+          </div>
+        </template>
       </div>
     </template>
 
@@ -230,6 +301,17 @@ function meetsLevel(requiredLevel: number): boolean {
   gap: 0.75rem;
   padding-bottom: 0.5rem;
   border-bottom: 1px solid #334155;
+  cursor: pointer;
+  user-select: none;
+
+  &:hover {
+    .perks-group__title {
+      color: #f1f5f9;
+    }
+    .perks-group__chevron {
+      color: #94a3b8;
+    }
+  }
 }
 
 .perks-group__icon {
@@ -237,17 +319,34 @@ function meetsLevel(requiredLevel: number): boolean {
   flex-shrink: 0;
 }
 
+.perks-group__info {
+  flex: 1;
+  min-width: 0;
+}
+
 .perks-group__title {
   margin: 0;
   font-size: 1.1rem;
   font-weight: 600;
   color: #e2e8f0;
+  transition: color 0.15s;
 }
 
 .perks-group__description {
   margin: 0.15rem 0 0;
   font-size: 0.8rem;
   color: #64748b;
+}
+
+.perks-group__chevron {
+  font-size: 0.75rem;
+  color: #64748b;
+  transition: transform 0.2s ease, color 0.15s;
+  flex-shrink: 0;
+
+  &--collapsed {
+    transform: rotate(-90deg);
+  }
 }
 
 .perks-grid {

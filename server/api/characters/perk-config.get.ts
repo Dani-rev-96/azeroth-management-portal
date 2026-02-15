@@ -34,6 +34,7 @@ export default defineEventHandler(async () => {
       diceSides: number
       rollThreshold: number
       dailyLimit: number
+      rankGroup?: string
     }>
   }> = []
 
@@ -64,6 +65,7 @@ export default defineEventHandler(async () => {
           diceSides: resolved.diceSides,
           rollThreshold: resolved.rollThreshold,
           dailyLimit: resolved.dailyLimit,
+          rankGroup: perk.rankGroup,
         }
       }),
     })

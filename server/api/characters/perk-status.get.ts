@@ -45,7 +45,7 @@ export default defineEventHandler(async (event) => {
     const [rows] = await charPool.query<RowDataPacket[]>(
       `SELECT perk_id, COUNT(*) AS cnt
        FROM web_perk_usage
-       WHERE character_guid = ? AND DATE(used_at) = CURDATE()
+       WHERE character_guid = ? AND DATE(used_at) = CURDATE() AND outcome = 'success'
        GROUP BY perk_id`,
       [characterGuid],
     )

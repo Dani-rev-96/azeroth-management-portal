@@ -1,10 +1,27 @@
 # AGENT.md — Azeroth Management Portal
 
-> **Self-updating**: When making changes to the project, update this file to reflect new patterns, files, conventions, or architectural decisions. Keep it concise — prefer tables and lists over prose.
+> ## ⚠️ Agent Checklist — READ AND FOLLOW EVERY SESSION
+>
+> Before doing ANY work, complete this checklist:
+>
+> - [ ] **Read this file first.** Understand the architecture, conventions, and key files before making changes.
+> - [ ] **Check `shared/utils/perks/`** if the task involves perks, buffs, scrolls, teleports, or the dice/gacha system. The registry is split across multiple files by group — don't look for a monolithic `perks.ts`.
+> - [ ] **Check `server/utils/config/index.ts`** if the task involves environment variables, feature flags, or perk config resolution.
+> - [ ] **Check `data/eluna/web_worker.lua`** if the task involves in-game delivery (items, spells, auras, teleports, bag delivery). This is the Lua bridge that processes queue tables.
+> - [ ] **Run `get_errors`** after every edit to catch issues immediately.
+> - [ ] **Update this file** if you add new files, directories, patterns, conventions, API routes, perk groups, delivery types, or config options. Keep it concise — tables and lists, not prose.
+>
+> **Common pitfalls:**
+>
+> - The perk registry is in `shared/utils/perks/` (a directory with barrel index), NOT a single file.
+> - `getPerkConfig()` in `server/utils/config/index.ts` returns `{ groups, perks, failDebuff*, critFailDebuff* }` — it resolves per-perk env overrides.
+> - Scroll delivery uses `'bag-item'` (direct to bags via `web_bag_requests`), NOT `'item'` (mail).
+> - Buff/scroll perks use `rankGroup` for deduplication — the UI shows only the highest applicable rank per character level.
+> - All queue tables are auto-created by `web_worker.lua` on startup.
 
 ## Project Overview
 
-A full-stack management portal for AzerothCore WoW private servers. Nuxt 4 (Vue 3 + Nitro), Pinia stores, MySQL (AzerothCore game databases), SQLite (local data + DBC cache), SCSS design system, PrimeVue module (registered but mostly replaced by custom `Ui*` components).
+A full-stack management portal for AzerothCore WoW 3.3.5a private servers. Nuxt 4 (Vue 3 + Nitro), Pinia stores, MySQL (AzerothCore game databases), SQLite (local data + DBC cache), SCSS design system, PrimeVue module (registered but mostly replaced by custom `Ui*` components).
 
 **Version**: See `package.json` → `version`
 **License**: MIT
@@ -28,7 +45,7 @@ A full-stack management portal for AzerothCore WoW private servers. Nuxt 4 (Vue 
 ```
 app/                 → Vue 3 frontend (pages, components, stores, composables, styles, types, utils)
 server/              → Nitro backend (API routes, services, utils, assets)
-shared/              → Type re-exports shared between client and server (no runtime code)
+shared/utils/        → Shared code between client and server (perk registry, config types)
 data/                → DBC JSON exports, PNG icons, Eluna scripts (dev/build tooling, not served)
 scripts/             → DB import/migration CLI scripts
 docs/                → Detailed documentation (API, Auth, Config, Deploy, Dev, Setup)
@@ -36,20 +53,21 @@ docs/                → Detailed documentation (API, Auth, Config, Deploy, Dev,
 
 ### Key Files
 
-| File                           | Purpose                                                                     |
-| ------------------------------ | --------------------------------------------------------------------------- |
-| `nuxt.config.ts`               | Nuxt config: modules, runtime config defaults, Vite/SCSS settings           |
-| `app/app.vue`                  | Root Vue component                                                          |
-| `app/layouts/default.vue`      | Main layout (nav, footer, mobile menu)                                      |
-| `app/types/index.ts`           | All shared TypeScript types                                                 |
-| `server/utils/config/index.ts` | Central server config — reads `process.env` at runtime (K8s-safe)           |
-| `server/utils/db.ts`           | SQLite (better-sqlite3) for account_mappings — WAL mode, CRUD interface     |
-| `server/utils/mysql.ts`        | MySQL connection pools (mysql2/promise) — cached in Map                     |
-| `server/utils/auth.ts`         | Auth utilities: `getAuthenticatedUser()`, `requireGM()`, session management |
-| `server/utils/dbc-db.ts`       | DBC SQLite databases (items, spells, talents) — read-only server assets     |
-| `server/utils/srp6.ts`         | SRP-6a password verification/creation (AzerothCore compatible)              |
-| `data/eluna/web_worker.lua`    | Eluna bridge script — processes item/mail/money queues in-game              |
-| `shared/utils/config/index.ts` | Type-only re-exports for client/server shared config types                  |
+| File                           | Purpose                                                                        |
+| ------------------------------ | ------------------------------------------------------------------------------ |
+| `nuxt.config.ts`               | Nuxt config: modules, runtime config defaults, Vite/SCSS settings              |
+| `app/app.vue`                  | Root Vue component                                                             |
+| `app/layouts/default.vue`      | Main layout (nav, footer, mobile menu)                                         |
+| `app/types/index.ts`           | All shared TypeScript types                                                    |
+| `server/utils/config/index.ts` | Central server config — reads `process.env` at runtime (K8s-safe), perk config |
+| `server/utils/db.ts`           | SQLite (better-sqlite3) for account_mappings — WAL mode, CRUD interface        |
+| `server/utils/mysql.ts`        | MySQL connection pools (mysql2/promise) — cached in Map                        |
+| `server/utils/auth.ts`         | Auth utilities: `getAuthenticatedUser()`, `requireGM()`, session management    |
+| `server/utils/dbc-db.ts`       | DBC SQLite databases (items, spells, talents) — read-only server assets        |
+| `server/utils/srp6.ts`         | SRP-6a password verification/creation (AzerothCore compatible)                 |
+| `data/eluna/web_worker.lua`    | Eluna bridge script — processes all queue tables in-game (v2.6)                |
+| `shared/utils/perks/index.ts`  | Perk registry barrel — re-exports types, groups, per-group arrays, helpers     |
+| `shared/utils/config/index.ts` | Type-only re-exports for client/server shared config types                     |
 
 ## Directory Structure
 
@@ -59,18 +77,18 @@ docs/                → Detailed documentation (API, Auth, Config, Deploy, Dev,
 
 Pages are **thin orchestrators** — they call store actions and delegate rendering to components.
 
-| Route                       | File                                   | Pattern                                         |
-| --------------------------- | -------------------------------------- | ----------------------------------------------- |
-| `/`                         | `pages/index.vue`                      | Self-contained landing; `watchEffect` for stats |
-| `/login`                    | `pages/login.vue`                      | `layout: false`; standalone login form          |
-| `/account`                  | `pages/account/index.vue`              | Account list; CreateAccountForm/LinkAccountForm |
-| `/account/:id`              | `pages/account/[id].vue`               | Account detail; 7 child components              |
-| `/admin`                    | `pages/admin/index.vue`                | Tab-based; delegates to Admin\* components      |
-| `/character/:guid/:realmId` | `pages/character/[guid]/[realmId].vue` | Character showroom (equipment, stats, talents)  |
-| `/shop`                     | `pages/shop/index.vue`                 | Character selection for shop                    |
-| `/shop/:realmId/:guid`      | `pages/shop/[realmId]/[guid].vue`      | Item browsing per character                     |
-| `/community`                | `pages/community/index.vue`            | Tab-based; online players, stats, leaderboards  |
-| `/downloads`                | `pages/downloads/index.vue`            | File downloads                                  |
+| Route                       | File                                   | Pattern                                               |
+| --------------------------- | -------------------------------------- | ----------------------------------------------------- |
+| `/`                         | `pages/index.vue`                      | Self-contained landing; `watchEffect` for stats       |
+| `/login`                    | `pages/login.vue`                      | `layout: false`; standalone login form                |
+| `/account`                  | `pages/account/index.vue`              | Account list; CreateAccountForm/LinkAccountForm       |
+| `/account/:id`              | `pages/account/[id].vue`               | Account detail; 7 child components                    |
+| `/admin`                    | `pages/admin/index.vue`                | Tab-based; delegates to Admin\* components            |
+| `/character/:guid/:realmId` | `pages/character/[guid]/[realmId].vue` | Character showroom (equipment, stats, talents, perks) |
+| `/shop`                     | `pages/shop/index.vue`                 | Character selection for shop                          |
+| `/shop/:realmId/:guid`      | `pages/shop/[realmId]/[guid].vue`      | Item browsing per character                           |
+| `/community`                | `pages/community/index.vue`            | Tab-based; online players, stats, leaderboards        |
+| `/downloads`                | `pages/downloads/index.vue`            | File downloads                                        |
 
 #### Components
 
@@ -81,7 +99,7 @@ Organized by feature domain. All use `<script setup lang="ts">` exclusively.
 | `components/ui/`        | `Ui`              | UiBadge, UiButton, UiCard, UiDataTable, UiEmptyState, UiFormGroup, UiInput, UiLoadingState, UiMessage, UiModal, UiPageHeader, UiProgressBar, UiSectionHeader, UiSelect, UiStatCard, UiTabPanel, UiTabs, UiTextarea |
 | `components/account/`   | `Account`/Feature | AccountHeader, AccountSecurityInfo, AccountStatistics, CharacterActionModal, CharacterList, DangerZone, PasswordChangeForm                                                                                         |
 | `components/admin/`     | `Admin`           | AdminAccountsTab, AdminFilesTab, AdminGMForm, AdminLinkAccountsTab, AdminMailForm, AdminMappingsTab                                                                                                                |
-| `components/character/` | `Character`       | CharacterEquipmentSlot, CharacterTalentTree                                                                                                                                                                        |
+| `components/character/` | `Character`       | CharacterEquipmentSlot, CharacterTalentTree, **CharacterPerks**, **CharacterPerkCard**                                                                                                                             |
 | `components/community/` | Feature           | DirectoryFilters, DistributionChart, OnlinePlayerCard, OnlinePlayersGrid, PlayerDirectoryBrowser, PvPStatistics, RealmFilter, StatsOverview, TopPlayersLeaderboard                                                 |
 | `components/shop/`      | `Shop`            | ShopCategoryTabs, ShopCharacterSelect, ShopDeliveryToggle, ShopItemCard, ShopItemsGrid, ShopNotification, ShopPagination, ShopSearchControls, ShopSelectedCharacterBar                                             |
 | `components/` (root)    | —                 | CreateAccountForm, LinkAccountForm                                                                                                                                                                                 |
@@ -126,17 +144,17 @@ All use **Composition API** pattern: `defineStore('name', () => { ... })`.
 
 File-based routing with HTTP verb suffixes: `.get.ts`, `.post.ts`, `.delete.ts`. Dynamic params via `[paramName]` directories. **No PUT/PATCH** — mutations use POST.
 
-| Group           | Files                                                                                                                                                                                                                     | Auth                                                  |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `auth/`         | `config.get`, `login.post`, `logout.post`, `me.get`                                                                                                                                                                       | Public (config), Direct-mode (login/logout), Any (me) |
-| `accounts/`     | `create.post`, `map.post`, `password.post`, `detail/[accountId].get`, `map/[externalId]/[wowAccountId].delete`, `user/[externalId].get`, `user/mapping/[wowAccountId].get`                                                | Authenticated                                         |
-| `characters/`   | `action.post`, `[guid]/[realmId].get`, `talent-tree/[classId].get`                                                                                                                                                        | Authenticated (action), Public (detail, talent-tree)  |
-| `admin/`        | `accounts.get`, `account-mappings.get`, `account-mappings.post`, `account-mappings/[id].delete`, `export.post`, `files/upload.post`, `files/[filename].delete`, `gm/set-level.post`, `items/search.get`, `mail/send.post` | GM required (`requireGM()`)                           |
-| `community/`    | `online.get`, `stats.get`, `top-players.get`, `pvp-stats.get`, `players.get`, `zones.get`                                                                                                                                 | Public                                                |
-| `shop/`         | `config.get`, `items.get`, `purchase.post`                                                                                                                                                                                | Varies                                                |
-| `downloads/`    | `list.get`, `[filename].get`                                                                                                                                                                                              | Public                                                |
-| `stats/`        | `overview.get`                                                                                                                                                                                                            | Public                                                |
-| `realms.get.ts` | Realm list (also K8s health endpoint)                                                                                                                                                                                     | Public                                                |
+| Group           | Files                                                                                                                                                                                                                     | Auth                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `auth/`         | `config.get`, `login.post`, `logout.post`, `me.get`                                                                                                                                                                       | Public (config), Direct-mode (login/logout), Any (me)  |
+| `accounts/`     | `create.post`, `map.post`, `password.post`, `detail/[accountId].get`, `map/[externalId]/[wowAccountId].delete`, `user/[externalId].get`, `user/mapping/[wowAccountId].get`                                                | Authenticated                                          |
+| `characters/`   | `action.post`, `activate-perk.post`, `perk-config.get`, `perk-status.get`, `[guid]/[realmId].get`, `talent-tree/[classId].get`                                                                                            | Authenticated (action, perks), Public (detail, talent) |
+| `admin/`        | `accounts.get`, `account-mappings.get`, `account-mappings.post`, `account-mappings/[id].delete`, `export.post`, `files/upload.post`, `files/[filename].delete`, `gm/set-level.post`, `items/search.get`, `mail/send.post` | GM required (`requireGM()`)                            |
+| `community/`    | `online.get`, `stats.get`, `top-players.get`, `pvp-stats.get`, `players.get`, `zones.get`                                                                                                                                 | Public                                                 |
+| `shop/`         | `config.get`, `items.get`, `purchase.post`                                                                                                                                                                                | Varies                                                 |
+| `downloads/`    | `list.get`, `[filename].get`                                                                                                                                                                                              | Public                                                 |
+| `stats/`        | `overview.get`                                                                                                                                                                                                            | Public                                                 |
+| `realms.get.ts` | Realm list (also K8s health endpoint)                                                                                                                                                                                     | Public                                                 |
 
 **API handler pattern**:
 
@@ -166,20 +184,106 @@ Pure functions (not classes). Import pool factories from `server/utils/mysql.ts`
 
 #### Utils (`server/utils/`)
 
-| Utility        | File                | Purpose                                                                                                                                      |
-| -------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Config         | `config/index.ts`   | Central config hub. Reads `process.env` at runtime. `getRealmConfigs()`, `getAuthDbConfig()`, `getShopConfig()`, `getElunaConfig()`. Cached. |
-| DB (SQLite)    | `db.ts`             | `account_mappings` CRUD. WAL mode, periodic checkpointing, graceful shutdown.                                                                |
-| MySQL          | `mysql.ts`          | Pool factories: `getAuthPool()`, `getCharactersPool(realmId)`, `getWorldPool(realmId)`. Cached in Map.                                       |
-| Auth           | `auth.ts`           | `getAuthenticatedUser(event)`, `requireGM(event)`, `isDirectAuth()`, session CRUD. 4 auth modes.                                             |
-| SRP-6a         | `srp6.ts`           | `verifySRP6Password()`, `createSRP6Credentials()`. Uses `@azerothcore/ac-nodejs-srp6`.                                                       |
-| DBC DB         | `dbc-db.ts`         | Read-only SQLite for game data. `getItemById()`, `getSpellById()`, `getTalentsByTab()`, etc.                                                 |
-| API Errors     | `api-errors.ts`     | `handleApiError()`, factory functions: `notFoundError()`, `forbiddenError()`, `validationError()`.                                           |
-| Account Filter | `account-filter.ts` | `getNonBotAccountFilter()` — SQL `IN(...)` clause excluding bot accounts. 30s cache.                                                         |
-| Realm Query    | `realm-query.ts`    | `getTargetRealms()`, cross-realm query helpers.                                                                                              |
-| Enchantments   | `enchantments.ts`   | WoW enchantment/suffix parsing for equipment display.                                                                                        |
-| Export         | `export.ts`         | CSV/JSON export for admin data.                                                                                                              |
-| DB Credentials | `db-credentials.ts` | Legacy credential loader (deprecated, use config/index.ts).                                                                                  |
+| Utility        | File                | Purpose                                                                                                                                                |
+| -------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Config         | `config/index.ts`   | Central config hub. Reads `process.env` at runtime. `getRealmConfigs()`, `getAuthDbConfig()`, `getShopConfig()`, `getElunaConfig()`, `getPerkConfig()` |
+| DB (SQLite)    | `db.ts`             | `account_mappings` CRUD. WAL mode, periodic checkpointing, graceful shutdown.                                                                          |
+| MySQL          | `mysql.ts`          | Pool factories: `getAuthPool()`, `getCharactersPool(realmId)`, `getWorldPool(realmId)`. Cached in Map.                                                 |
+| Auth           | `auth.ts`           | `getAuthenticatedUser(event)`, `requireGM(event)`, `isDirectAuth()`, session CRUD. 4 auth modes.                                                       |
+| SRP-6a         | `srp6.ts`           | `verifySRP6Password()`, `createSRP6Credentials()`. Uses `@azerothcore/ac-nodejs-srp6`.                                                                 |
+| DBC DB         | `dbc-db.ts`         | Read-only SQLite for game data. `getItemById()`, `getSpellById()`, `getTalentsByTab()`, etc.                                                           |
+| API Errors     | `api-errors.ts`     | `handleApiError()`, factory functions: `notFoundError()`, `forbiddenError()`, `validationError()`.                                                     |
+| Account Filter | `account-filter.ts` | `getNonBotAccountFilter()` — SQL `IN(...)` clause excluding bot accounts. 30s cache.                                                                   |
+| Realm Query    | `realm-query.ts`    | `getTargetRealms()`, cross-realm query helpers.                                                                                                        |
+| Enchantments   | `enchantments.ts`   | WoW enchantment/suffix parsing for equipment display.                                                                                                  |
+| Export         | `export.ts`         | CSV/JSON export for admin data.                                                                                                                        |
+| DB Credentials | `db-credentials.ts` | Legacy credential loader (deprecated, use config/index.ts).                                                                                            |
+
+### Perk System (Gambling/Gacha)
+
+The perk system lets characters unlock abilities, receive buffs, get items, or teleport — gated by a dice roll. It spans frontend, backend, shared registry, and the in-game Eluna bridge.
+
+#### Perk Registry (`shared/utils/perks/`)
+
+The registry is split into **8 files by concern**. All exports are re-exported from the barrel `index.ts`.
+
+| File          | Lines | Contents                                                                                               |
+| ------------- | ----- | ------------------------------------------------------------------------------------------------------ |
+| `types.ts`    | ~87   | `PerkGroup`, `PerkDeliveryType`, `PerkDefinition`, `PerkGroupMeta`                                     |
+| `groups.ts`   | ~45   | `PERK_GROUPS` — group metadata (label, icon, env toggle key)                                           |
+| `mount.ts`    | ~26   | `MOUNT_PERKS` — 1 perk (Old World Flying)                                                              |
+| `quest.ts`    | ~29   | `QUEST_PERKS` — 1 perk (Drakefire Amulet)                                                              |
+| `buffs.ts`    | ~1170 | `BUFF_PERKS` — 54 entries (8 buff types × multiple ranks)                                              |
+| `scrolls.ts`  | ~1080 | `SCROLL_PERKS` — 48 entries (6 stats × 8 tiers I–VIII)                                                 |
+| `teleport.ts` | ~266  | `TELEPORT_PERKS` — 10 cities (Alliance, Horde, Neutral)                                                |
+| `index.ts`    | ~66   | Barrel: `PERK_REGISTRY` (concat of all), helpers (`getPerkById`, `getPerksByGroup`, `getActiveGroups`) |
+
+**Import path**: `import { ... } from '~~/shared/utils/perks'` (resolves to `index.ts`).
+
+#### Perk Groups
+
+| Group      | Delivery Type | Count | Key Features                                                  |
+| ---------- | ------------- | ----- | ------------------------------------------------------------- |
+| `mount`    | `spell`       | 1     | One-time permanent unlock                                     |
+| `quest`    | `item`        | 1     | One-time, mailed via `web_item_requests`                      |
+| `buffs`    | `aura`        | 54    | `rankGroup` dedup, `auraDurationMs`, per-perk debuff duration |
+| `scrolls`  | `bag-item`    | 48    | `rankGroup` dedup, direct bag delivery via `web_bag_requests` |
+| `teleport` | `teleport`    | 10    | Uses Dazed (spell 1604) as fail debuff                        |
+
+#### Delivery Types
+
+| Type       | Queue Table             | Eluna Action             | Notes                            |
+| ---------- | ----------------------- | ------------------------ | -------------------------------- |
+| `spell`    | `web_spell_requests`    | `player:LearnSpell()`    | Permanent                        |
+| `item`     | `web_item_requests`     | SendMail with attachment | Mailed to player                 |
+| `bag-item` | `web_bag_requests`      | `player:AddItem()`       | Direct to bags; waits if offline |
+| `aura`     | `web_aura_requests`     | `player:AddAura()`       | Temporary; has duration          |
+| `teleport` | `web_teleport_requests` | `player:Teleport()`      | Requires online                  |
+
+#### PerkDefinition Key Fields
+
+| Field                   | Purpose                                                             |
+| ----------------------- | ------------------------------------------------------------------- |
+| `rankGroup`             | Groups perk ranks — UI shows only highest applicable rank per level |
+| `auraDurationMs`        | Buff duration in ms (aura type only)                                |
+| `failDebuffSpellId`     | Per-perk override for fail debuff spell (default: 11196)            |
+| `failDebuffDurationMs`  | Per-perk override for fail debuff duration (default: 600000ms)      |
+| `critFailDebuffSpellId` | Per-perk override for critfail debuff spell (default: 15007)        |
+| `envPrefix`             | Env var prefix for per-perk dice/threshold/limit/level overrides    |
+| `requiresOnline`        | Character must be online (checked via DB `online` column + polling) |
+
+#### Perk API Routes
+
+| Route                                | Purpose                                                                  |
+| ------------------------------------ | ------------------------------------------------------------------------ |
+| `GET /api/characters/perk-config`    | Returns enabled groups + resolved per-perk config for UI                 |
+| `GET /api/characters/perk-status`    | Returns daily usage counts per perk for a character                      |
+| `POST /api/characters/activate-perk` | Dice roll → deliver or debuff. Validates level, online, ownership, limit |
+
+#### Perk Config Resolution (`server/utils/config/index.ts`)
+
+`getPerkConfig()` returns:
+
+- `groups` — `Record<PerkGroup, { enabled: boolean }>` (from `NUXT_PERK_GROUP_<GROUP>_ENABLED` env vars, default `true`)
+- `perks` — `Record<string, ResolvedPerkConfig>` with per-perk `diceSides`, `rollThreshold`, `dailyLimit`, `requiredLevel` (env overrides via `NUXT_PERK_<PREFIX>_*`)
+- `failDebuffSpellId` / `failDebuffDurationMs` — global defaults (overridable per-perk on `PerkDefinition`)
+- `critFailDebuffSpellId` / `critFailDebuffDurationMs` — global defaults
+
+#### Perk UI (`app/components/character/`)
+
+| Component               | Purpose                                                                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `CharacterPerks.vue`    | Container — collapsible groups (collapsed by default), level filtering, `rankGroup` dedup via `visiblePerks()`, online polling |
+| `CharacterPerkCard.vue` | Individual perk card — dice roll animation, outcome display, usage counter                                                     |
+
+#### Debuff System
+
+| Scenario      | Default Spell             | Default Duration | Per-Perk Override                                             |
+| ------------- | ------------------------- | ---------------- | ------------------------------------------------------------- |
+| Normal fail   | 11196 (Recently Bandaged) | 10 min           | `perk.failDebuffSpellId`, `perk.failDebuffDurationMs`         |
+| Critical fail | 15007 (Res Sickness)      | 10 min           | `perk.critFailDebuffSpellId`, `perk.critFailDebuffDurationMs` |
+| Teleport fail | 1604 (Dazed, -50% speed)  | 60s              | Set on all teleport perk definitions                          |
+| Buff fail     | 11196 (global default)    | = buff duration  | `failDebuffDurationMs` matches `auraDurationMs`               |
 
 ### Databases
 
@@ -202,15 +306,20 @@ Pure functions (not classes). Import pool factories from `server/utils/mysql.ts`
 
 ### Eluna Integration
 
-The web portal queues requests in MySQL tables; the Eluna Lua script (`data/eluna/web_worker.lua`) polls and processes them in-game:
+The web portal queues requests in MySQL tables; the Eluna Lua script (`data/eluna/web_worker.lua` v2.6) polls and processes them in-game every 1 second:
 
-| Queue Table          | Purpose                | Status Flow                                             |
-| -------------------- | ---------------------- | ------------------------------------------------------- |
-| `web_money_requests` | Add/deduct gold        | `pending` → `done`/`error`                              |
-| `web_item_requests`  | Mail items to players  | `pending` → `done`/`error`                              |
-| `web_bag_requests`   | Direct-to-bag delivery | `pending` → `done`/`waiting` (offline → retry on login) |
+| Queue Table             | Purpose                | Status Flow                                      |
+| ----------------------- | ---------------------- | ------------------------------------------------ |
+| `web_money_requests`    | Add/deduct gold        | `pending` → `done`/`error`                       |
+| `web_item_requests`     | Mail items to players  | `pending` → `done`/`error`                       |
+| `web_bag_requests`      | Direct-to-bag delivery | `pending` → `waiting` (offline) → `done`/`error` |
+| `web_spell_requests`    | Teach spells           | `pending` → `waiting` (offline) → `done`/`error` |
+| `web_aura_requests`     | Apply buffs/debuffs    | `pending` → `waiting` (offline) → `done`/`error` |
+| `web_teleport_requests` | Teleport to coords     | `pending` → `waiting` (offline) → `done`/`error` |
 
 Feature flags: `NUXT_ELUNA_ENABLED`, `NUXT_ELUNA_SHOP_ENABLED`, `NUXT_ELUNA_GM_MAIL_ENABLED`.
+
+All tables are auto-created by `web_worker.lua` on startup. The `waiting` status means the character was offline; the request retries on next login.
 
 ### Authentication Modes
 
@@ -237,7 +346,7 @@ All in-process memory (no Redis):
 
 ### General
 
-- **TypeScript everywhere**. Use `type` over `interface`.
+- **TypeScript everywhere**. Use `type` over `interface` (exception: `PerkDefinition` uses `interface` for readability).
 - **Import utilities from `utils/` folders** — don't re-export from stores.
 - **Remove unused/redundant code**, especially styles and store exports.
 - **Unify styles** — reuse SCSS variables/mixins. Check `_variables.scss` and `_mixins.scss` before adding new ones.
@@ -265,10 +374,18 @@ All in-process memory (no Redis):
 - **Config reads `process.env` at runtime** (not `useRuntimeConfig()` for DB credentials) — critical for K8s.
 - **No explicit middleware files** — auth is inline per route.
 
+### Perk Development
+
+- **Adding a new perk**: Add entry to the appropriate file in `shared/utils/perks/` (e.g., `buffs.ts` for a new buff). It will automatically appear in `PERK_REGISTRY` via the barrel.
+- **Adding a new perk group**: Create a new file in `shared/utils/perks/`, add the group to `PERK_GROUPS` in `groups.ts`, update `PerkGroup` type in `types.ts`, import + spread in `index.ts`.
+- **Adding a new delivery type**: Add to `PerkDeliveryType` in `types.ts`, add case to `deliverPerk()` in `activate-perk.post.ts`, ensure Eluna handles the queue table.
+- **Rank groups (`rankGroup`)**: Perks sharing a `rankGroup` are deduplicated by `visiblePerks()` in `CharacterPerks.vue` — only the highest-level qualifying rank is shown.
+- **Per-perk env overrides**: `NUXT_PERK_<envPrefix>_DICE_SIDES`, `_ROLL_THRESHOLD`, `_DAILY_LIMIT`, `_REQUIRED_LEVEL`.
+
 ### Documentation
 
 - Update `README.md` and linked `docs/` files for user-facing changes.
-- Update this `AGENT.md` for architectural changes, new patterns, new files/directories, or convention changes. Keep it concise.
+- **Update this `AGENT.md`** for architectural changes, new patterns, new files/directories, new perk groups, delivery types, or convention changes. Keep it concise.
 
 ## External Documentation
 
@@ -329,6 +446,29 @@ NUXT_PUBLIC_SHOP_MARKUP_PERCENT=20
 NUXT_ELUNA_ENABLED=true
 NUXT_ELUNA_SHOP_ENABLED=true
 NUXT_ELUNA_GM_MAIL_ENABLED=true
+```
+
+### Perk Configuration
+
+```bash
+# Per-group enable/disable (default: true)
+NUXT_PERK_GROUP_MOUNT_ENABLED=true
+NUXT_PERK_GROUP_QUEST_ENABLED=true
+NUXT_PERK_GROUP_BUFFS_ENABLED=true
+NUXT_PERK_GROUP_SCROLLS_ENABLED=true
+NUXT_PERK_GROUP_TELEPORT_ENABLED=true
+
+# Per-perk overrides (via envPrefix, e.g. FLYING, DRAKEFIRE, SCROLL_INT_I, TP_STORMWIND)
+NUXT_PERK_<PREFIX>_DICE_SIDES=20
+NUXT_PERK_<PREFIX>_ROLL_THRESHOLD=8
+NUXT_PERK_<PREFIX>_DAILY_LIMIT=5
+NUXT_PERK_<PREFIX>_REQUIRED_LEVEL=60
+
+# Global debuff defaults (overridable per-perk on PerkDefinition)
+NUXT_PERK_FAIL_DEBUFF_SPELL_ID=11196
+NUXT_PERK_FAIL_DEBUFF_DURATION_MS=600000
+NUXT_PERK_CRITFAIL_DEBUFF_SPELL_ID=15007
+NUXT_PERK_CRITFAIL_DEBUFF_DURATION_MS=600000
 ```
 
 ## Scripts

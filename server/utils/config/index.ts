@@ -10,6 +10,7 @@
  */
 
 import type { RealmConfig } from '~/types'
+import { PERK_REGISTRY, PERK_GROUPS, type PerkGroup, type PerkDefinition } from '~~/shared/utils/perks'
 
 export interface RealmSoapConfig {
   enabled: boolean
@@ -240,35 +241,23 @@ export const isElunaGmMailEnabled = (): boolean => {
 }
 
 /**
- * Perk system configuration
+ * Perk gambling/gacha configuration
+ * Controls the dice roll mechanics for character perks.
  *
- * Controls the dice roll / gacha mechanics for character perks.
- * All perks are defined in the shared registry (shared/utils/perks.ts).
- * This config layer reads environment variable overrides per-perk and per-group.
+ * Environment variables (all optional, sane defaults provided):
  *
- * ── Group enable/disable ──
- *   NUXT_PERK_GROUP_MOUNT_ENABLED    (default: true)
- *   NUXT_PERK_GROUP_QUEST_ENABLED    (default: true)
- *   NUXT_PERK_GROUP_BUFFS_ENABLED    (default: true)
- *   NUXT_PERK_GROUP_SCROLLS_ENABLED  (default: true)
+ * Per-perk overrides (via envPrefix):
+ *   NUXT_PERK_<PREFIX>_DICE_SIDES            - Dice size (e.g. 20 = d20)
+ *   NUXT_PERK_<PREFIX>_ROLL_THRESHOLD        - Min roll to succeed
+ *   NUXT_PERK_<PREFIX>_DAILY_LIMIT           - Max successful uses per day
+ *   NUXT_PERK_<PREFIX>_REQUIRED_LEVEL        - Required character level
  *
- * ── Per-perk overrides (use the perk's envPrefix, e.g. FLYING) ──
- *   NUXT_PERK_<PREFIX>_DICE_SIDES         — Override dice size
- *   NUXT_PERK_<PREFIX>_ROLL_THRESHOLD     — Override threshold
- *   NUXT_PERK_<PREFIX>_DAILY_LIMIT        — Override daily activations (0 = unlimited)
- *   NUXT_PERK_<PREFIX>_REQUIRED_LEVEL     — Override level requirement
- *
- * ── Debuff configuration (shared by all perks) ──
- *   NUXT_PERK_FAIL_DEBUFF_SPELL_ID        (default: 11196 = Recently Bandaged)
- *   NUXT_PERK_FAIL_DEBUFF_DURATION_MS     (default: 600000 = 10 min)
- *   NUXT_PERK_CRITFAIL_DEBUFF_SPELL_ID    (default: 15007 = Resurrection Sickness)
- *   NUXT_PERK_CRITFAIL_DEBUFF_DURATION_MS (default: 600000 = 10 min)
+ * Debuff configuration (applied on failure):
+ *   NUXT_PERK_FAIL_DEBUFF_SPELL_ID           - Aura spell ID applied on normal fail (default: 11196 = Recently Bandaged)
+ *   NUXT_PERK_FAIL_DEBUFF_DURATION_MS        - Duration of fail debuff in ms (default: 600000 = 10min)
+ *   NUXT_PERK_CRITFAIL_DEBUFF_SPELL_ID       - Aura spell ID applied on crit fail / roll 1 (default: 15007 = Resurrection Sickness)
+ *   NUXT_PERK_CRITFAIL_DEBUFF_DURATION_MS    - Duration of crit-fail debuff in ms (default: 600000 = 10min)
  */
-import { PERK_REGISTRY, PERK_GROUPS, type PerkGroup, type PerkDefinition } from '~~/shared/utils/perks'
-
-export interface PerkGroupConfig {
-  enabled: boolean
-}
 
 export interface ResolvedPerkConfig {
   diceSides: number
@@ -277,24 +266,15 @@ export interface ResolvedPerkConfig {
   requiredLevel: number
 }
 
-export interface PerkSystemConfig {
-  /** Per-group enable/disable */
-  groups: Record<PerkGroup, PerkGroupConfig>
-  /** Per-perk resolved config (after env overrides) */
-  perks: Record<string, ResolvedPerkConfig>
-  /** Shared debuff settings */
-  failDebuffSpellId: number
-  failDebuffDurationMs: number
-  critFailDebuffSpellId: number
-  critFailDebuffDurationMs: number
+export interface PerkGroupConfig {
+  enabled: boolean
 }
 
-/** Check if a perk group is enabled via environment */
+/** Check if a perk group is enabled via environment variable (default: true) */
 function isGroupEnabled(group: PerkGroup): boolean {
   const meta = PERK_GROUPS.find(g => g.id === group)
   if (!meta) return false
   const envVal = process.env[meta.envKey]
-  // Default to enabled (true) — set to 'false' to disable
   return envVal !== 'false'
 }
 
@@ -309,13 +289,14 @@ function resolvePerkConfig(perk: PerkDefinition): ResolvedPerkConfig {
   }
 }
 
-/** Get the full perk system config (groups, per-perk overrides, debuffs) */
-export const getPerkConfig = (): PerkSystemConfig => {
+export const getPerkConfig = () => {
+  // Per-group enable/disable
   const groups = {} as Record<PerkGroup, PerkGroupConfig>
   for (const g of PERK_GROUPS) {
     groups[g.id] = { enabled: isGroupEnabled(g.id) }
   }
 
+  // Per-perk resolved config (env overrides over registry defaults)
   const perks = {} as Record<string, ResolvedPerkConfig>
   for (const perk of PERK_REGISTRY) {
     perks[perk.id] = resolvePerkConfig(perk)
@@ -324,10 +305,13 @@ export const getPerkConfig = (): PerkSystemConfig => {
   return {
     groups,
     perks,
+
+    // Debuff on normal fail (rolled below threshold but not 1)
     failDebuffSpellId: parseInt(process.env.NUXT_PERK_FAIL_DEBUFF_SPELL_ID || '11196', 10),
     failDebuffDurationMs: parseInt(process.env.NUXT_PERK_FAIL_DEBUFF_DURATION_MS || '600000', 10),
+
+    // Debuff on critical fail (rolled exactly 1)
     critFailDebuffSpellId: parseInt(process.env.NUXT_PERK_CRITFAIL_DEBUFF_SPELL_ID || '15007', 10),
     critFailDebuffDurationMs: parseInt(process.env.NUXT_PERK_CRITFAIL_DEBUFF_DURATION_MS || '600000', 10),
   }
 }
-

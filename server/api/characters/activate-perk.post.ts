@@ -53,7 +53,7 @@ const CREATE_USAGE_TABLE_SQL = `
 async function getUsesToday(charPool: any, characterGuid: number, perkId: string): Promise<number> {
   const [rows] = await charPool.query(
     `SELECT COUNT(*) AS cnt FROM web_perk_usage
-     WHERE character_guid = ? AND perk_id = ? AND DATE(used_at) = CURDATE()`,
+     WHERE character_guid = ? AND perk_id = ? AND DATE(used_at) = CURDATE() AND outcome = 'success'`,
     [characterGuid, perkId],
   )
   return (rows as any[])?.[0]?.cnt ?? 0
@@ -92,11 +92,40 @@ async function deliverPerk(charPool: any, characterGuid: number, perk: PerkDefin
       )
       break
 
+    case 'bag-item':
+      await charPool.query(
+        `INSERT INTO web_bag_requests (character_guid, item_entry, item_count, reason, status)
+         VALUES (?, ?, ?, ?, 'pending')`,
+        [
+          characterGuid,
+          perk.gameId,
+          perk.itemCount ?? 1,
+          `Perk: ${perk.name}`,
+        ],
+      )
+      break
+
     case 'aura':
       await charPool.query(
         `INSERT INTO web_aura_requests (character_guid, spell_id, duration_ms, stacks, reason, status)
          VALUES (?, ?, ?, 1, ?, 'pending')`,
         [characterGuid, perk.gameId, perk.auraDurationMs ?? 0, `Perk: ${perk.name}`],
+      )
+      break
+
+    case 'teleport':
+      await charPool.query(
+        `INSERT INTO web_teleport_requests (character_guid, map_id, x, y, z, o, reason, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
+        [
+          characterGuid,
+          perk.teleportMapId ?? 0,
+          perk.teleportX ?? 0,
+          perk.teleportY ?? 0,
+          perk.teleportZ ?? 0,
+          perk.teleportO ?? 0,
+          `Perk: ${perk.name}`,
+        ],
       )
       break
   }
@@ -254,15 +283,16 @@ export default defineEventHandler(async (event): Promise<ActivatePerkResponse> =
 
     // ── CRITICAL FAIL (rolled 1) ──
     if (roll === 1) {
+      const critDebuffSpell = perk.critFailDebuffSpellId ?? perkConfig.critFailDebuffSpellId
+      const critDebuffDuration = perk.critFailDebuffDurationMs ?? perkConfig.critFailDebuffDurationMs
+
       await applyDebuff(
         charPool,
         characterGuid,
-        perkConfig.critFailDebuffSpellId,
-        perkConfig.critFailDebuffDurationMs,
+        critDebuffSpell,
+        critDebuffDuration,
         `Critical fail! Rolled 1 on d${diceSides} for ${perk.name}.`,
       )
-      await recordUsage(charPool, characterGuid, perkId, 'critfail', roll)
-      const newUsesToday = usesToday + 1
 
       return {
         success: false,
@@ -271,22 +301,23 @@ export default defineEventHandler(async (event): Promise<ActivatePerkResponse> =
         diceSides,
         threshold,
         outcome: 'critfail',
-        usesToday: newUsesToday,
+        usesToday,
         dailyLimit: resolved.dailyLimit,
       }
     }
 
     // ── NORMAL FAIL (below threshold) ──
     if (roll < threshold) {
+      const failDebuffSpell = perk.failDebuffSpellId ?? perkConfig.failDebuffSpellId
+      const failDebuffDuration = perk.failDebuffDurationMs ?? perkConfig.failDebuffDurationMs
+
       await applyDebuff(
         charPool,
         characterGuid,
-        perkConfig.failDebuffSpellId,
-        perkConfig.failDebuffDurationMs,
+        failDebuffSpell,
+        failDebuffDuration,
         `Rolled ${roll} on d${diceSides} (needed ${threshold}+) for ${perk.name}. Better luck next time.`,
       )
-      await recordUsage(charPool, characterGuid, perkId, 'fail', roll)
-      const newUsesToday = usesToday + 1
 
       return {
         success: false,
@@ -295,7 +326,7 @@ export default defineEventHandler(async (event): Promise<ActivatePerkResponse> =
         diceSides,
         threshold,
         outcome: 'fail',
-        usesToday: newUsesToday,
+        usesToday,
         dailyLimit: resolved.dailyLimit,
       }
     }

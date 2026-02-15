@@ -7,6 +7,7 @@
     - Direct-to-bag item delivery (web_bag_requests)
     - Spell learning (web_spell_requests)
     - Aura/debuff application (web_aura_requests)
+    - Teleportation to coordinates (web_teleport_requests)
 
     Using a single polling timer is more efficient than separate scripts,
     reduces database connections, and shares common utility functions.
@@ -17,7 +18,7 @@
     Format: [{"entry":12345,"count":1},{"entry":67890,"count":2}]
 
     Author: AzerothCore Nix Flake Project
-    Version: 2.5
+    Version: 2.6
 ]]
 
 local SCRIPT_NAME = "web_worker"
@@ -134,6 +135,26 @@ CREATE TABLE IF NOT EXISTS web_aura_requests (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 ]]
 
+local CREATE_TELEPORT_TABLE_SQL = [[
+CREATE TABLE IF NOT EXISTS web_teleport_requests (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    character_guid INT UNSIGNED NOT NULL,
+    map_id INT UNSIGNED NOT NULL,
+    x FLOAT NOT NULL,
+    y FLOAT NOT NULL,
+    z FLOAT NOT NULL,
+    o FLOAT NOT NULL DEFAULT 0,
+    reason VARCHAR(255) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP NULL DEFAULT NULL,
+    status ENUM('pending','done','error','waiting') NOT NULL DEFAULT 'pending',
+    error_text VARCHAR(255) NULL,
+    PRIMARY KEY (id),
+    KEY idx_pending (status, created_at),
+    KEY idx_char (character_guid)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+]]
+
 --------------------------------------------------------------------------------
 -- SQL Queries
 --------------------------------------------------------------------------------
@@ -172,6 +193,12 @@ local SELECT_PENDING_SPELL_SQL = string.format(
 -- For aura requests, we also select 'waiting' status (player was offline, retry)
 local SELECT_PENDING_AURA_SQL = string.format(
     "SELECT id, character_guid, spell_id, duration_ms, stacks, reason FROM web_aura_requests WHERE status IN ('pending', 'waiting') ORDER BY id ASC LIMIT %d",
+    BATCH_SIZE
+)
+
+-- For teleport requests, we also select 'waiting' status (player was offline, retry)
+local SELECT_PENDING_TELEPORT_SQL = string.format(
+    "SELECT id, character_guid, map_id, x, y, z, o, reason FROM web_teleport_requests WHERE status IN ('pending', 'waiting') ORDER BY id ASC LIMIT %d",
     BATCH_SIZE
 )
 
@@ -294,6 +321,15 @@ end
 local function markWaitingAura(id)
     CharDBExecute(string.format(
         "UPDATE web_aura_requests SET status='waiting' WHERE id=%d",
+        id
+    ))
+end
+
+--- Mark a teleport request as waiting (player offline)
+---@param id number
+local function markWaitingTeleport(id)
+    CharDBExecute(string.format(
+        "UPDATE web_teleport_requests SET status='waiting' WHERE id=%d",
         id
     ))
 end
@@ -896,6 +932,69 @@ local function processAuraRow(row)
 end
 
 --------------------------------------------------------------------------------
+-- Teleport Request Processing
+--------------------------------------------------------------------------------
+
+--- Process a single teleport request row
+--- Teleports the player to the specified map coordinates
+---@param row userdata Query row
+---@return boolean success
+local function processTeleportRow(row)
+    local id = tonumber(row:GetUInt32(0))
+    local guid = tonumber(row:GetUInt32(1))
+    local mapId = tonumber(row:GetUInt32(2))
+    local x = row:GetFloat(3)
+    local y = row:GetFloat(4)
+    local z = row:GetFloat(5)
+    local o = row:GetFloat(6)
+    local reason = row:GetString(7)
+
+    if not id or id == 0 then
+        PrintError(string.format("[%s] Teleport: Invalid request id", SCRIPT_NAME))
+        return false
+    end
+
+    if not guid or guid == 0 then
+        markError("web_teleport_requests", id, "invalid character_guid")
+        return false
+    end
+
+    if not mapId then
+        markError("web_teleport_requests", id, "invalid map_id")
+        return false
+    end
+
+    -- Player MUST be online to teleport
+    local player = GetPlayerByGUID(guid)
+    if not player then
+        markWaitingTeleport(id)
+        return false -- Not an error, just waiting
+    end
+
+    -- Attempt teleport
+    local ok, err = pcall(function()
+        player:Teleport(mapId, x, y, z, o)
+    end)
+
+    if not ok then
+        markError("web_teleport_requests", id, string.format("Teleport failed: %s", tostring(err)))
+        return false
+    end
+
+    -- Notify player
+    if reason and reason ~= "" then
+        player:SendBroadcastMessage(string.format("|cff00ccff[Portal]|r %s", reason))
+    else
+        player:SendBroadcastMessage("|cff00ccff[Portal]|r You have been teleported!")
+    end
+
+    PrintInfo(string.format("[%s] Teleport: Processed %d for player %d - map %d (%.1f, %.1f, %.1f)",
+        SCRIPT_NAME, id, guid, mapId, x, y, z))
+    markDone("web_teleport_requests", id)
+    return true
+end
+
+--------------------------------------------------------------------------------
 -- Main Polling Function
 --------------------------------------------------------------------------------
 
@@ -990,6 +1089,23 @@ local function pollAllQueues(eventId, delay, repeats)
                 totalWaiting = totalWaiting + 1
             end
         until not auraQuery:NextRow()
+    end
+
+    -- Process teleport requests
+    local teleportQuery = CharDBQuery(SELECT_PENDING_TELEPORT_SQL)
+    if teleportQuery then
+        repeat
+            local ok, result = pcall(processTeleportRow, teleportQuery)
+            if not ok then
+                totalErrors = totalErrors + 1
+                PrintError(string.format("[%s] Teleport error: %s", SCRIPT_NAME, tostring(result)))
+            elseif result then
+                totalProcessed = totalProcessed + 1
+            else
+                -- Teleport requests return false when player is offline (waiting state)
+                totalWaiting = totalWaiting + 1
+            end
+        until not teleportQuery:NextRow()
     end
 
     -- Only log if something happened
@@ -1119,6 +1235,48 @@ local function onPlayerLogin(event, player)
         until not auraQuery:NextRow()
     end
 
+    -- Check for waiting teleport requests for this player
+    local teleportQuery = CharDBQuery(string.format(
+        "SELECT id, map_id, x, y, z, o, reason FROM web_teleport_requests WHERE character_guid = %d AND status = 'waiting' ORDER BY id ASC LIMIT 1",
+        guid
+    ))
+
+    if teleportQuery then
+        PrintInfo(string.format("[%s] Processing waiting teleport request for player %d on login", SCRIPT_NAME, guid))
+
+        -- Only process the most recent waiting teleport (limit 1) to avoid chain-teleporting
+        local tpReqId = tonumber(teleportQuery:GetUInt32(0))
+        local tpMapId = tonumber(teleportQuery:GetUInt32(1))
+        local tpX = teleportQuery:GetFloat(2)
+        local tpY = teleportQuery:GetFloat(3)
+        local tpZ = teleportQuery:GetFloat(4)
+        local tpO = teleportQuery:GetFloat(5)
+        local tpReason = teleportQuery:GetString(6)
+
+        local tpOk, tpErr = pcall(function()
+            player:Teleport(tpMapId, tpX, tpY, tpZ, tpO)
+        end)
+
+        if tpOk then
+            if tpReason and tpReason ~= "" then
+                player:SendBroadcastMessage(string.format("|cff00ccff[Portal]|r %s", tpReason))
+            else
+                player:SendBroadcastMessage("|cff00ccff[Portal]|r You have been teleported!")
+            end
+            markDone("web_teleport_requests", tpReqId)
+            processed = processed + 1
+        else
+            markError("web_teleport_requests", tpReqId, string.format("Teleport failed on login: %s", tostring(tpErr)))
+            errors = errors + 1
+        end
+
+        -- Mark any remaining waiting teleport requests as done (stale - only latest matters)
+        CharDBExecute(string.format(
+            "UPDATE web_teleport_requests SET status='done', processed_at=NOW() WHERE character_guid = %d AND status = 'waiting'",
+            guid
+        ))
+    end
+
     if processed > 0 then
         player:SaveToDB()
         PrintInfo(string.format("[%s] Login delivery for %d: %d items/spells delivered, %d failed",
@@ -1139,6 +1297,7 @@ local function initialize()
     CharDBExecute(CREATE_BAG_TABLE_SQL)
     CharDBExecute(CREATE_SPELL_TABLE_SQL)
     CharDBExecute(CREATE_AURA_TABLE_SQL)
+    CharDBExecute(CREATE_TELEPORT_TABLE_SQL)
     PrintInfo(string.format("[%s] Ensured all queue tables exist", SCRIPT_NAME))
 
     -- Check if items_json column exists and add it if not
