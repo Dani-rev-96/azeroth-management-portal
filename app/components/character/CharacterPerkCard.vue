@@ -175,9 +175,11 @@ function handleUnlock() {
 </template>
 
 <style scoped lang="scss">
+@use 'sass:map';
+
 // Accent color maps
 $accents: (
-  purple: (
+  'purple': (
     border: #a78bfa,
     bg-start: rgba(167, 139, 250, 0.08),
     bg-end: rgba(139, 92, 246, 0.04),
@@ -188,7 +190,7 @@ $accents: (
     btn-end: #8b5cf6,
     btn-shadow: rgba(167, 139, 250, 0.4),
   ),
-  blue: (
+  'blue': (
     border: #60a5fa,
     bg-start: rgba(96, 165, 250, 0.08),
     bg-end: rgba(59, 130, 246, 0.04),
@@ -199,7 +201,7 @@ $accents: (
     btn-end: #3b82f6,
     btn-shadow: rgba(96, 165, 250, 0.4),
   ),
-  green: (
+  'green': (
     border: #4ade80,
     bg-start: rgba(74, 222, 128, 0.08),
     bg-end: rgba(34, 197, 94, 0.04),
@@ -210,7 +212,7 @@ $accents: (
     btn-end: #22c55e,
     btn-shadow: rgba(74, 222, 128, 0.4),
   ),
-  orange: (
+  'orange': (
     border: #fb923c,
     bg-start: rgba(251, 146, 60, 0.08),
     bg-end: rgba(249, 115, 22, 0.04),
@@ -221,7 +223,7 @@ $accents: (
     btn-end: #f97316,
     btn-shadow: rgba(251, 146, 60, 0.4),
   ),
-  red: (
+  'red': (
     border: #f87171,
     bg-start: rgba(248, 113, 113, 0.08),
     bg-end: rgba(239, 68, 68, 0.04),
@@ -256,24 +258,24 @@ $accents: (
   // Generate accent-specific styles
   @each $name, $colors in $accents {
     &--#{$name}:not(.perk-card--locked):not(.perk-card--offline) {
-      border-color: map-get($colors, border);
-      background: linear-gradient(135deg, map-get($colors, bg-start) 0%, map-get($colors, bg-end) 100%);
+      border-color: map.get($colors, border);
+      background: linear-gradient(135deg, map.get($colors, bg-start) 0%, map.get($colors, bg-end) 100%);
     }
 
     &--#{$name} .perk-card__icon-wrapper {
-      background: map-get($colors, icon-bg);
-      border-color: map-get($colors, icon-border);
+      background: map.get($colors, icon-bg);
+      border-color: map.get($colors, icon-border);
     }
 
     &--#{$name} .perk-card__title {
-      color: map-get($colors, title);
+      color: map.get($colors, title);
     }
 
     &--#{$name} .perk-card__button:not(:disabled) {
-      background: linear-gradient(135deg, map-get($colors, btn-start) 0%, map-get($colors, btn-end) 100%);
+      background: linear-gradient(135deg, map.get($colors, btn-start) 0%, map.get($colors, btn-end) 100%);
 
       &:hover {
-        box-shadow: 0 4px 12px map-get($colors, btn-shadow);
+        box-shadow: 0 4px 12px map.get($colors, btn-shadow);
       }
     }
   }
