@@ -7,6 +7,9 @@
  * CharacterPerkCard components.
  *
  * Each perk encapsulates its own unlock logic and API call.
+ * The gambling/gacha mechanic is driven by the server — a dice is rolled
+ * on each attempt, and the server returns the outcome (success/fail/critfail).
+ *
  * Add new perks by adding a new CharacterPerkCard with its own state/handler.
  */
 import { ref, computed } from 'vue'
@@ -14,6 +17,7 @@ import type { CharacterDetailResponse } from '~/types'
 import { useCharactersStore } from '~/stores/characters'
 import { useAuthStore } from '~/stores/auth'
 import CharacterPerkCard from '~/components/character/CharacterPerkCard.vue'
+import type { RollResult } from '~/components/character/CharacterPerkCard.vue'
 
 const props = defineProps<{
   /** Full character data from the detail API */
@@ -40,18 +44,40 @@ const isCharacterOnline = computed(() => {
 })
 
 // ─────────────────────────────────────────────
+// Perk config — fetched from server for dice info display
+// ─────────────────────────────────────────────
+const { data: perkConfig } = await useFetch('/api/characters/perk-config')
+
+// ─────────────────────────────────────────────
 // Perk: Old World Flying (Spell 31700)
 // ─────────────────────────────────────────────
-const FLYING_REQUIRED_LEVEL = 60
+const flyingRequiredLevel = computed(() => perkConfig.value?.perks?.flying?.requiredLevel ?? 60)
 
 const flyingMeetsLevel = computed(() => {
-  return (props.character.character.level ?? 0) >= FLYING_REQUIRED_LEVEL
+  return (props.character.character.level ?? 0) >= flyingRequiredLevel.value
+})
+
+const flyingDiceInfo = computed(() => {
+  const cfg = perkConfig.value?.perks?.flying
+  if (!cfg) return ''
+  return `d${cfg.diceSides}, need ${cfg.rollThreshold}+`
 })
 
 const flyingLoading = ref(false)
 const flyingUnlocked = ref(false)
 const flyingError = ref('')
 const flyingSuccessMessage = ref('')
+const flyingLastRoll = ref<RollResult | null>(null)
+
+interface MountResponse {
+  success: boolean
+  message: string
+  roll?: number
+  diceSides?: number
+  threshold?: number
+  outcome?: 'success' | 'fail' | 'critfail'
+  alreadyKnown?: boolean
+}
 
 async function unlockOldWorldFlying() {
   if (flyingLoading.value || flyingUnlocked.value) return
@@ -60,13 +86,23 @@ async function unlockOldWorldFlying() {
   flyingError.value = ''
 
   try {
-    const response = await $fetch<{ success: boolean; message: string; alreadyKnown?: boolean }>('/api/characters/learn-mount', {
+    const response = await $fetch<MountResponse>('/api/characters/learn-mount', {
       method: 'POST',
       body: {
         characterGuid: props.characterGuid,
         realmId: props.realmId,
       },
     })
+
+    if (response.outcome && response.roll != null && response.diceSides != null && response.threshold != null) {
+      flyingLastRoll.value = {
+        roll: response.roll,
+        diceSides: response.diceSides,
+        threshold: response.threshold,
+        outcome: response.outcome,
+        message: response.message,
+      }
+    }
 
     if (response.success) {
       flyingUnlocked.value = true
@@ -83,14 +119,31 @@ async function unlockOldWorldFlying() {
 // ─────────────────────────────────────────────
 // Perk: Drakefire Amulet (Item 16309)
 // Onyxia's Lair attunement item — skip the long quest chain
-// Delivered via in-game mail (works online & offline)
+// Requires online (debuffs need an online player)
 // ─────────────────────────────────────────────
 const DRAKEFIRE_ITEM_ID = 16309
+
+const drakefireDiceInfo = computed(() => {
+  const cfg = perkConfig.value?.perks?.drakefire
+  if (!cfg) return ''
+  return `d${cfg.diceSides}, need ${cfg.rollThreshold}+`
+})
 
 const drakefireLoading = ref(false)
 const drakefireUnlocked = ref(false)
 const drakefireError = ref('')
 const drakefireSuccessMessage = ref('')
+const drakefireLastRoll = ref<RollResult | null>(null)
+
+interface ItemResponse {
+  success: boolean
+  message: string
+  roll?: number
+  diceSides?: number
+  threshold?: number
+  outcome?: 'success' | 'fail' | 'critfail'
+  alreadyPending?: boolean
+}
 
 async function unlockDrakefireAmulet() {
   if (drakefireLoading.value || drakefireUnlocked.value) return
@@ -99,7 +152,7 @@ async function unlockDrakefireAmulet() {
   drakefireError.value = ''
 
   try {
-    const response = await $fetch<{ success: boolean; message: string; alreadyPending?: boolean }>('/api/characters/grant-item', {
+    const response = await $fetch<ItemResponse>('/api/characters/grant-item', {
       method: 'POST',
       body: {
         characterGuid: props.characterGuid,
@@ -107,6 +160,16 @@ async function unlockDrakefireAmulet() {
         itemId: DRAKEFIRE_ITEM_ID,
       },
     })
+
+    if (response.outcome && response.roll != null && response.diceSides != null && response.threshold != null) {
+      drakefireLastRoll.value = {
+        roll: response.roll,
+        diceSides: response.diceSides,
+        threshold: response.threshold,
+        outcome: response.outcome,
+        message: response.message,
+      }
+    }
 
     if (response.success) {
       drakefireUnlocked.value = true
@@ -123,7 +186,7 @@ async function unlockDrakefireAmulet() {
 // ─────────────────────────────────────────────
 // Future perks go here — follow the same pattern:
 // 1. Define requirements (computed)
-// 2. Define state refs (loading, unlocked, error, message)
+// 2. Define state refs (loading, unlocked, error, message, lastRoll)
 // 3. Define unlock handler (async function)
 // 4. Add a <CharacterPerkCard> in the template
 // ─────────────────────────────────────────────
@@ -141,15 +204,17 @@ async function unlockDrakefireAmulet() {
         icon="🦅"
         title="Old World Flying"
         description="Learn the ability to fly in Kalimdor and the Eastern Kingdoms."
-        :locked-message="`Requires level ${FLYING_REQUIRED_LEVEL} to unlock. Current level: ${character.character.level}.`"
-        offline-message="Character must be online to learn this spell."
+        :locked-message="`Requires level ${flyingRequiredLevel} to unlock. Current level: ${character.character.level}.`"
+        offline-message="Character must be online to attempt this perk. The dice gods demand your presence!"
         :success-message="flyingSuccessMessage || 'Old World Flying has been unlocked!'"
         :meets-requirements="flyingMeetsLevel"
         :is-online="isCharacterOnline"
         :loading="flyingLoading"
         :unlocked="flyingUnlocked"
         :error="flyingError"
-        button-label="Learn Spell"
+        :dice-info="flyingDiceInfo"
+        :last-roll="flyingLastRoll"
+        button-label="Roll the Dice"
         button-unlocked-label="✓ Learned"
         accent="purple"
         @unlock="unlockOldWorldFlying"
@@ -161,14 +226,16 @@ async function unlockDrakefireAmulet() {
         title="Drakefire Amulet"
         description="Receive the Drakefire Amulet via mail — grants access to Onyxia's Lair without completing the attunement chain."
         locked-message=""
-        offline-message=""
-        success-message="Drakefire Amulet has been sent! Check your in-game mailbox."
+        offline-message="Character must be online to attempt this perk. The dice gods demand your presence!"
+        :success-message="drakefireSuccessMessage || 'Drakefire Amulet has been sent! Check your in-game mailbox.'"
         :meets-requirements="true"
-        :is-online="true"
+        :is-online="isCharacterOnline"
         :loading="drakefireLoading"
         :unlocked="drakefireUnlocked"
         :error="drakefireError"
-        button-label="Obtain Amulet"
+        :dice-info="drakefireDiceInfo"
+        :last-roll="drakefireLastRoll"
+        button-label="Roll the Dice"
         button-unlocked-label="✓ Sent"
         accent="orange"
         @unlock="unlockDrakefireAmulet"

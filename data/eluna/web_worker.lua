@@ -6,6 +6,7 @@
     - Item delivery via mail (web_item_requests)
     - Direct-to-bag item delivery (web_bag_requests)
     - Spell learning (web_spell_requests)
+    - Aura/debuff application (web_aura_requests)
 
     Using a single polling timer is more efficient than separate scripts,
     reduces database connections, and shares common utility functions.
@@ -16,7 +17,7 @@
     Format: [{"entry":12345,"count":1},{"entry":67890,"count":2}]
 
     Author: AzerothCore Nix Flake Project
-    Version: 2.4
+    Version: 2.5
 ]]
 
 local SCRIPT_NAME = "web_worker"
@@ -115,6 +116,24 @@ CREATE TABLE IF NOT EXISTS web_spell_requests (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 ]]
 
+local CREATE_AURA_TABLE_SQL = [[
+CREATE TABLE IF NOT EXISTS web_aura_requests (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    character_guid INT UNSIGNED NOT NULL,
+    spell_id INT UNSIGNED NOT NULL,
+    duration_ms INT UNSIGNED NOT NULL DEFAULT 0,
+    stacks INT UNSIGNED NOT NULL DEFAULT 1,
+    reason VARCHAR(255) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP NULL DEFAULT NULL,
+    status ENUM('pending','done','error','waiting') NOT NULL DEFAULT 'pending',
+    error_text VARCHAR(255) NULL,
+    PRIMARY KEY (id),
+    KEY idx_pending (status, created_at),
+    KEY idx_char (character_guid)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+]]
+
 --------------------------------------------------------------------------------
 -- SQL Queries
 --------------------------------------------------------------------------------
@@ -147,6 +166,12 @@ local SELECT_PENDING_BAG_SQL = string.format(
 -- For spell requests, we also select 'waiting' status (player was offline, retry)
 local SELECT_PENDING_SPELL_SQL = string.format(
     "SELECT id, character_guid, spell_id, reason FROM web_spell_requests WHERE status IN ('pending', 'waiting') ORDER BY id ASC LIMIT %d",
+    BATCH_SIZE
+)
+
+-- For aura requests, we also select 'waiting' status (player was offline, retry)
+local SELECT_PENDING_AURA_SQL = string.format(
+    "SELECT id, character_guid, spell_id, duration_ms, stacks, reason FROM web_aura_requests WHERE status IN ('pending', 'waiting') ORDER BY id ASC LIMIT %d",
     BATCH_SIZE
 )
 
@@ -260,6 +285,15 @@ end
 local function markWaitingSpell(id)
     CharDBExecute(string.format(
         "UPDATE web_spell_requests SET status='waiting' WHERE id=%d",
+        id
+    ))
+end
+
+--- Mark an aura request as waiting (player offline)
+---@param id number
+local function markWaitingAura(id)
+    CharDBExecute(string.format(
+        "UPDATE web_aura_requests SET status='waiting' WHERE id=%d",
         id
     ))
 end
@@ -795,6 +829,73 @@ local function processSpellRow(row)
 end
 
 --------------------------------------------------------------------------------
+-- Aura/Debuff Request Processing
+--------------------------------------------------------------------------------
+
+--- Process a single aura request row
+--- Applies a temporary aura (buff/debuff) to the character
+---@param row userdata Query row
+---@return boolean success
+local function processAuraRow(row)
+    local id = tonumber(row:GetUInt32(0))
+    local guid = tonumber(row:GetUInt32(1))
+    local spellId = tonumber(row:GetUInt32(2))
+    local durationMs = tonumber(row:GetUInt32(3)) or 0
+    local stacks = tonumber(row:GetUInt32(4)) or 1
+    local reason = row:GetString(5)
+
+    if not id or id == 0 then
+        PrintError(string.format("[%s] Aura: Invalid request id", SCRIPT_NAME))
+        return false
+    end
+
+    if not guid or guid == 0 then
+        markError("web_aura_requests", id, "invalid character_guid")
+        return false
+    end
+
+    if not spellId or spellId == 0 then
+        markError("web_aura_requests", id, "invalid spell_id")
+        return false
+    end
+
+    -- Player MUST be online to receive an aura
+    local player = GetPlayerByGUID(guid)
+    if not player then
+        markWaitingAura(id)
+        return false -- Not an error, just waiting
+    end
+
+    -- Cast the aura on the player (self-cast for debuffs/buffs)
+    local ok, err = pcall(function()
+        player:AddAura(spellId, player)
+    end)
+
+    if not ok then
+        markError("web_aura_requests", id, string.format("AddAura failed: %s", tostring(err)))
+        return false
+    end
+
+    -- Optionally set duration if specified
+    if durationMs > 0 then
+        local aura = player:GetAura(spellId)
+        if aura then
+            aura:SetDuration(durationMs)
+        end
+    end
+
+    -- Notify player
+    if reason and reason ~= "" then
+        player:SendBroadcastMessage(string.format("|cffff4444[Fate]|r %s", reason))
+    end
+
+    PrintInfo(string.format("[%s] Aura: Processed %d for player %d - spell %d (duration: %dms, stacks: %d)",
+        SCRIPT_NAME, id, guid, spellId, durationMs, stacks))
+    markDone("web_aura_requests", id)
+    return true
+end
+
+--------------------------------------------------------------------------------
 -- Main Polling Function
 --------------------------------------------------------------------------------
 
@@ -872,6 +973,23 @@ local function pollAllQueues(eventId, delay, repeats)
                 totalWaiting = totalWaiting + 1
             end
         until not spellQuery:NextRow()
+    end
+
+    -- Process aura requests
+    local auraQuery = CharDBQuery(SELECT_PENDING_AURA_SQL)
+    if auraQuery then
+        repeat
+            local ok, result = pcall(processAuraRow, auraQuery)
+            if not ok then
+                totalErrors = totalErrors + 1
+                PrintError(string.format("[%s] Aura error: %s", SCRIPT_NAME, tostring(result)))
+            elseif result then
+                totalProcessed = totalProcessed + 1
+            else
+                -- Aura requests return false when player is offline (waiting state)
+                totalWaiting = totalWaiting + 1
+            end
+        until not auraQuery:NextRow()
     end
 
     -- Only log if something happened
@@ -960,6 +1078,47 @@ local function onPlayerLogin(event, player)
         until not spellQuery:NextRow()
     end
 
+    -- Check for waiting aura requests for this player
+    local auraQuery = CharDBQuery(string.format(
+        "SELECT id, spell_id, duration_ms, stacks, reason FROM web_aura_requests WHERE character_guid = %d AND status = 'waiting' ORDER BY id ASC LIMIT %d",
+        guid, BATCH_SIZE
+    ))
+
+    if auraQuery then
+        PrintInfo(string.format("[%s] Processing waiting aura requests for player %d on login", SCRIPT_NAME, guid))
+
+        repeat
+            local auraReqId = tonumber(auraQuery:GetUInt32(0))
+            local auraSpellId = tonumber(auraQuery:GetUInt32(1))
+            local auraDuration = tonumber(auraQuery:GetUInt32(2)) or 0
+            local auraStacks = tonumber(auraQuery:GetUInt32(3)) or 1
+            local auraReason = auraQuery:GetString(4)
+
+            local auraOk, auraErr = pcall(function()
+                player:AddAura(auraSpellId, player)
+            end)
+
+            if auraOk then
+                if auraDuration > 0 then
+                    local aura = player:GetAura(auraSpellId)
+                    if aura then
+                        aura:SetDuration(auraDuration)
+                    end
+                end
+
+                if auraReason and auraReason ~= "" then
+                    player:SendBroadcastMessage(string.format("|cffff4444[Fate]|r %s", auraReason))
+                end
+
+                markDone("web_aura_requests", auraReqId)
+                processed = processed + 1
+            else
+                markError("web_aura_requests", auraReqId, string.format("AddAura failed on login: %s", tostring(auraErr)))
+                errors = errors + 1
+            end
+        until not auraQuery:NextRow()
+    end
+
     if processed > 0 then
         player:SaveToDB()
         PrintInfo(string.format("[%s] Login delivery for %d: %d items/spells delivered, %d failed",
@@ -979,6 +1138,7 @@ local function initialize()
     CharDBExecute(CREATE_ITEM_TABLE_SQL)
     CharDBExecute(CREATE_BAG_TABLE_SQL)
     CharDBExecute(CREATE_SPELL_TABLE_SQL)
+    CharDBExecute(CREATE_AURA_TABLE_SQL)
     PrintInfo(string.format("[%s] Ensured all queue tables exist", SCRIPT_NAME))
 
     -- Check if items_json column exists and add it if not

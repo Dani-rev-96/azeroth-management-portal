@@ -238,3 +238,47 @@ export const isElunaGmMailEnabled = (): boolean => {
   const config = getElunaConfig()
   return config.enabled && config.gmMailEnabled
 }
+
+/**
+ * Perk gambling/gacha configuration
+ * Controls the dice roll mechanics for character perks.
+ *
+ * Environment variables (all optional, sane defaults provided):
+ *
+ * Level thresholds:
+ *   NUXT_PERK_FLYING_REQUIRED_LEVEL          - Min level for Old World Flying (default: 60)
+ *
+ * Roll mechanics (per perk):
+ *   NUXT_PERK_FLYING_DICE_SIDES              - Dice size for flying roll, e.g. 20 = d20 (default: 20)
+ *   NUXT_PERK_FLYING_ROLL_THRESHOLD          - Min roll to succeed (default: 8)
+ *   NUXT_PERK_DRAKEFIRE_DICE_SIDES           - Dice size for Drakefire Amulet (default: 15)
+ *   NUXT_PERK_DRAKEFIRE_ROLL_THRESHOLD       - Min roll to succeed (default: 8)
+ *
+ * Debuff configuration (applied on failure):
+ *   NUXT_PERK_FAIL_DEBUFF_SPELL_ID           - Aura spell ID applied on normal fail (default: 11196 = Recently Bandaged)
+ *   NUXT_PERK_FAIL_DEBUFF_DURATION_MS        - Duration of fail debuff in ms (default: 600000 = 10min)
+ *   NUXT_PERK_CRITFAIL_DEBUFF_SPELL_ID       - Aura spell ID applied on crit fail / roll 1 (default: 15007 = Resurrection Sickness)
+ *   NUXT_PERK_CRITFAIL_DEBUFF_DURATION_MS    - Duration of crit-fail debuff in ms (default: 600000 = 10min)
+ */
+export const getPerkConfig = () => {
+  return {
+    // Level thresholds
+    flyingRequiredLevel: parseInt(process.env.NUXT_PERK_FLYING_REQUIRED_LEVEL || '60', 10),
+
+    // Roll mechanics — Old World Flying
+    flyingDiceSides: parseInt(process.env.NUXT_PERK_FLYING_DICE_SIDES || '20', 10),
+    flyingRollThreshold: parseInt(process.env.NUXT_PERK_FLYING_ROLL_THRESHOLD || '8', 10),
+
+    // Roll mechanics — Drakefire Amulet
+    drakefireDiceSides: parseInt(process.env.NUXT_PERK_DRAKEFIRE_DICE_SIDES || '15', 10),
+    drakefireRollThreshold: parseInt(process.env.NUXT_PERK_DRAKEFIRE_ROLL_THRESHOLD || '8', 10),
+
+    // Debuff on normal fail (rolled below threshold but not 1)
+    failDebuffSpellId: parseInt(process.env.NUXT_PERK_FAIL_DEBUFF_SPELL_ID || '11196', 10),
+    failDebuffDurationMs: parseInt(process.env.NUXT_PERK_FAIL_DEBUFF_DURATION_MS || '600000', 10),
+
+    // Debuff on critical fail (rolled exactly 1)
+    critFailDebuffSpellId: parseInt(process.env.NUXT_PERK_CRITFAIL_DEBUFF_SPELL_ID || '15007', 10),
+    critFailDebuffDurationMs: parseInt(process.env.NUXT_PERK_CRITFAIL_DEBUFF_DURATION_MS || '600000', 10),
+  }
+}

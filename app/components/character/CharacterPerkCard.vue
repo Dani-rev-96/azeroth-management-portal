@@ -2,10 +2,17 @@
 /**
  * CharacterPerkCard - A generic card for character perks/unlockables
  *
- * Designed to be reusable for any unlockable feature (spells, mounts, abilities, etc.)
- * Supports multiple states: locked (requirements not met), offline (character not online),
- * available (ready to unlock), loading, success, and error.
+ * Supports gambling/gacha mechanic with dice rolls.
+ * States: locked, offline, available, loading, roll-result (success/fail/critfail), unlocked.
  */
+
+export interface RollResult {
+  roll: number
+  diceSides: number
+  threshold: number
+  outcome: 'success' | 'fail' | 'critfail'
+  message: string
+}
 
 export interface PerkCardProps {
   /** Display icon (emoji or image URL) */
@@ -38,6 +45,10 @@ export interface PerkCardProps {
   buttonUnlockedLabel?: string
   /** Accent color class: 'purple' | 'blue' | 'green' | 'orange' | 'red' */
   accent?: string
+  /** Dice info string shown in the description (e.g. "d15, need 8+") */
+  diceInfo?: string
+  /** Last roll result (if any) */
+  lastRoll?: RollResult | null
 }
 
 const props = withDefaults(defineProps<PerkCardProps>(), {
@@ -48,11 +59,18 @@ const props = withDefaults(defineProps<PerkCardProps>(), {
   buttonLoadingLabel: '⏳',
   buttonUnlockedLabel: '✓ Unlocked',
   accent: 'purple',
+  diceInfo: '',
+  lastRoll: null,
 })
 
 const emit = defineEmits<{
   unlock: []
 }>()
+
+/** Whether the player can try again (failed roll, not unlocked) */
+const canRetry = computed(() => {
+  return props.lastRoll && props.lastRoll.outcome !== 'success' && !props.unlocked && !props.loading
+})
 
 function handleUnlock() {
   if (!props.meetsRequirements || !props.isOnline || props.loading || props.unlocked) return
@@ -78,28 +96,46 @@ function handleUnlock() {
       </div>
       <div class="perk-card__info">
         <h3 class="perk-card__title">{{ title }}</h3>
+        <!-- Locked state -->
         <p v-if="!meetsRequirements" class="perk-card__description perk-card__description--locked">
           {{ lockedMessage }}
         </p>
+        <!-- Offline state -->
         <p v-else-if="!isOnline" class="perk-card__description perk-card__description--offline">
           {{ offlineMessage }}
         </p>
+        <!-- Success state (unlocked) -->
         <p v-else-if="unlocked" class="perk-card__description perk-card__description--success">
           {{ successMessage }}
         </p>
-        <p v-else class="perk-card__description">
-          {{ description }}
-        </p>
+        <!-- Roll result display -->
+        <div v-else-if="lastRoll" class="perk-card__roll-result" :class="`perk-card__roll-result--${lastRoll.outcome}`">
+          <div class="perk-card__roll-dice">
+            <span class="roll-value">{{ lastRoll.roll }}</span>
+            <span class="roll-separator">/</span>
+            <span class="roll-sides">{{ lastRoll.diceSides }}</span>
+          </div>
+          <p class="perk-card__roll-message">{{ lastRoll.message }}</p>
+        </div>
+        <!-- Default available state -->
+        <div v-else>
+          <p class="perk-card__description">{{ description }}</p>
+          <p v-if="diceInfo" class="perk-card__dice-info">🎲 {{ diceInfo }}</p>
+        </div>
       </div>
       <div class="perk-card__action">
         <button
           class="perk-card__button"
           :disabled="!meetsRequirements || !isOnline || loading || unlocked"
-          :class="{ 'perk-card__button--unlocked': unlocked }"
+          :class="{
+            'perk-card__button--unlocked': unlocked,
+            'perk-card__button--retry': canRetry,
+          }"
           @click="handleUnlock"
         >
           <span v-if="loading" class="perk-card__spinner">{{ buttonLoadingLabel }}</span>
           <span v-else-if="unlocked">{{ buttonUnlockedLabel }}</span>
+          <span v-else-if="canRetry">🎲 Roll Again</span>
           <span v-else>{{ buttonLabel }}</span>
         </button>
       </div>
@@ -333,6 +369,90 @@ $accents: (
   font-size: 0.8rem;
   color: #fca5a5;
   background: rgba(239, 68, 68, 0.1);
+}
+
+// Dice info hint
+.perk-card__dice-info {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  color: #64748b;
+  font-style: italic;
+}
+
+// Roll result display
+.perk-card__roll-result {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+
+  &--success .perk-card__roll-dice {
+    background: rgba(34, 197, 94, 0.15);
+    border-color: rgba(34, 197, 94, 0.4);
+    color: #86efac;
+  }
+
+  &--fail .perk-card__roll-dice {
+    background: rgba(251, 191, 36, 0.15);
+    border-color: rgba(251, 191, 36, 0.4);
+    color: #fde68a;
+  }
+
+  &--critfail .perk-card__roll-dice {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #fca5a5;
+    animation: critShake 0.5s ease-in-out;
+  }
+}
+
+.perk-card__roll-dice {
+  display: flex;
+  align-items: baseline;
+  gap: 0.15rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.5rem;
+  border: 1px solid;
+  font-weight: 700;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+
+  .roll-value {
+    font-size: 1.25rem;
+  }
+
+  .roll-separator {
+    font-size: 0.75rem;
+    opacity: 0.5;
+  }
+
+  .roll-sides {
+    font-size: 0.75rem;
+    opacity: 0.7;
+  }
+}
+
+.perk-card__roll-message {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: #94a3b8;
+}
+
+@keyframes critShake {
+  0%, 100% { transform: translateX(0); }
+  10%, 50%, 90% { transform: translateX(-3px); }
+  30%, 70% { transform: translateX(3px); }
+}
+
+// Retry button styling
+.perk-card__button--retry {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%) !important;
+  opacity: 1 !important;
+  color: #1e293b !important;
+
+  &:hover:not(:disabled) {
+    box-shadow: 0 4px 12px rgba(251, 191, 36, 0.4) !important;
+  }
 }
 
 @media (max-width: 640px) {

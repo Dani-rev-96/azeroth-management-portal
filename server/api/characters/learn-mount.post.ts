@@ -1,24 +1,23 @@
 /**
  * POST /api/characters/learn-mount
- * Teach a character the Old World Flying mount spell (ID 31700)
+ * Attempt to teach a character the Old World Flying mount spell (ID 31700) via dice roll.
  *
- * This spell grants a GM flying mount that allows flying in old world zones
- * (Kalimdor/Eastern Kingdoms) by giving the player the fly aura.
+ * Gambling mechanic:
+ * - A dice is rolled (configurable sides)
+ * - If the roll meets/exceeds the threshold → SUCCESS: spell is queued
+ * - If the roll is below the threshold (but not 1) → FAIL: debuff applied
+ * - If the roll is exactly 1 → CRITICAL FAIL: worse debuff applied
  *
  * Requirements:
- * - Character must be level 60+
- * - Character must be online (spell learning requires a live player)
- * - User must own the character
- * - Eluna must be enabled (uses web_spell_requests queue)
- *
- * Delivery is handled by the Eluna web_worker.lua script which uses
- * Player:LearnSpell() when the player is online, or queues for next login.
+ * - Character must be level 60+ (configurable via NUXT_PERK_FLYING_REQUIRED_LEVEL)
+ * - Character must be online
+ * - User must own the character (or be a GM)
+ * - Eluna must be enabled
  */
 
 import type { RowDataPacket } from 'mysql2/promise'
 
 const OLD_WORLD_FLYING_SPELL_ID = 31700
-const REQUIRED_LEVEL = 60
 
 interface LearnMountRequest {
   characterGuid: number
@@ -28,13 +27,17 @@ interface LearnMountRequest {
 interface LearnMountResponse {
   success: boolean
   message: string
+  roll?: number
+  diceSides?: number
+  threshold?: number
+  outcome?: 'success' | 'fail' | 'critfail'
   alreadyKnown?: boolean
 }
 
 export default defineEventHandler(async (event): Promise<LearnMountResponse> => {
   try {
-    // Check if Eluna is enabled (required for spell queue processing)
-    const { getElunaConfig } = await import('#server/utils/config')
+    // Check if Eluna is enabled
+    const { getElunaConfig, getPerkConfig } = await import('#server/utils/config')
     const elunaConfig = getElunaConfig()
 
     if (!elunaConfig.enabled) {
@@ -43,6 +46,8 @@ export default defineEventHandler(async (event): Promise<LearnMountResponse> => 
         statusMessage: 'This feature requires Eluna to be enabled on the server.',
       })
     }
+
+    const perkConfig = getPerkConfig()
 
     // Authenticate user
     const { getAuthenticatedUser } = await import('#server/utils/auth')
@@ -53,96 +58,76 @@ export default defineEventHandler(async (event): Promise<LearnMountResponse> => 
 
     // Validation
     if (!characterGuid || typeof characterGuid !== 'number') {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Character GUID is required',
-      })
+      throw createError({ statusCode: 400, statusMessage: 'Character GUID is required' })
     }
-
     if (!realmId || typeof realmId !== 'string') {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Realm ID is required',
-      })
+      throw createError({ statusCode: 400, statusMessage: 'Realm ID is required' })
     }
 
     const { getCharactersDbPool } = await import('#server/utils/mysql')
     const charPool = await getCharactersDbPool(realmId)
 
-    // Get character and verify ownership + level + online status
+    // Get character
     const [charRows] = await charPool.query<RowDataPacket[]>(
       'SELECT guid, name, account, level, online FROM characters WHERE guid = ? AND deleteDate IS NULL',
       [characterGuid]
     )
 
     if (charRows.length === 0) {
-      throw createError({
-        statusCode: 404,
-        statusMessage: 'Character not found',
-      })
+      throw createError({ statusCode: 404, statusMessage: 'Character not found' })
     }
 
     const character = charRows[0]!
 
-    // Check if user is a GM (GMs can teach the spell to any character)
+    // GM check + ownership
     const { getAuthenticatedGM, isDirectAuthMode, getDirectAuthSession } = await import('#server/utils/auth')
     let isGM = false
     try {
       await getAuthenticatedGM(event)
       isGM = true
     } catch {
-      // Not a GM, continue with ownership check
+      // Not a GM
     }
 
-    // Verify the user owns this character's account (skip for GMs)
     if (!isGM) {
       let linkedAccountIds: number[]
 
       if (isDirectAuthMode()) {
         const session = await getDirectAuthSession(event)
         if (!session) {
-          throw createError({
-            statusCode: 401,
-            statusMessage: 'Not authenticated',
-          })
+          throw createError({ statusCode: 401, statusMessage: 'Not authenticated' })
         }
         linkedAccountIds = [session.accountId]
       } else {
         const { getDatabase } = await import('#server/utils/db')
         const db = getDatabase()
-
         const stmt = db.prepare('SELECT wow_account_id FROM account_mappings WHERE external_id = ?')
         const mappings = stmt.all(user.id) as { wow_account_id: number }[]
         linkedAccountIds = mappings.map(m => m.wow_account_id)
       }
 
       if (!linkedAccountIds.includes(character.account)) {
-        throw createError({
-          statusCode: 403,
-          statusMessage: 'You do not own this character',
-        })
+        throw createError({ statusCode: 403, statusMessage: 'You do not own this character' })
       }
     }
 
-    // Server-side level check
-    if (character.level < REQUIRED_LEVEL) {
+    // Server-side level check (configurable)
+    if (character.level < perkConfig.flyingRequiredLevel) {
       throw createError({
         statusCode: 400,
-        statusMessage: `Character must be level ${REQUIRED_LEVEL} or higher. Current level: ${character.level}.`,
+        statusMessage: `Character must be level ${perkConfig.flyingRequiredLevel} or higher. Current level: ${character.level}.`,
       })
     }
 
-    // Check if character is online
-    const isOnline = character.online === 1
-
-    if (!isOnline) {
+    // Must be online
+    if (character.online !== 1) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'Character must be online to learn this spell. Please log in to the game first.',
+        statusMessage: 'Character must be online to attempt this perk. The dice gods demand your presence!',
       })
     }
 
-    // Check if there's already a pending/waiting spell request for this character + spell
+    // Check for existing pending/waiting spell request
     const [existingRequests] = await charPool.query<RowDataPacket[]>(
       `SELECT id FROM web_spell_requests
        WHERE character_guid = ? AND spell_id = ? AND status IN ('pending', 'waiting')
@@ -158,7 +143,60 @@ export default defineEventHandler(async (event): Promise<LearnMountResponse> => 
       }
     }
 
-    // Queue the spell learning via web_spell_requests table
+    // ─── DICE ROLL ───────────────────────────────────────
+    const diceSides = perkConfig.flyingDiceSides
+    const threshold = perkConfig.flyingRollThreshold
+    const roll = Math.floor(Math.random() * diceSides) + 1
+
+    console.log(`[Mount] ${user.username}${isGM ? ' (GM)' : ''} rolled ${roll}/${diceSides} (need ≥${threshold}) for Old World Flying on ${character.name} (guid: ${characterGuid}, realm: ${realmId})`)
+
+    // ─── CRITICAL FAIL (rolled 1) ────────────────────────
+    if (roll === 1) {
+      await charPool.query(
+        `INSERT INTO web_aura_requests (character_guid, spell_id, duration_ms, stacks, reason, status)
+         VALUES (?, ?, ?, 1, ?, 'pending')`,
+        [
+          characterGuid,
+          perkConfig.critFailDebuffSpellId,
+          perkConfig.critFailDebuffDurationMs,
+          `Critical fail! You rolled a 1 on d${diceSides} while reaching for Old World Flying. The wind spirits are displeased.`,
+        ]
+      )
+
+      return {
+        success: false,
+        message: `💀 Critical Fail! You rolled a 1 on d${diceSides}. The wind spirits are furious — Resurrection Sickness has been applied!`,
+        roll,
+        diceSides,
+        threshold,
+        outcome: 'critfail',
+      }
+    }
+
+    // ─── NORMAL FAIL (below threshold) ───────────────────
+    if (roll < threshold) {
+      await charPool.query(
+        `INSERT INTO web_aura_requests (character_guid, spell_id, duration_ms, stacks, reason, status)
+         VALUES (?, ?, ?, 1, ?, 'pending')`,
+        [
+          characterGuid,
+          perkConfig.failDebuffSpellId,
+          perkConfig.failDebuffDurationMs,
+          `You rolled ${roll} on d${diceSides} (needed ${threshold}+) for Old World Flying. The wind spirits ignore your plea.`,
+        ]
+      )
+
+      return {
+        success: false,
+        message: `🎲 You rolled ${roll} on d${diceSides} — needed ${threshold} or higher. A debuff has been applied as consolation. Try again later!`,
+        roll,
+        diceSides,
+        threshold,
+        outcome: 'fail',
+      }
+    }
+
+    // ─── SUCCESS ─────────────────────────────────────────
     const reason = 'Old World Flying mount learned from the character panel'
     await charPool.query(
       `INSERT INTO web_spell_requests (character_guid, spell_id, reason, status)
@@ -166,11 +204,13 @@ export default defineEventHandler(async (event): Promise<LearnMountResponse> => 
       [characterGuid, OLD_WORLD_FLYING_SPELL_ID, reason]
     )
 
-    console.log(`[Mount] ${user.username}${isGM ? ' (GM)' : ''} learned Old World Flying for ${character.name} (guid: ${characterGuid}, realm: ${realmId})`)
-
     return {
       success: true,
-      message: `Old World Flying has been taught to ${character.name}! The spell will appear in your spellbook shortly.`,
+      message: `🎉 You rolled ${roll} on d${diceSides} — success! Old World Flying has been taught to ${character.name}!`,
+      roll,
+      diceSides,
+      threshold,
+      outcome: 'success',
       alreadyKnown: false,
     }
   } catch (error) {
