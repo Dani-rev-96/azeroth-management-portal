@@ -240,45 +240,94 @@ export const isElunaGmMailEnabled = (): boolean => {
 }
 
 /**
- * Perk gambling/gacha configuration
- * Controls the dice roll mechanics for character perks.
+ * Perk system configuration
  *
- * Environment variables (all optional, sane defaults provided):
+ * Controls the dice roll / gacha mechanics for character perks.
+ * All perks are defined in the shared registry (shared/utils/perks.ts).
+ * This config layer reads environment variable overrides per-perk and per-group.
  *
- * Level thresholds:
- *   NUXT_PERK_FLYING_REQUIRED_LEVEL          - Min level for Old World Flying (default: 60)
+ * ── Group enable/disable ──
+ *   NUXT_PERK_GROUP_MOUNT_ENABLED    (default: true)
+ *   NUXT_PERK_GROUP_QUEST_ENABLED    (default: true)
+ *   NUXT_PERK_GROUP_BUFFS_ENABLED    (default: true)
+ *   NUXT_PERK_GROUP_SCROLLS_ENABLED  (default: true)
  *
- * Roll mechanics (per perk):
- *   NUXT_PERK_FLYING_DICE_SIDES              - Dice size for flying roll, e.g. 20 = d20 (default: 20)
- *   NUXT_PERK_FLYING_ROLL_THRESHOLD          - Min roll to succeed (default: 8)
- *   NUXT_PERK_DRAKEFIRE_DICE_SIDES           - Dice size for Drakefire Amulet (default: 15)
- *   NUXT_PERK_DRAKEFIRE_ROLL_THRESHOLD       - Min roll to succeed (default: 8)
+ * ── Per-perk overrides (use the perk's envPrefix, e.g. FLYING) ──
+ *   NUXT_PERK_<PREFIX>_DICE_SIDES         — Override dice size
+ *   NUXT_PERK_<PREFIX>_ROLL_THRESHOLD     — Override threshold
+ *   NUXT_PERK_<PREFIX>_DAILY_LIMIT        — Override daily activations (0 = unlimited)
+ *   NUXT_PERK_<PREFIX>_REQUIRED_LEVEL     — Override level requirement
  *
- * Debuff configuration (applied on failure):
- *   NUXT_PERK_FAIL_DEBUFF_SPELL_ID           - Aura spell ID applied on normal fail (default: 11196 = Recently Bandaged)
- *   NUXT_PERK_FAIL_DEBUFF_DURATION_MS        - Duration of fail debuff in ms (default: 600000 = 10min)
- *   NUXT_PERK_CRITFAIL_DEBUFF_SPELL_ID       - Aura spell ID applied on crit fail / roll 1 (default: 15007 = Resurrection Sickness)
- *   NUXT_PERK_CRITFAIL_DEBUFF_DURATION_MS    - Duration of crit-fail debuff in ms (default: 600000 = 10min)
+ * ── Debuff configuration (shared by all perks) ──
+ *   NUXT_PERK_FAIL_DEBUFF_SPELL_ID        (default: 11196 = Recently Bandaged)
+ *   NUXT_PERK_FAIL_DEBUFF_DURATION_MS     (default: 600000 = 10 min)
+ *   NUXT_PERK_CRITFAIL_DEBUFF_SPELL_ID    (default: 15007 = Resurrection Sickness)
+ *   NUXT_PERK_CRITFAIL_DEBUFF_DURATION_MS (default: 600000 = 10 min)
  */
-export const getPerkConfig = () => {
+import { PERK_REGISTRY, PERK_GROUPS, type PerkGroup, type PerkDefinition } from '~~/shared/utils/perks'
+
+export interface PerkGroupConfig {
+  enabled: boolean
+}
+
+export interface ResolvedPerkConfig {
+  diceSides: number
+  rollThreshold: number
+  dailyLimit: number
+  requiredLevel: number
+}
+
+export interface PerkSystemConfig {
+  /** Per-group enable/disable */
+  groups: Record<PerkGroup, PerkGroupConfig>
+  /** Per-perk resolved config (after env overrides) */
+  perks: Record<string, ResolvedPerkConfig>
+  /** Shared debuff settings */
+  failDebuffSpellId: number
+  failDebuffDurationMs: number
+  critFailDebuffSpellId: number
+  critFailDebuffDurationMs: number
+}
+
+/** Check if a perk group is enabled via environment */
+function isGroupEnabled(group: PerkGroup): boolean {
+  const meta = PERK_GROUPS.find(g => g.id === group)
+  if (!meta) return false
+  const envVal = process.env[meta.envKey]
+  // Default to enabled (true) — set to 'false' to disable
+  return envVal !== 'false'
+}
+
+/** Resolve a single perk's config, applying env overrides over defaults */
+function resolvePerkConfig(perk: PerkDefinition): ResolvedPerkConfig {
+  const prefix = `NUXT_PERK_${perk.envPrefix}_`
   return {
-    // Level thresholds
-    flyingRequiredLevel: parseInt(process.env.NUXT_PERK_FLYING_REQUIRED_LEVEL || '60', 10),
+    diceSides: parseInt(process.env[`${prefix}DICE_SIDES`] || String(perk.defaultDiceSides), 10),
+    rollThreshold: parseInt(process.env[`${prefix}ROLL_THRESHOLD`] || String(perk.defaultRollThreshold), 10),
+    dailyLimit: parseInt(process.env[`${prefix}DAILY_LIMIT`] || String(perk.defaultDailyLimit), 10),
+    requiredLevel: parseInt(process.env[`${prefix}REQUIRED_LEVEL`] || String(perk.requiredLevel), 10),
+  }
+}
 
-    // Roll mechanics — Old World Flying
-    flyingDiceSides: parseInt(process.env.NUXT_PERK_FLYING_DICE_SIDES || '20', 10),
-    flyingRollThreshold: parseInt(process.env.NUXT_PERK_FLYING_ROLL_THRESHOLD || '8', 10),
+/** Get the full perk system config (groups, per-perk overrides, debuffs) */
+export const getPerkConfig = (): PerkSystemConfig => {
+  const groups = {} as Record<PerkGroup, PerkGroupConfig>
+  for (const g of PERK_GROUPS) {
+    groups[g.id] = { enabled: isGroupEnabled(g.id) }
+  }
 
-    // Roll mechanics — Drakefire Amulet
-    drakefireDiceSides: parseInt(process.env.NUXT_PERK_DRAKEFIRE_DICE_SIDES || '15', 10),
-    drakefireRollThreshold: parseInt(process.env.NUXT_PERK_DRAKEFIRE_ROLL_THRESHOLD || '8', 10),
+  const perks = {} as Record<string, ResolvedPerkConfig>
+  for (const perk of PERK_REGISTRY) {
+    perks[perk.id] = resolvePerkConfig(perk)
+  }
 
-    // Debuff on normal fail (rolled below threshold but not 1)
+  return {
+    groups,
+    perks,
     failDebuffSpellId: parseInt(process.env.NUXT_PERK_FAIL_DEBUFF_SPELL_ID || '11196', 10),
     failDebuffDurationMs: parseInt(process.env.NUXT_PERK_FAIL_DEBUFF_DURATION_MS || '600000', 10),
-
-    // Debuff on critical fail (rolled exactly 1)
     critFailDebuffSpellId: parseInt(process.env.NUXT_PERK_CRITFAIL_DEBUFF_SPELL_ID || '15007', 10),
     critFailDebuffDurationMs: parseInt(process.env.NUXT_PERK_CRITFAIL_DEBUFF_DURATION_MS || '600000', 10),
   }
 }
+

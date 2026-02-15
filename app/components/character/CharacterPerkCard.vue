@@ -2,8 +2,8 @@
 /**
  * CharacterPerkCard - A generic card for character perks/unlockables
  *
- * Supports gambling/gacha mechanic with dice rolls.
- * States: locked, offline, available, loading, roll-result (success/fail/critfail), unlocked.
+ * Supports gambling/gacha mechanic with dice rolls and daily usage limits.
+ * States: locked, offline, available, loading, roll-result (success/fail/critfail), unlocked, exhausted (daily limit).
  */
 
 export interface RollResult {
@@ -49,31 +49,50 @@ export interface PerkCardProps {
   diceInfo?: string
   /** Last roll result (if any) */
   lastRoll?: RollResult | null
+  /** Number of times activated today */
+  usesToday?: number
+  /** Max activations per day (0 = unlimited) */
+  dailyLimit?: number
+  /** Whether this is a one-time permanent unlock */
+  oneTime?: boolean
 }
 
 const props = withDefaults(defineProps<PerkCardProps>(), {
   lockedMessage: 'Requirements not met.',
   offlineMessage: 'Character must be online.',
   successMessage: 'Successfully unlocked!',
-  buttonLabel: 'Unlock',
+  buttonLabel: 'Roll the Dice',
   buttonLoadingLabel: '⏳',
   buttonUnlockedLabel: '✓ Unlocked',
   accent: 'purple',
   diceInfo: '',
   lastRoll: null,
+  usesToday: 0,
+  dailyLimit: 0,
+  oneTime: false,
 })
 
 const emit = defineEmits<{
   unlock: []
 }>()
 
-/** Whether the player can try again (failed roll, not unlocked) */
+/** Whether the daily limit has been reached */
+const isExhausted = computed(() => {
+  return props.dailyLimit > 0 && props.usesToday >= props.dailyLimit
+})
+
+/** Whether the player can try again (failed roll, not unlocked, not exhausted) */
 const canRetry = computed(() => {
-  return props.lastRoll && props.lastRoll.outcome !== 'success' && !props.unlocked && !props.loading
+  return props.lastRoll && props.lastRoll.outcome !== 'success' && !props.unlocked && !props.loading && !isExhausted.value
+})
+
+/** Whether the button should be disabled */
+const isDisabled = computed(() => {
+  return !props.meetsRequirements || !props.isOnline || props.loading || props.unlocked || isExhausted.value
 })
 
 function handleUnlock() {
-  if (!props.meetsRequirements || !props.isOnline || props.loading || props.unlocked) return
+  if (isDisabled.value && !canRetry.value) return
   emit('unlock')
 }
 </script>
@@ -87,6 +106,7 @@ function handleUnlock() {
         'perk-card--locked': !meetsRequirements,
         'perk-card--offline': meetsRequirements && !isOnline,
         'perk-card--unlocked': unlocked,
+        'perk-card--exhausted': isExhausted && !unlocked,
       },
     ]"
   >
@@ -95,7 +115,12 @@ function handleUnlock() {
         <span class="perk-card__icon">{{ icon }}</span>
       </div>
       <div class="perk-card__info">
-        <h3 class="perk-card__title">{{ title }}</h3>
+        <div class="perk-card__header">
+          <h3 class="perk-card__title">{{ title }}</h3>
+          <span v-if="dailyLimit > 0 && !unlocked" class="perk-card__daily-badge" :class="{ 'perk-card__daily-badge--exhausted': isExhausted }">
+            {{ usesToday }}/{{ dailyLimit }} today
+          </span>
+        </div>
         <!-- Locked state -->
         <p v-if="!meetsRequirements" class="perk-card__description perk-card__description--locked">
           {{ lockedMessage }}
@@ -107,6 +132,10 @@ function handleUnlock() {
         <!-- Success state (unlocked) -->
         <p v-else-if="unlocked" class="perk-card__description perk-card__description--success">
           {{ successMessage }}
+        </p>
+        <!-- Exhausted state (daily limit reached) -->
+        <p v-else-if="isExhausted" class="perk-card__description perk-card__description--exhausted">
+          Daily limit reached. Try again tomorrow!
         </p>
         <!-- Roll result display -->
         <div v-else-if="lastRoll" class="perk-card__roll-result" :class="`perk-card__roll-result--${lastRoll.outcome}`">
@@ -126,7 +155,7 @@ function handleUnlock() {
       <div class="perk-card__action">
         <button
           class="perk-card__button"
-          :disabled="!meetsRequirements || !isOnline || loading || unlocked"
+          :disabled="isDisabled && !canRetry"
           :class="{
             'perk-card__button--unlocked': unlocked,
             'perk-card__button--retry': canRetry,
@@ -135,6 +164,7 @@ function handleUnlock() {
         >
           <span v-if="loading" class="perk-card__spinner">{{ buttonLoadingLabel }}</span>
           <span v-else-if="unlocked">{{ buttonUnlockedLabel }}</span>
+          <span v-else-if="isExhausted">⏳ Exhausted</span>
           <span v-else-if="canRetry">🎲 Roll Again</span>
           <span v-else>{{ buttonLabel }}</span>
         </button>
@@ -219,6 +249,10 @@ $accents: (
     opacity: 0.75;
   }
 
+  &--exhausted {
+    opacity: 0.6;
+  }
+
   // Generate accent-specific styles
   @each $name, $colors in $accents {
     &--#{$name}:not(.perk-card--locked):not(.perk-card--offline) {
@@ -286,10 +320,33 @@ $accents: (
   min-width: 0;
 }
 
+.perk-card__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
 .perk-card__title {
-  margin: 0 0 0.25rem;
+  margin: 0;
   font-size: 1rem;
   font-weight: 600;
+}
+
+.perk-card__daily-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.2);
+  color: #94a3b8;
+  white-space: nowrap;
+  flex-shrink: 0;
+
+  &--exhausted {
+    background: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+  }
 }
 
 .perk-card__description {
@@ -308,6 +365,11 @@ $accents: (
 
   &--success {
     color: #86efac;
+  }
+
+  &--exhausted {
+    color: #fca5a5;
+    font-style: italic;
   }
 }
 

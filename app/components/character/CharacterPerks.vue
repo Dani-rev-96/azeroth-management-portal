@@ -1,18 +1,14 @@
 <script setup lang="ts">
 /**
- * CharacterPerks - Container for all character perk/unlockable cards
+ * CharacterPerks — Data-driven perk container
  *
- * This component manages the perks tab content for a character detail view.
- * It handles access control (owner/GM) and renders available perks using
- * CharacterPerkCard components.
+ * Renders all enabled perks grouped by category, driven entirely by the
+ * server-side perk config (which reads the shared perk registry + env overrides).
  *
- * Each perk encapsulates its own unlock logic and API call.
- * The gambling/gacha mechanic is driven by the server — a dice is rolled
- * on each attempt, and the server returns the outcome (success/fail/critfail).
- *
- * Add new perks by adding a new CharacterPerkCard with its own state/handler.
+ * Each perk card is rendered from the config with a unified activation handler
+ * that calls the generic /api/characters/activate-perk endpoint.
  */
-import { ref, computed } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import type { CharacterDetailResponse } from '~/types'
 import { useCharactersStore } from '~/stores/characters'
 import { useAuthStore } from '~/stores/auth'
@@ -20,82 +16,105 @@ import CharacterPerkCard from '~/components/character/CharacterPerkCard.vue'
 import type { RollResult } from '~/components/character/CharacterPerkCard.vue'
 
 const props = defineProps<{
-  /** Full character data from the detail API */
   character: CharacterDetailResponse
-  /** Character GUID (parsed from route) */
   characterGuid: number
-  /** Realm ID (from route) */
   realmId: string
 }>()
 
 const charactersStore = useCharactersStore()
 const authStore = useAuthStore()
 
-// Access control: only show perks to the account owner or a GM
 const canAccessPerks = computed(() => {
   const isOwner = !!charactersStore.getCharacter(props.characterGuid, props.realmId)
   const isGM = !!authStore.user?.isGM
   return isOwner || isGM
 })
 
-// Online status (single source of truth from the characters store)
 const isCharacterOnline = computed(() => {
   return charactersStore.isOnline(props.characterGuid, props.realmId)
 })
 
-// ─────────────────────────────────────────────
-// Perk config — fetched from server for dice info display
-// ─────────────────────────────────────────────
+// ── Perk config from server (registry + env overrides) ──
 const { data: perkConfig } = await useFetch('/api/characters/perk-config')
 
-// ─────────────────────────────────────────────
-// Perk: Old World Flying (Spell 31700)
-// ─────────────────────────────────────────────
-const flyingRequiredLevel = computed(() => perkConfig.value?.perks?.flying?.requiredLevel ?? 60)
-
-const flyingMeetsLevel = computed(() => {
-  return (props.character.character.level ?? 0) >= flyingRequiredLevel.value
+// ── Daily usage from server ──
+const { data: perkStatus, refresh: refreshStatus } = await useFetch('/api/characters/perk-status', {
+  query: { characterGuid: props.characterGuid, realmId: props.realmId },
 })
 
-const flyingDiceInfo = computed(() => {
-  const cfg = perkConfig.value?.perks?.flying
-  if (!cfg) return ''
-  return `d${cfg.diceSides}, need ${cfg.rollThreshold}+`
-})
+// ── Per-perk reactive state ──
+interface PerkState {
+  loading: boolean
+  unlocked: boolean
+  error: string
+  successMessage: string
+  lastRoll: RollResult | null
+  usesToday: number
+}
 
-const flyingLoading = ref(false)
-const flyingUnlocked = ref(false)
-const flyingError = ref('')
-const flyingSuccessMessage = ref('')
-const flyingLastRoll = ref<RollResult | null>(null)
+const perkStates = reactive<Record<string, PerkState>>({})
 
-interface MountResponse {
+function getState(perkId: string): PerkState {
+  if (!perkStates[perkId]) {
+    perkStates[perkId] = {
+      loading: false,
+      unlocked: false,
+      error: '',
+      successMessage: '',
+      lastRoll: null,
+      usesToday: perkStatus.value?.usage?.[perkId] ?? 0,
+    }
+  }
+  return perkStates[perkId]
+}
+
+// Sync usage counts when perkStatus refreshes
+watch(() => perkStatus.value, (val) => {
+  if (!val?.usage) return
+  for (const [perkId, count] of Object.entries(val.usage)) {
+    if (perkStates[perkId]) {
+      perkStates[perkId].usesToday = count as number
+    }
+  }
+}, { immediate: true })
+
+// ── Unified activation handler ──
+interface ActivateResponse {
   success: boolean
   message: string
   roll?: number
   diceSides?: number
   threshold?: number
   outcome?: 'success' | 'fail' | 'critfail'
-  alreadyKnown?: boolean
+  usesToday?: number
+  dailyLimit?: number
 }
 
-async function unlockOldWorldFlying() {
-  if (flyingLoading.value || flyingUnlocked.value) return
+async function activatePerk(perkId: string) {
+  const state = getState(perkId)
+  if (state.loading || state.unlocked) return
 
-  flyingLoading.value = true
-  flyingError.value = ''
+  state.loading = true
+  state.error = ''
 
   try {
-    const response = await $fetch<MountResponse>('/api/characters/learn-mount', {
+    const response = await $fetch<ActivateResponse>('/api/characters/activate-perk', {
       method: 'POST',
       body: {
+        perkId,
         characterGuid: props.characterGuid,
         realmId: props.realmId,
       },
     })
 
+    // Update usage count from server response
+    if (response.usesToday != null) {
+      state.usesToday = response.usesToday
+    }
+
+    // Set roll result if we have dice data
     if (response.outcome && response.roll != null && response.diceSides != null && response.threshold != null) {
-      flyingLastRoll.value = {
+      state.lastRoll = {
         roll: response.roll,
         diceSides: response.diceSides,
         threshold: response.threshold,
@@ -105,143 +124,73 @@ async function unlockOldWorldFlying() {
     }
 
     if (response.success) {
-      flyingUnlocked.value = true
-      flyingSuccessMessage.value = response.message
+      state.unlocked = true
+      state.successMessage = response.message
     }
   } catch (err: any) {
-    const errorMessage = err?.data?.message || err?.statusMessage || err?.message || 'Failed to learn the spell'
-    flyingError.value = errorMessage
+    state.error = err?.data?.message || err?.statusMessage || err?.message || 'Failed to activate perk'
   } finally {
-    flyingLoading.value = false
+    state.loading = false
   }
 }
 
-// ─────────────────────────────────────────────
-// Perk: Drakefire Amulet (Item 16309)
-// Onyxia's Lair attunement item — skip the long quest chain
-// Requires online (debuffs need an online player)
-// ─────────────────────────────────────────────
-const DRAKEFIRE_ITEM_ID = 16309
-
-const drakefireDiceInfo = computed(() => {
-  const cfg = perkConfig.value?.perks?.drakefire
-  if (!cfg) return ''
-  return `d${cfg.diceSides}, need ${cfg.rollThreshold}+`
-})
-
-const drakefireLoading = ref(false)
-const drakefireUnlocked = ref(false)
-const drakefireError = ref('')
-const drakefireSuccessMessage = ref('')
-const drakefireLastRoll = ref<RollResult | null>(null)
-
-interface ItemResponse {
-  success: boolean
-  message: string
-  roll?: number
-  diceSides?: number
-  threshold?: number
-  outcome?: 'success' | 'fail' | 'critfail'
-  alreadyPending?: boolean
+// ── Helpers for the template ──
+function diceInfoText(diceSides: number, rollThreshold: number): string {
+  return `d${diceSides}, need ${rollThreshold}+`
 }
 
-async function unlockDrakefireAmulet() {
-  if (drakefireLoading.value || drakefireUnlocked.value) return
-
-  drakefireLoading.value = true
-  drakefireError.value = ''
-
-  try {
-    const response = await $fetch<ItemResponse>('/api/characters/grant-item', {
-      method: 'POST',
-      body: {
-        characterGuid: props.characterGuid,
-        realmId: props.realmId,
-        itemId: DRAKEFIRE_ITEM_ID,
-      },
-    })
-
-    if (response.outcome && response.roll != null && response.diceSides != null && response.threshold != null) {
-      drakefireLastRoll.value = {
-        roll: response.roll,
-        diceSides: response.diceSides,
-        threshold: response.threshold,
-        outcome: response.outcome,
-        message: response.message,
-      }
-    }
-
-    if (response.success) {
-      drakefireUnlocked.value = true
-      drakefireSuccessMessage.value = response.message
-    }
-  } catch (err: any) {
-    const errorMessage = err?.data?.message || err?.statusMessage || err?.message || 'Failed to grant the item'
-    drakefireError.value = errorMessage
-  } finally {
-    drakefireLoading.value = false
-  }
+function meetsLevel(requiredLevel: number): boolean {
+  return (props.character.character.level ?? 0) >= requiredLevel
 }
-
-// ─────────────────────────────────────────────
-// Future perks go here — follow the same pattern:
-// 1. Define requirements (computed)
-// 2. Define state refs (loading, unlocked, error, message, lastRoll)
-// 3. Define unlock handler (async function)
-// 4. Add a <CharacterPerkCard> in the template
-// ─────────────────────────────────────────────
 </script>
 
 <template>
   <div v-if="canAccessPerks" class="character-perks">
     <div class="perks-header">
-      <p class="perks-subtitle">Special abilities and bonuses for this character.</p>
+      <p class="perks-subtitle">Special abilities and bonuses for this character. Roll the dice to claim a perk!</p>
     </div>
 
-    <div class="perks-grid">
-      <!-- Old World Flying -->
-      <CharacterPerkCard
-        icon="🦅"
-        title="Old World Flying"
-        description="Learn the ability to fly in Kalimdor and the Eastern Kingdoms."
-        :locked-message="`Requires level ${flyingRequiredLevel} to unlock. Current level: ${character.character.level}.`"
-        offline-message="Character must be online to attempt this perk. The dice gods demand your presence!"
-        :success-message="flyingSuccessMessage || 'Old World Flying has been unlocked!'"
-        :meets-requirements="flyingMeetsLevel"
-        :is-online="isCharacterOnline"
-        :loading="flyingLoading"
-        :unlocked="flyingUnlocked"
-        :error="flyingError"
-        :dice-info="flyingDiceInfo"
-        :last-roll="flyingLastRoll"
-        button-label="Roll the Dice"
-        button-unlocked-label="✓ Learned"
-        accent="purple"
-        @unlock="unlockOldWorldFlying"
-      />
+    <template v-if="perkConfig?.groups?.length">
+      <div v-for="group in perkConfig.groups" :key="group.id" class="perks-group">
+        <div class="perks-group__header">
+          <span class="perks-group__icon">{{ group.icon }}</span>
+          <div>
+            <h3 class="perks-group__title">{{ group.label }}</h3>
+            <p class="perks-group__description">{{ group.description }}</p>
+          </div>
+        </div>
 
-      <!-- Drakefire Amulet -->
-      <CharacterPerkCard
-        icon="🐉"
-        title="Drakefire Amulet"
-        description="Receive the Drakefire Amulet via mail — grants access to Onyxia's Lair without completing the attunement chain."
-        locked-message=""
-        offline-message="Character must be online to attempt this perk. The dice gods demand your presence!"
-        :success-message="drakefireSuccessMessage || 'Drakefire Amulet has been sent! Check your in-game mailbox.'"
-        :meets-requirements="true"
-        :is-online="isCharacterOnline"
-        :loading="drakefireLoading"
-        :unlocked="drakefireUnlocked"
-        :error="drakefireError"
-        :dice-info="drakefireDiceInfo"
-        :last-roll="drakefireLastRoll"
-        button-label="Roll the Dice"
-        button-unlocked-label="✓ Sent"
-        accent="orange"
-        @unlock="unlockDrakefireAmulet"
-      />
+        <div class="perks-grid">
+          <CharacterPerkCard
+            v-for="perk in group.perks"
+            :key="perk.id"
+            :icon="perk.icon"
+            :title="perk.name"
+            :description="perk.description"
+            :locked-message="perk.requiredLevel > 0 ? `Requires level ${perk.requiredLevel}. Current: ${character.character.level}.` : ''"
+            offline-message="Character must be online. The dice gods demand your presence!"
+            :success-message="getState(perk.id).successMessage || perk.successMessage"
+            :meets-requirements="meetsLevel(perk.requiredLevel)"
+            :is-online="perk.requiresOnline ? isCharacterOnline : true"
+            :loading="getState(perk.id).loading"
+            :unlocked="getState(perk.id).unlocked"
+            :error="getState(perk.id).error"
+            :dice-info="diceInfoText(perk.diceSides, perk.rollThreshold)"
+            :last-roll="getState(perk.id).lastRoll"
+            :uses-today="getState(perk.id).usesToday"
+            :daily-limit="perk.dailyLimit"
+            :one-time="perk.oneTime"
+            :button-label="perk.oneTime ? 'Roll the Dice' : '🎲 Roll'"
+            :button-unlocked-label="perk.deliveryType === 'item' ? '✓ Sent' : '✓ Applied'"
+            :accent="perk.accent"
+            @unlock="activatePerk(perk.id)"
+          />
+        </div>
+      </div>
+    </template>
 
-      <!-- Placeholder: more perks will be added here -->
+    <div v-else class="perks-empty">
+      <p>No perks are currently available. Check back later!</p>
     </div>
   </div>
 
@@ -255,11 +204,11 @@ async function unlockDrakefireAmulet() {
 .character-perks {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 2rem;
 }
 
 .perks-header {
-  margin-bottom: 0.5rem;
+  margin-bottom: 0;
 }
 
 .perks-subtitle {
@@ -268,10 +217,53 @@ async function unlockDrakefireAmulet() {
   font-size: 0.95rem;
 }
 
+// ── Group sections ──
+.perks-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.perks-group__header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #334155;
+}
+
+.perks-group__icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.perks-group__title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.perks-group__description {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
 .perks-grid {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.75rem;
+}
+
+.perks-empty {
+  text-align: center;
+  padding: 2rem;
+  color: #64748b;
+
+  p {
+    margin: 0;
+  }
 }
 
 .perks-restricted {
@@ -294,3 +286,4 @@ async function unlockDrakefireAmulet() {
   }
 }
 </style>
+
