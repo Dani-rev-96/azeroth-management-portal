@@ -78,14 +78,8 @@ async function fetchFiles() {
   error.value = ''
 
   try {
-    const { data, error: fetchError } = await useFetch<FileInfo[]>('/api/downloads/list')
-
-    if (fetchError.value) {
-      error.value = 'Failed to load downloads'
-      return
-    }
-
-    files.value = data.value || []
+    const data = await $fetch<FileInfo[]>('/api/downloads/list')
+    files.value = data || []
   } catch (err) {
     console.error('Failed to fetch files:', err)
     error.value = 'Failed to load downloads'

@@ -11,12 +11,12 @@ import UiBadge from '~/components/ui/UiBadge.vue'
 import UiButton from '~/components/ui/UiButton.vue'
 import UiEmptyState from '~/components/ui/UiEmptyState.vue'
 import UiSectionHeader from '~/components/ui/UiSectionHeader.vue'
-import AdminAccountsTab from '~/components/admin/AdminAccountsTab.vue'
-import AdminMappingsTab from '~/components/admin/AdminMappingsTab.vue'
+import AdminAccountsTab, { type AccountRow } from '~/components/admin/AdminAccountsTab.vue'
+import AdminMappingsTab, { type Mapping } from '~/components/admin/AdminMappingsTab.vue'
 import AdminLinkAccountsTab from '~/components/admin/AdminLinkAccountsTab.vue'
-import AdminGMForm from '~/components/admin/AdminGMForm.vue'
-import AdminMailForm from '~/components/admin/AdminMailForm.vue'
-import AdminFilesTab from '~/components/admin/AdminFilesTab.vue'
+import AdminGMForm, { type GMFormData, type RealmOption } from '~/components/admin/AdminGMForm.vue'
+import AdminMailForm, { type MailFormData } from '~/components/admin/AdminMailForm.vue'
+import AdminFilesTab, { type FileInfo } from '~/components/admin/AdminFilesTab.vue'
 import { useAuthStore } from '~/stores/auth'
 import { ref, computed, watchEffect } from 'vue'
 
@@ -38,10 +38,10 @@ const tabs = [
 const { activeTab } = useUrlTab('accounts')
 
 // Data state
-const accounts = ref<any[]>([])
-const mappings = ref<any[]>([])
-const publicFiles = ref<any[]>([])
-const realmsList = ref<any[]>([])
+const accounts = ref<AccountRow[]>([])
+const mappings = ref<Mapping[]>([])
+const publicFiles = ref<FileInfo[]>([])
+const realmsList = ref<RealmOption[]>([])
 
 // Loading states
 const loadingAccounts = ref(false)
@@ -84,9 +84,9 @@ watchEffect(async () => {
 
 async function loadRealms() {
   try {
-    const data = await $fetch<any>('/api/realms')
+    const data = await $fetch<Record<string, { id: number; name: string }>>('/api/realms')
     if (data) {
-      realmsList.value = Object.entries(data).map(([id, realm]: [string, any]) => ({
+      realmsList.value = Object.entries(data).map(([_id, realm]) => ({
         id: realm.id,
         name: realm.name,
       }))
@@ -99,7 +99,7 @@ async function loadRealms() {
 async function fetchAccounts() {
   loadingAccounts.value = true
   try {
-    const data = await $fetch<any[]>('/api/admin/accounts')
+    const data = await $fetch<AccountRow[]>('/api/admin/accounts')
     accounts.value = data || []
   } catch (error) {
     console.error('Failed to fetch accounts:', error)
@@ -111,7 +111,7 @@ async function fetchAccounts() {
 async function fetchMappings() {
   loadingMappings.value = true
   try {
-    const data = await $fetch<any[]>('/api/admin/account-mappings')
+    const data = await $fetch<Mapping[]>('/api/admin/account-mappings')
     mappings.value = data || []
   } catch (error) {
     console.error('Failed to fetch mappings:', error)
@@ -123,7 +123,7 @@ async function fetchMappings() {
 async function fetchFiles() {
   loadingFiles.value = true
   try {
-    const data = await $fetch<any[]>('/api/downloads/list')
+    const data = await $fetch<FileInfo[]>('/api/downloads/list')
     publicFiles.value = data || []
   } catch (error) {
     console.error('Failed to fetch files:', error)
@@ -132,11 +132,11 @@ async function fetchFiles() {
   }
 }
 
-function viewAccount(account: any) {
+function viewAccount(account: AccountRow) {
   navigateTo(`/account/${account.id}`)
 }
 
-async function handleSetGMLevel(data: any) {
+async function handleSetGMLevel(data: GMFormData) {
   settingGMLevel.value = true
   gmError.value = ''
   gmSuccess.value = ''
@@ -161,7 +161,7 @@ async function handleSetGMLevel(data: any) {
   }
 }
 
-async function handleSendMail(data: any) {
+async function handleSendMail(data: MailFormData) {
   sendingMail.value = true
   mailError.value = ''
   mailSuccess.value = ''

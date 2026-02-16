@@ -1,4 +1,5 @@
 import { exportMappings, exportForDirectus, exportToSQL } from '#server/utils/export'
+import { getAuthenticatedGM } from '#server/utils/auth'
 
 /**
  * POST /api/admin/export
@@ -6,6 +7,9 @@ import { exportMappings, exportForDirectus, exportToSQL } from '#server/utils/ex
  * Body: { format: 'json' | 'directus' | 'postgres' | 'mysql' }
  */
 export default defineEventHandler(async (event) => {
+  // Require GM authentication
+  await getAuthenticatedGM(event)
+
   const body = await readBody(event)
   const format = body.format || 'json'
 

@@ -130,6 +130,7 @@
 <script setup lang="ts">
 // Initialize auth on app load
 const authStore = useAuthStore()
+const { logoutAndRedirect } = useAuth()
 const isGM = computed(() => authStore.user?.isGM || false)
 const mobileMenuOpen = ref(false)
 const userMenuOpen = ref(false)
@@ -148,13 +149,8 @@ const closeUserMenu = (event: MouseEvent) => {
 
 const handleLogout = async () => {
   userMenuOpen.value = false
-  try {
-    await $fetch('/api/auth/logout', { method: 'POST' })
-  } catch {
-    // Ignore logout errors
-  }
-  authStore.clearAuth()
-  navigateTo('/login')
+  mobileMenuOpen.value = false
+  await logoutAndRedirect()
 }
 
 onMounted(async () => {

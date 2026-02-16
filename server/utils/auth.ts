@@ -160,7 +160,28 @@ export interface DirectAuthSession {
 }
 
 // Simple in-memory session store (replace with Redis in production)
+const MAX_SESSIONS = 10000
 const sessions = new Map<string, DirectAuthSession>()
+
+/**
+ * Evict expired sessions and enforce max session count
+ */
+function evictExpiredSessions(): void {
+  const now = Date.now()
+  for (const [id, session] of sessions) {
+    if (now > session.expiresAt) {
+      sessions.delete(id)
+    }
+  }
+  // If still over limit, remove oldest sessions
+  if (sessions.size > MAX_SESSIONS) {
+    const sorted = [...sessions.entries()].sort((a, b) => a[1].issuedAt - b[1].issuedAt)
+    const toRemove = sorted.slice(0, sessions.size - MAX_SESSIONS)
+    for (const [id] of toRemove) {
+      sessions.delete(id)
+    }
+  }
+}
 
 /**
  * Get direct auth session from cookie
@@ -209,6 +230,11 @@ export function createDirectAuthSession(
   }
 
   sessions.set(sessionId, session)
+
+  // Periodically evict expired sessions
+  if (sessions.size % 100 === 0) {
+    evictExpiredSessions()
+  }
 
   // Set secure cookie
   setCookie(event, 'wow_session', sessionId, {

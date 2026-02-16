@@ -64,6 +64,7 @@ const columns = [
           :model-value="searchQuery"
           type="search"
           placeholder="Search accounts..."
+          aria-label="Search accounts"
           class="search-input"
           @update:model-value="emit('update:searchQuery', $event as string)"
         />

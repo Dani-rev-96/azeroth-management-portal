@@ -23,6 +23,7 @@ function onInput(event: Event) {
         :value="modelValue"
         type="text"
         placeholder="Search items..."
+        aria-label="Search items"
         @input="onInput"
       />
       <span class="search-icon">🔍</span>

@@ -279,6 +279,7 @@ import { ref, computed } from 'vue'
 import type { CharacterDetailResponse } from '~/types'
 import { useCharactersStore } from '~/stores/characters'
 import { useUrlTab } from '~/composables/useUrlTab'
+import { getClassName, getRaceName, formatPlaytime, formatGold } from '~/utils/wow'
 import UiTabs from '~/components/ui/UiTabs.vue'
 import UiTabPanel from '~/components/ui/UiTabPanel.vue'
 import CharacterEquipmentSlot from '~/components/character/CharacterEquipmentSlot.vue'
@@ -291,7 +292,7 @@ const realmId = computed(() => route.params.realmId as string)
 
 // Fetch character data
 const { data, pending, error } = await useFetch<CharacterDetailResponse>(
-  `/api/characters/${guid.value}/${realmId.value}`
+  () => `/api/characters/${guid.value}/${realmId.value}`
 )
 
 // Characters store for online status
@@ -381,44 +382,6 @@ function getItemInSlot(slotId: number) {
   return data.value?.items.find(item => item.slot === slotId)
 }
 
-function getClassName(classId: number) {
-  const classes: Record<number, string> = {
-    1: 'Warrior', 2: 'Paladin', 3: 'Hunter', 4: 'Rogue',
-    5: 'Priest', 6: 'Death Knight', 7: 'Shaman', 8: 'Mage',
-    9: 'Warlock', 11: 'Druid'
-  }
-  return classes[classId] || 'Unknown'
-}
-
-function getRaceName(raceId: number) {
-  const races: Record<number, string> = {
-    1: 'Human', 2: 'Orc', 3: 'Dwarf', 4: 'Night Elf',
-    5: 'Undead', 6: 'Tauren', 7: 'Gnome', 8: 'Troll',
-    10: 'Blood Elf', 11: 'Draenei'
-  }
-  return races[raceId] || `Race ${raceId}`
-}
-
-function formatGold(copper: number) {
-  const gold = Math.floor(copper / 10000)
-  const silver = Math.floor((copper % 10000) / 100)
-  const copperRemainder = copper % 100
-
-  if (gold > 0) {
-    return `${gold}g ${silver}s ${copperRemainder}c`
-  } else if (silver > 0) {
-    return `${silver}s ${copperRemainder}c`
-  } else {
-    return `${copperRemainder}c`
-  }
-}
-
-function formatPlaytime(seconds: number) {
-  const hours = Math.floor(seconds / 3600)
-  const days = Math.floor(hours / 24)
-  if (days > 0) return `${days}d ${hours % 24}h`
-  return `${hours}h`
-}
 </script>
 
 <style scoped lang="scss">

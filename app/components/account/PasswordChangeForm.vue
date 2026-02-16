@@ -65,13 +65,13 @@ const form = ref({
 })
 
 const isValid = computed(() => {
-  return form.value.newPassword.length >= 6 &&
+  return form.value.newPassword.length >= 8 &&
          form.value.newPassword === form.value.confirmPassword
 })
 
 const handleSubmit = async () => {
   if (!isValid.value) {
-    error.value = 'Passwords must match and be at least 6 characters'
+    error.value = 'Passwords must match and be at least 8 characters'
     return
   }
 

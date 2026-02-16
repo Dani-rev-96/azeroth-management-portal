@@ -83,9 +83,6 @@ export async function verifyAccountCredentials(
   // Find account by username (stored uppercase in DB)
   const account = await findAccountByUsername(username);
 
-  console.log(`Verifying credentials for account: ${username}`);
-  console.log(`Account found: `, account);
-
   if (!account) {
     // Account doesn't exist
     return null
@@ -208,8 +205,8 @@ export async function findAllAccounts(): Promise<AzerothCoreAccount[]> {
   return rows.map(row => ({
     id: row.id,
     username: row.username,
-    salt: row.salt,
-    verifier: row.verifier,
+    salt: '', // Stripped for security
+    verifier: '', // Stripped for security
     email: row.email,
     joindate: row.joindate,
     last_ip: row.last_ip,

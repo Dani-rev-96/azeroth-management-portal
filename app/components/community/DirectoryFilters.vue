@@ -186,6 +186,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
             type="text"
             :value="searchQuery"
             placeholder="Search players..."
+            aria-label="Search players"
             @input="handleSearchInput"
           />
           <button v-if="searchQuery" class="search-input__clear" @click="emit('update:searchQuery', '')">×</button>

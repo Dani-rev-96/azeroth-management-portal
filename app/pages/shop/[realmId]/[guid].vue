@@ -258,7 +258,8 @@ function getIconUrl(iconName: string): string {
 
 function showNotification(type: 'success' | 'error', message: string) {
   notification.value = { type, message }
-  setTimeout(() => {
+  if (notificationTimer) clearTimeout(notificationTimer)
+  notificationTimer = setTimeout(() => {
     notification.value = null
   }, 5000)
 }
@@ -380,6 +381,7 @@ function goToPage(page: number) {
   loadItems()
 }
 
+let notificationTimer: ReturnType<typeof setTimeout> | null = null
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
 function debouncedSearch() {
   if (searchTimeout) clearTimeout(searchTimeout)
@@ -449,6 +451,11 @@ async function initialize() {
 
 onMounted(() => {
   initialize()
+})
+
+onUnmounted(() => {
+  if (notificationTimer) clearTimeout(notificationTimer)
+  if (searchTimeout) clearTimeout(searchTimeout)
 })
 </script>
 

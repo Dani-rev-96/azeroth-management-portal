@@ -262,12 +262,15 @@ spec:
 
 These are additional runtime configuration options:
 
-| Variable     | Description          | Default            |
-| ------------ | -------------------- | ------------------ |
-| `HOST`       | Server bind address  | `localhost`        |
-| `NITRO_PORT` | Server port          | `3000`             |
-| `DB_PATH`    | SQLite database path | `data/mappings.db` |
-| `NODE_ENV`   | Environment mode     | `development`      |
+| Variable               | Description                               | Default                   |
+| ---------------------- | ----------------------------------------- | ------------------------- |
+| `HOST`                 | Server bind address                       | `localhost`               |
+| `NITRO_PORT`           | Server port                               | `3000`                    |
+| `DB_PATH`              | SQLite database path                      | `data/mappings.db`        |
+| `NODE_ENV`             | Environment mode                          | `development`             |
+| `NUXT_CACHE_API_TOKEN` | Bearer token for the cache management API | `change-me-in-production` |
+
+> **⚠️ Security Note:** The `NUXT_CACHE_API_TOKEN` controls access to the `nuxt-multi-cache` management API (cache inspection and invalidation). The default value `change-me-in-production` is **not safe for production**. Always set a strong, unique token in production deployments.
 
 ## Eluna Features Configuration
 

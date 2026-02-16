@@ -1,16 +1,21 @@
 import type { RowDataPacket } from 'mysql2/promise'
 import { getCharactersDbPool } from '#server/utils/mysql'
+import { getAuthenticatedUser } from '#server/utils/auth'
+import { AccountMappingDB } from '#server/utils/db'
 
 /**
  * POST /api/characters/action
  * Handle character rename and undelete requests
- * 
+ *
  * Actions supported:
  * - rename: Request a character rename (sets AT_LOGIN flag)
  * - undelete: Restore a deleted character
  */
 export default defineEventHandler(async (event) => {
   try {
+    // Require authentication
+    const user = await getAuthenticatedUser(event)
+
     const body = await readBody(event)
     const { characterId, action, newName, realmId } = body
 
@@ -60,6 +65,26 @@ export default defineEventHandler(async (event) => {
     }
 
     const character = chars[0]
+
+    // Verify ownership: user must own the account this character belongs to
+    const config = useRuntimeConfig()
+    if (config.public.authMode === 'direct') {
+      if (String(character.account) !== user.id) {
+        throw createError({
+          statusCode: 403,
+          statusMessage: 'You can only perform actions on your own characters',
+        })
+      }
+    } else {
+      const mappings = AccountMappingDB.findByExternalId(user.id)
+      const ownsAccount = mappings.some(m => m.wow_account_id === character.account)
+      if (!ownsAccount) {
+        throw createError({
+          statusCode: 403,
+          statusMessage: 'You can only perform actions on your own characters',
+        })
+      }
+    }
 
     if (action === 'rename') {
       // Validate character is not deleted
@@ -117,7 +142,7 @@ export default defineEventHandler(async (event) => {
         message: `Rename request submitted. The character will be prompted to rename on next login.`,
         action: 'rename',
       }
-    } 
+    }
     else if (action === 'undelete') {
       // Validate character is deleted
       if (!character.deleteDate) {
@@ -129,10 +154,10 @@ export default defineEventHandler(async (event) => {
 
       // Restore the character by clearing delete fields
       await pool.query(
-        `UPDATE characters 
-         SET deleteInfos_Account = NULL, 
-             deleteInfos_Name = NULL, 
-             deleteDate = NULL 
+        `UPDATE characters
+         SET deleteInfos_Account = NULL,
+             deleteInfos_Name = NULL,
+             deleteDate = NULL
          WHERE guid = ?`,
         [characterId]
       )
@@ -153,11 +178,11 @@ export default defineEventHandler(async (event) => {
     })
   } catch (error) {
     console.error('Error processing character action:', error)
-    
+
     if (error && typeof error === 'object' && 'statusCode' in error) {
       throw error
     }
-    
+
     throw createError({
       statusCode: 500,
       statusMessage: 'Failed to process character action',

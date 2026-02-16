@@ -117,9 +117,9 @@ const stats = ref<{
 watchEffect(async () => {
   if (authStore.isAuthenticated && !stats.value) {
     try {
-      const { data } = await useFetch('/api/stats/overview')
-      if (data.value) {
-        stats.value = data.value as any
+      const data = await $fetch('/api/stats/overview')
+      if (data) {
+        stats.value = data as any
       }
     } catch (error) {
       console.error('Failed to load stats:', error)

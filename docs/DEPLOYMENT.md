@@ -247,9 +247,6 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 20
       volumes:
-        - name: credentials
-          secret:
-            secretName: portal-secrets
         - name: data
           persistentVolumeClaim:
             claimName: portal-data
@@ -262,13 +259,13 @@ apiVersion: v1
 kind: Service
 metadata:
   name: azeroth-portal
-  namespace: azeroth-portal
+  namespace: wow
 spec:
   selector:
     app: azeroth-portal
   ports:
-    - port: 3000
-      targetPort: 3000
+    - port: 80
+      targetPort: 80
 ```
 
 ### Ingress with OAuth2-Proxy
@@ -278,7 +275,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: azeroth-portal
-  namespace: azeroth-portal
+  namespace: wow
   annotations:
     kubernetes.io/ingress.class: nginx
     cert-manager.io/cluster-issuer: letsencrypt-prod
@@ -301,7 +298,7 @@ spec:
               service:
                 name: azeroth-portal
                 port:
-                  number: 3000
+                  number: 80
 ```
 
 ### PersistentVolumeClaim
@@ -311,7 +308,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: portal-data
-  namespace: azeroth-portal
+  namespace: wow
 spec:
   accessModes:
     - ReadWriteOnce
