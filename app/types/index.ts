@@ -133,6 +133,7 @@ export type CharacterItem = {
   slot: number
   displayid: number
   name: string
+  description?: string
   quality: number
   itemLevel: number
   requiredLevel: number
@@ -164,11 +165,98 @@ export type CharacterItem = {
   dmg_min1?: number
   dmg_max1?: number
   dmg_type1?: number
+  dmg_min2?: number
+  dmg_max2?: number
+  dmg_type2?: number
+  delay?: number
+  holy_res?: number
+  fire_res?: number
+  nature_res?: number
+  frost_res?: number
+  shadow_res?: number
+  arcane_res?: number
   icon?: string
   enchantments?: string
   enchantmentTexts?: string[]
   enchantmentInfos?: any[]
   randomPropertyId?: number
+  durability?: number
+}
+
+/**
+ * Normalized item tooltip data used by the shared ItemTooltip component.
+ * Can be constructed from either ShopItemDetails or CharacterItem.
+ */
+export type ItemTooltipData = {
+  name: string
+  quality: number
+  itemLevel: number
+  requiredLevel: number
+
+  // Classification
+  itemClass: number
+  itemSubclass: number
+  inventoryType: number
+  inventoryTypeName?: string
+  subclassName?: string
+
+  // Bonding
+  bonding?: number
+
+  // Unique
+  maxCount?: number
+
+  // Armor / Block
+  armor?: number
+  block?: number
+
+  // Weapon damage (primary)
+  dmgMin1?: number
+  dmgMax1?: number
+  dmgType1?: number
+  delay?: number
+
+  // Weapon damage (secondary)
+  dmgMin2?: number
+  dmgMax2?: number
+  dmgType2?: number
+
+  // Stats
+  stats: Array<{ type: number; value: number }>
+
+  // Resistances
+  holyRes?: number
+  fireRes?: number
+  natureRes?: number
+  frostRes?: number
+  shadowRes?: number
+  arcaneRes?: number
+
+  // Sockets
+  socketColor1?: number
+  socketColor2?: number
+  socketColor3?: number
+  socketBonusName?: string
+
+  // Equip effects (pre-formatted strings like "Equip: +30 Spell Power")
+  equipEffects?: string[]
+
+  // Enchantments (from equipped items only)
+  enchantmentTexts?: string[]
+
+  // Durability
+  maxDurability?: number
+  currentDurability?: number
+
+  // Class/Race restrictions
+  allowableClass?: number
+  allowableRace?: number
+
+  // Flavor text
+  description?: string
+
+  // Sell price (copper)
+  sellPrice?: number
 }
 
 export type CharacterTalent = {
@@ -310,7 +398,17 @@ export type CharacterDetailResponse = {
 }
 
 // Shop Types
-export type ShopCategory = 'trade_goods' | 'mounts' | 'miscellaneous'
+export type ShopCategory =
+  | 'weapons'
+  | 'armor'
+  | 'consumables'
+  | 'trade_goods'
+  | 'gems'
+  | 'recipes'
+  | 'glyphs'
+  | 'containers'
+  | 'mounts'
+  | 'miscellaneous'
 
 export type ShopDeliveryMethod = 'mail' | 'bag' | 'both'
 
@@ -329,6 +427,78 @@ export type ShopItem = {
   itemLevel: number
   requiredLevel: number
   maxStackSize: number
+}
+
+/** Extended item data for tooltip display */
+export type ShopItemDetails = ShopItem & {
+  // Binding
+  bonding: number // 0=none, 1=BoP, 2=BoE, 3=BoU
+
+  // Armor / Block
+  armor: number
+  block: number
+
+  // Weapon damage (primary)
+  dmgMin1: number
+  dmgMax1: number
+  dmgType1: number
+  delay: number // weapon speed in ms
+
+  // Weapon damage (secondary, e.g., elemental)
+  dmgMin2: number
+  dmgMax2: number
+  dmgType2: number
+
+  // Stats (up to 10)
+  stats: Array<{ type: number; value: number }>
+
+  // Resistances
+  holyRes: number
+  fireRes: number
+  natureRes: number
+  frostRes: number
+  shadowRes: number
+  arcaneRes: number
+
+  // Sockets
+  socketColor1: number
+  socketColor2: number
+  socketColor3: number
+  socketBonus: number
+  socketBonusName: string // resolved enchantment name
+
+  // Equip spell effects ("Equip: Increases X by Y")
+  equipEffects: string[]
+
+  // Allowable class/race bitmask
+  allowableClass: number
+  allowableRace: number
+
+  // Set & unique
+  itemSet: number
+  maxCount: number // unique-equip count (0 = unlimited)
+
+  // Durability
+  maxDurability: number
+
+  // Item subclass name for display
+  subclassName: string
+  inventoryTypeName: string
+}
+
+/** Purchase history entry from queue tables */
+export type ShopPurchaseHistoryEntry = {
+  id: number
+  itemEntry: number
+  itemName: string
+  itemQuality: number
+  itemIcon: string
+  quantity: number
+  totalCost: number
+  deliveryMethod: 'mail' | 'bag'
+  status: 'pending' | 'done' | 'error' | 'waiting'
+  createdAt: string
+  processedAt: string | null
 }
 
 export type ShopCategoryInfo = {

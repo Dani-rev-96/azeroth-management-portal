@@ -2,7 +2,7 @@
  * GET /api/shop/items
  * Get shop items by category
  * Query params:
- *   - category: 'trade_goods' | 'mounts' | 'miscellaneous'
+ *   - category: ShopCategory (e.g., 'weapons', 'armor', 'trade_goods', 'mounts', ...)
  *   - realmId: realm to query (e.g., '1')
  *   - page: page number (default 1)
  *   - limit: items per page (default 50, max 100)
@@ -12,12 +12,32 @@
 import { getShopConfig } from '#server/utils/config'
 import type { ShopItem, ShopCategory } from '~/types'
 
-// Item class/subclass mappings for WoW 3.3.5
-// Class 7 = Trade Goods (various crafting subclasses)
-// Class 15 = Miscellaneous (subclass 0 = Junk, 5 = Mount)
+// Item class/subclass mappings for WoW 3.3.5a
+// See: https://www.azerothcore.org/wiki/item_template#class
 const CATEGORY_FILTERS: Record<ShopCategory, { class: number; subclasses?: number[] }[]> = {
+  weapons: [
+    { class: 2 }, // All weapon subclasses (axes, maces, swords, bows, etc.)
+  ],
+  armor: [
+    { class: 4 }, // All armor subclasses (cloth, leather, mail, plate, shields)
+  ],
+  consumables: [
+    { class: 0 }, // Consumables (food, elixirs, flasks, potions, bandages, scrolls)
+  ],
   trade_goods: [
-    { class: 7 }, // All Trade Goods subclasses
+    { class: 7 }, // All Trade Goods subclasses (cloth, leather, metal, herbs, etc.)
+  ],
+  gems: [
+    { class: 3 }, // Gems (red, blue, yellow, meta, prismatic, etc.)
+  ],
+  recipes: [
+    { class: 9 }, // Recipes (books, leatherworking, tailoring, engineering, etc.)
+  ],
+  glyphs: [
+    { class: 16 }, // Glyphs (warrior, paladin, hunter, rogue, priest, etc.)
+  ],
+  containers: [
+    { class: 1 }, // Containers (bags, soul bags, herb bags, enchanting bags, etc.)
   ],
   mounts: [
     { class: 15, subclasses: [5] }, // Miscellaneous -> Mount

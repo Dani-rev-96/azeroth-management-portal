@@ -157,7 +157,7 @@ export const getShopConfig = () => {
     deliveryMethod,
     mailSubject: process.env.NUXT_SHOP_MAIL_SUBJECT || 'Your Shop Purchase',
     mailBody: process.env.NUXT_SHOP_MAIL_BODY || 'Thank you for your purchase! Your items are attached.',
-    categories: ['trade_goods', 'mounts', 'miscellaneous'] as const,
+    categories: ['weapons', 'armor', 'consumables', 'trade_goods', 'gems', 'recipes', 'glyphs', 'containers', 'mounts', 'miscellaneous'] as const,
   }
 }
 

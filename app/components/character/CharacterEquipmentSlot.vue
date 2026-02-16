@@ -1,5 +1,12 @@
 <template>
-  <div class="equipment-slot" :class="{ empty: !item, [qualityClass]: item }">
+  <div
+    ref="slotRef"
+    class="equipment-slot"
+    :class="{ empty: !item, [qualityClass]: item }"
+    @mouseenter="onMouseEnter"
+    @mouseleave="onMouseLeave"
+    @touchstart.prevent="onTap"
+  >
     <div v-if="item" class="item-container">
       <div class="item-icon-wrapper">
         <img
@@ -14,48 +21,26 @@
         </div>
         <div class="item-level">{{ item.itemLevel }}</div>
       </div>
-      <div class="item-tooltip">
-        <div class="tooltip-header" :class="qualityClass">
-          <h4>{{ item.name }}</h4>
-          <span class="item-level-text">Item Level {{ item.itemLevel }}</span>
-        </div>
-        <div class="tooltip-content">
-          <div v-if="item.armor" class="stat-line">{{ item.armor }} Armor</div>
-
-          <!-- Primary Stats -->
-          <div v-for="i in item.statsCount" :key="i" class="stat-line">
-            <template v-if="item[`stat_type${i}` as keyof typeof item]">
-              +{{ item[`stat_value${i}` as keyof typeof item] }} {{ getStatName(item[`stat_type${i}` as keyof typeof item] as number) }}
-            </template>
-          </div>
-
-          <!-- Damage for weapons -->
-          <div v-if="item.dmg_min1 || item.dmg_max1" class="stat-line damage">
-            {{ item.dmg_min1 }} - {{ item.dmg_max1 }} Damage
-          </div>
-
-          <!-- Enchantments -->
-          <div v-if="item.enchantmentTexts && item.enchantmentTexts.length > 0" class="enchantments">
-            <div v-for="(enchant, idx) in item.enchantmentTexts" :key="idx" class="enchant-line">
-              <span class="enchant-icon">✨</span> {{ enchant }}
-            </div>
-          </div>
-
-          <div v-if="item.requiredLevel > 1" class="required-level">
-            Requires Level {{ item.requiredLevel }}
-          </div>
-        </div>
-      </div>
     </div>
     <div v-else class="empty-slot">
       <span class="slot-icon">{{ slot.icon }}</span>
       <span class="slot-name">{{ slot.name }}</span>
     </div>
+
+    <UiItemTooltip
+      :item="tooltipData"
+      :show="showTooltip"
+      mode="hover"
+      :anchor-rect="anchorRect"
+      @close="showTooltip = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref, computed } from 'vue'
 import type { CharacterItem } from '~/types'
+import { characterItemToTooltipData } from '~/utils/item-tooltip'
 
 interface EquipmentSlot {
   id: number
@@ -84,8 +69,38 @@ const qualityClass = computed(() => {
   return `quality-${qualityColors[props.item.quality] || 'common'}`
 })
 
+const tooltipData = computed(() => {
+  if (!props.item) return null
+  return characterItemToTooltipData(props.item)
+})
+
+const slotRef = ref<HTMLElement | null>(null)
+const showTooltip = ref(false)
+const anchorRect = ref<DOMRect | null>(null)
+
+function updateAnchorRect() {
+  if (slotRef.value) {
+    anchorRect.value = slotRef.value.getBoundingClientRect()
+  }
+}
+
+function onMouseEnter() {
+  if (!props.item) return
+  updateAnchorRect()
+  showTooltip.value = true
+}
+
+function onMouseLeave() {
+  showTooltip.value = false
+}
+
+function onTap() {
+  if (!props.item) return
+  updateAnchorRect()
+  showTooltip.value = !showTooltip.value
+}
+
 function getIconUrl(iconName: string) {
-  // Remove .blp extension if present and convert to lowercase
   const cleanName = iconName.replace('.blp', '').toLowerCase()
   return `https://wow.zamimg.com/images/wow/icons/large/${cleanName}.jpg`
 }
@@ -93,41 +108,6 @@ function getIconUrl(iconName: string) {
 function onImageError(event: Event) {
   const img = event.target as HTMLImageElement
   img.style.display = 'none'
-}
-
-function getStatName(statType: number): string {
-  const statNames: Record<number, string> = {
-    0: 'Mana',
-    1: 'Health',
-    3: 'Agility',
-    4: 'Strength',
-    5: 'Intellect',
-    6: 'Spirit',
-    7: 'Stamina',
-    12: 'Defense Rating',
-    13: 'Dodge Rating',
-    14: 'Parry Rating',
-    15: 'Block Rating',
-    16: 'Melee Hit Rating',
-    17: 'Ranged Hit Rating',
-    18: 'Spell Hit Rating',
-    19: 'Melee Critical Strike Rating',
-    20: 'Ranged Critical Strike Rating',
-    21: 'Spell Critical Strike Rating',
-    28: 'Melee Haste Rating',
-    29: 'Ranged Haste Rating',
-    30: 'Spell Haste Rating',
-    31: 'Hit Rating',
-    32: 'Critical Strike Rating',
-    35: 'Resilience Rating',
-    36: 'Haste Rating',
-    37: 'Expertise Rating',
-    38: 'Attack Power',
-    43: 'MP5',
-    44: 'Armor Penetration Rating',
-    45: 'Spell Power',
-  }
-  return statNames[statType] || `Stat ${statType}`
 }
 </script>
 
@@ -144,6 +124,7 @@ function getStatName(statType: number): string {
   transition: all 0.2s;
   min-height: 56px;
   min-width: 56px;
+  cursor: pointer;
 }
 
 @media (min-width: 480px) {
@@ -157,6 +138,7 @@ function getStatName(statType: number): string {
 .equipment-slot.empty {
   border-style: dashed;
   opacity: 0.5;
+  cursor: default;
 }
 
 .equipment-slot:not(.empty):hover {
@@ -270,106 +252,5 @@ function getStatName(statType: number): string {
 
 .slot-name {
   display: none;
-}
-
-/* Tooltip */
-.item-tooltip {
-  display: none;
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-top: 0.5rem;
-  background: #1e293b;
-  border: 2px solid #334155;
-  border-radius: 0.5rem;
-  padding: 1rem;
-  min-width: 220px;
-  max-width: 320px;
-  z-index: 1000;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-}
-
-@media (max-width: 640px) {
-  .item-tooltip {
-    position: fixed;
-    top: auto;
-    bottom: 1rem;
-    left: 50%;
-    transform: translateX(-50%);
-    width: calc(100vw - 2rem);
-    max-width: 320px;
-  }
-}
-
-.equipment-slot:hover {
-  z-index: 1001;
-}
-
-.equipment-slot:hover .item-tooltip {
-  display: block;
-}
-
-.tooltip-header {
-  border-bottom: 1px solid #334155;
-  padding-bottom: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.tooltip-header h4 {
-  margin: 0;
-  font-size: 1rem;
-  color: #ffffff;
-}
-
-.tooltip-header.quality-poor h4 { color: #9d9d9d; }
-.tooltip-header.quality-uncommon h4 { color: #1eff00; }
-.tooltip-header.quality-rare h4 { color: #0070dd; }
-.tooltip-header.quality-epic h4 { color: #a335ee; }
-.tooltip-header.quality-legendary h4 { color: #ff8000; }
-
-.item-level-text {
-  font-size: 0.875rem;
-  color: #fbbf24;
-}
-
-.tooltip-content {
-  text-align: left;
-}
-
-.stat-line {
-  color: #1eff00;
-  font-size: 0.875rem;
-  margin: 0.25rem 0;
-}
-
-.stat-line.damage {
-  color: #ffffff;
-  font-weight: 600;
-}
-
-.enchantments {
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid #334155;
-}
-
-.enchant-line {
-  color: #10b981;
-  font-size: 0.875rem;
-  margin: 0.25rem 0;
-  font-style: italic;
-}
-
-.enchant-icon {
-  margin-right: 0.25rem;
-}
-
-.required-level {
-  color: #94a3b8;
-  font-size: 0.875rem;
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid #334155;
 }
 </style>

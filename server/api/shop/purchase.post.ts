@@ -141,8 +141,15 @@ export default defineEventHandler(async (event): Promise<ShopPurchaseResponse> =
 
     // Verify item is in an allowed category
     const allowedCategories = [
+      { class: 0 },                          // Consumables
+      { class: 1 },                          // Containers
+      { class: 2 },                          // Weapons
+      { class: 3 },                          // Gems
+      { class: 4 },                          // Armor
       { class: 7 },                          // Trade Goods
+      { class: 9 },                          // Recipes
       { class: 15, subclasses: [0, 1, 2, 3, 4, 5] }, // Miscellaneous including mounts
+      { class: 16 },                         // Glyphs
     ]
 
     let isAllowed = false

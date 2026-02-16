@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import type { ShopItem } from '~/types'
+import { ref, watch } from 'vue'
+import type { ShopItem, ShopItemDetails, ItemTooltipData } from '~/types'
+import { shopItemToTooltipData } from '~/utils/item-tooltip'
+import { useShopStore } from '~/stores/shop'
 
 const props = defineProps<{
   item: ShopItem
@@ -8,6 +11,7 @@ const props = defineProps<{
   purchasing: boolean
   formatMoney: (copper: number) => string
   getIconUrl: (iconName: string) => string
+  realmId: string
 }>()
 
 const emit = defineEmits<{
@@ -16,6 +20,48 @@ const emit = defineEmits<{
   setQuantity: [value: number]
   purchase: []
 }>()
+
+const shopStore = useShopStore()
+
+const showTooltip = ref(false)
+const cardRef = ref<HTMLElement | null>(null)
+const anchorRect = ref<DOMRect | null>(null)
+
+// Tooltip async data
+const tooltipData = ref<ItemTooltipData | null>(null)
+const tooltipLoading = ref(false)
+const tooltipError = ref('')
+
+function openTooltip() {
+  if (cardRef.value) {
+    anchorRect.value = cardRef.value.getBoundingClientRect()
+  }
+  showTooltip.value = true
+}
+
+async function fetchTooltipData() {
+  if (tooltipData.value) return // already fetched
+  tooltipLoading.value = true
+  tooltipError.value = ''
+  try {
+    const data = await $fetch<ShopItemDetails>('/api/shop/item-details', {
+      params: { entry: props.item.entry, realmId: props.realmId },
+    })
+    tooltipData.value = shopItemToTooltipData(data)
+  } catch {
+    tooltipError.value = 'Failed to load item details'
+  } finally {
+    tooltipLoading.value = false
+  }
+}
+
+watch(
+  () => showTooltip.value,
+  (visible) => {
+    if (visible && !tooltipData.value) fetchTooltipData()
+  },
+  { immediate: true },
+)
 
 function onQuantityChange(event: Event) {
   const input = event.target as HTMLInputElement
@@ -29,8 +75,8 @@ function onIconError(event: Event) {
 </script>
 
 <template>
-  <div class="item-card" :class="`quality-${item.quality}`">
-    <div class="item-icon">
+  <div ref="cardRef" class="item-card" :class="`quality-${item.quality}`">
+    <div class="item-icon" @click="openTooltip">
       <img
         v-if="item.icon"
         :src="getIconUrl(item.icon)"
@@ -40,7 +86,9 @@ function onIconError(event: Event) {
       <span v-else class="icon-placeholder">📦</span>
     </div>
     <div class="item-info">
-      <h3 :class="`quality-text-${item.quality}`">{{ item.name }}</h3>
+      <h3 :class="`quality-text-${item.quality}`" class="item-name" @click="openTooltip">
+        {{ item.name }}
+      </h3>
       <p v-if="item.description" class="item-desc">{{ item.description }}</p>
       <div class="item-meta">
         <span v-if="item.requiredLevel > 1" class="req-level">
@@ -82,6 +130,17 @@ function onIconError(event: Event) {
         <span v-else>Buy</span>
       </button>
     </div>
+
+    <UiItemTooltip
+      :item="tooltipData"
+      :show="showTooltip"
+      mode="click"
+      :anchor-rect="anchorRect"
+      :loading="tooltipLoading"
+      :error="tooltipError"
+      :format-sell-price="shopStore.formatMoney"
+      @close="showTooltip = false"
+    />
   </div>
 </template>
 
@@ -103,9 +162,9 @@ function onIconError(event: Event) {
   }
 
   // Quality border colors
-  @each $quality, $color in (0: $quality-poor, 1: $quality-common, 2: $quality-uncommon, 3: $quality-rare, 4: $quality-epic, 5: $quality-legendary) {
+  @each $quality, $qcolor in (0: $quality-poor, 1: $quality-common, 2: $quality-uncommon, 3: $quality-rare, 4: $quality-epic, 5: $quality-legendary) {
     &.quality-#{$quality} {
-      border-left: 3px solid $color;
+      border-left: 3px solid $qcolor;
     }
   }
 
@@ -119,6 +178,11 @@ function onIconError(event: Event) {
     display: flex;
     align-items: center;
     justify-content: center;
+    cursor: pointer;
+
+    &:hover {
+      box-shadow: 0 0 6px rgba($color-accent, 0.5);
+    }
 
     img {
       width: 100%;
@@ -143,10 +207,18 @@ function onIconError(event: Event) {
       text-overflow: ellipsis;
     }
 
+    .item-name {
+      cursor: pointer;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+
     // Quality text colors
-    @each $quality, $color in (0: $quality-poor, 1: $quality-common, 2: $quality-uncommon, 3: $quality-rare, 4: $quality-epic, 5: $quality-legendary) {
+    @each $quality, $qcolor in (0: $quality-poor, 1: $quality-common, 2: $quality-uncommon, 3: $quality-rare, 4: $quality-epic, 5: $quality-legendary) {
       .quality-text-#{$quality} {
-        color: $color;
+        color: $qcolor;
       }
     }
 
@@ -283,6 +355,48 @@ function onIconError(event: Event) {
       flex-direction: row;
       width: 100%;
       justify-content: space-between;
+    }
+  }
+}
+
+@media (max-width: 380px) {
+  .item-card {
+    gap: 0.5rem;
+    padding: 0.75rem;
+
+    .item-icon {
+      width: 36px;
+      height: 36px;
+    }
+
+    .item-info {
+      h3 {
+        font-size: 0.8rem;
+        white-space: normal;
+      }
+
+      .item-meta {
+        flex-wrap: wrap;
+        gap: 0.25rem 0.5rem;
+      }
+    }
+
+    .item-actions {
+      flex-direction: column;
+      align-items: stretch;
+
+      .quantity-control {
+        justify-content: center;
+
+        input {
+          width: 40px;
+        }
+      }
+
+      .btn-buy {
+        width: 100%;
+        min-width: unset;
+      }
     }
   }
 }

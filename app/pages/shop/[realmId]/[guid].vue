@@ -2,7 +2,7 @@
   <div class="shop-page">
     <UiPageHeader
       title="Shop"
-      subtitle="Purchase crafting materials, trade goods, and mounts"
+      subtitle="Browse weapons, armor, consumables, mounts & more"
     />
 
     <!-- Loading state while resolving character -->
@@ -33,40 +33,70 @@
         @select="selectCategory"
       />
 
-      <ShopDeliveryToggle
-        v-if="shopConfig?.deliveryMethod"
-        :config-delivery-method="shopConfig.deliveryMethod"
-        :selected-method="preferredDeliveryMethod"
-        :character="selectedCharacter"
-        @update:selected-method="setDeliveryMethod"
+      <!-- View toggle: Shop / History -->
+      <div class="shop-page__view-toggle">
+        <button
+          class="view-btn"
+          :class="{ active: !showHistory }"
+          @click="showHistory = false"
+        >
+          🛒 Shop
+        </button>
+        <button
+          class="view-btn"
+          :class="{ active: showHistory }"
+          @click="showHistory = true"
+        >
+          📋 Purchase History
+        </button>
+      </div>
+
+      <!-- Purchase History View -->
+      <ShopPurchaseHistory
+        v-if="showHistory"
+        :character-guid="selectedCharacter.guid"
+        :realm-id="selectedCharacter.realmId"
+        :visible="showHistory"
       />
 
-      <ShopSearchControls
-        v-model="searchQuery"
-        :markup-percent="shopConfig?.priceMarkupPercent"
-        @search="debouncedSearch"
-      />
+      <!-- Shop View -->
+      <template v-else>
+        <ShopDeliveryToggle
+          v-if="shopConfig?.deliveryMethod"
+          :config-delivery-method="shopConfig.deliveryMethod"
+          :selected-method="preferredDeliveryMethod"
+          :character="selectedCharacter"
+          @update:selected-method="setDeliveryMethod"
+        />
 
-      <ShopItemsGrid
-        :items="items"
-        :loading="loadingItems"
-        :error="itemsError"
-        :purchasing-id="purchasing"
-        :get-quantity="getQuantity"
-        :can-afford="canAfford"
-        :format-money="formatMoney"
-        :get-icon-url="getIconUrl"
-        @increment="incrementQuantity"
-        @decrement="decrementQuantity"
-        @set-quantity="setQuantity"
-        @purchase="purchaseItem"
-      />
+        <ShopSearchControls
+          v-model="searchQuery"
+          :markup-percent="shopConfig?.priceMarkupPercent"
+          @search="debouncedSearch"
+        />
 
-      <ShopPagination
-        :page="pagination.page"
-        :total-pages="pagination.totalPages"
-        @page-change="goToPage"
-      />
+        <ShopItemsGrid
+          :items="items"
+          :loading="loadingItems"
+          :error="itemsError"
+          :purchasing-id="purchasing"
+          :realm-id="selectedCharacter.realmId"
+          :get-quantity="getQuantity"
+          :can-afford="canAfford"
+          :format-money="formatMoney"
+          :get-icon-url="getIconUrl"
+          @increment="incrementQuantity"
+          @decrement="decrementQuantity"
+          @set-quantity="setQuantity"
+          @purchase="purchaseItem"
+        />
+
+        <ShopPagination
+          :page="pagination.page"
+          :total-pages="pagination.totalPages"
+          @page-change="goToPage"
+        />
+      </template>
     </template>
 
     <ShopNotification :notification="notification" />
@@ -87,8 +117,20 @@ const router = useRouter()
 const shopStore = useShopStore()
 
 // Categories configuration
+const VALID_CATEGORIES: ShopCategory[] = [
+  'weapons', 'armor', 'consumables', 'trade_goods', 'gems',
+  'recipes', 'glyphs', 'containers', 'mounts', 'miscellaneous',
+]
+
 const categories: ShopCategoryInfo[] = [
+  { id: 'weapons', name: 'Weapons', description: 'Swords, axes, maces, bows & more', icon: '⚔️' },
+  { id: 'armor', name: 'Armor', description: 'Cloth, leather, mail & plate', icon: '🛡️' },
+  { id: 'consumables', name: 'Consumables', description: 'Food, flasks, potions & scrolls', icon: '🧪' },
   { id: 'trade_goods', name: 'Trade Goods', description: 'Crafting materials', icon: '🔨' },
+  { id: 'gems', name: 'Gems', description: 'Gems for socketed items', icon: '💎' },
+  { id: 'recipes', name: 'Recipes', description: 'Profession recipes & plans', icon: '📜' },
+  { id: 'glyphs', name: 'Glyphs', description: 'Major & minor glyphs', icon: '✒️' },
+  { id: 'containers', name: 'Containers', description: 'Bags & specialty containers', icon: '🎒' },
   { id: 'mounts', name: 'Mounts', description: 'Rideable mounts', icon: '🐴' },
   { id: 'miscellaneous', name: 'Miscellaneous', description: 'General goods', icon: '📦' },
 ]
@@ -115,6 +157,7 @@ const purchasing = ref<number | null>(null)
 const notification = ref<{ type: 'success' | 'error'; message: string } | null>(null)
 const loadingItems = ref(false)
 const itemsError = ref('')
+const showHistory = ref(false)
 
 // ==========================================================================
 // URL Helpers
@@ -132,10 +175,10 @@ function getInitialPage(): number {
 
 function getInitialCategory(): ShopCategory {
   const urlCategory = getUrlParam('category')
-  if (urlCategory && ['trade_goods', 'mounts', 'miscellaneous'].includes(urlCategory)) {
+  if (urlCategory && VALID_CATEGORIES.includes(urlCategory as ShopCategory)) {
     return urlCategory as ShopCategory
   }
-  return 'trade_goods'
+  return 'weapons'
 }
 
 function getInitialSearch(): string {
@@ -179,8 +222,8 @@ const pagination = computed(() => ({
 watch(
   () => getUrlParam('category'),
   (newCategory) => {
-    const category = (newCategory || 'trade_goods') as ShopCategory
-    if (['trade_goods', 'mounts', 'miscellaneous'].includes(category) && selectedCategory.value !== category) {
+    const category = (newCategory || 'weapons') as ShopCategory
+    if (VALID_CATEGORIES.includes(category) && selectedCategory.value !== category) {
       selectedCategory.value = category
       currentPage.value = 1
       loadItems()
@@ -364,7 +407,7 @@ function selectCategory(category: ShopCategory) {
   currentPage.value = 1
 
   updateQueryParams({
-    category: category === 'trade_goods' ? undefined : category,
+    category: category === 'weapons' ? undefined : category,
     page: undefined,
   })
 
@@ -484,6 +527,35 @@ onUnmounted(() => {
 
     &:hover {
       text-decoration: underline;
+    }
+  }
+
+  &__view-toggle {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+
+    .view-btn {
+      padding: 0.5rem 1rem;
+      background: $bg-secondary;
+      border: 1px solid $border-primary;
+      border-radius: 8px;
+      color: $text-secondary;
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: all 0.2s;
+
+      &:hover {
+        border-color: $color-accent;
+        color: $text-primary;
+      }
+
+      &.active {
+        background: rgba($color-accent, 0.1);
+        border-color: $color-accent;
+        color: $color-accent;
+      }
     }
   }
 }

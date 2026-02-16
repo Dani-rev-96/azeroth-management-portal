@@ -6,6 +6,7 @@ defineProps<{
   loading: boolean
   error: string
   purchasingId: number | null
+  realmId: string
   getQuantity: (item: ShopItem) => number
   canAfford: (item: ShopItem) => boolean
   formatMoney: (copper: number) => string
@@ -46,6 +47,7 @@ const emit = defineEmits<{
         :purchasing="purchasingId === item.entry"
         :format-money="formatMoney"
         :get-icon-url="getIconUrl"
+        :realm-id="realmId"
         @increment="emit('increment', item)"
         @decrement="emit('decrement', item)"
         @set-quantity="(val) => emit('setQuantity', item, val)"
