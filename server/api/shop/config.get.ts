@@ -6,11 +6,11 @@
  * Bag delivery is queued and processed when the player is online.
  */
 
-import { getShopConfig, isElunaShopEnabled } from '#server/utils/config'
+import { getShopConfigAsync, isElunaShopEnabledAsync } from '#server/utils/config'
 
 export default defineEventHandler(async () => {
-  const shopConfig = getShopConfig()
-  const elunaEnabled = isElunaShopEnabled()
+  const shopConfig = await getShopConfigAsync()
+  const elunaEnabled = await isElunaShopEnabledAsync()
 
   // Shop is disabled if Eluna features are not enabled
   const effectiveEnabled = shopConfig.enabled && elunaEnabled

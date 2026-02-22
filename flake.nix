@@ -31,6 +31,9 @@
           sops
           age
           sqlite-interactive
+          kubectl
+          kubernetes-helm
+          openssl
         ];
 
         name = package-json.name;

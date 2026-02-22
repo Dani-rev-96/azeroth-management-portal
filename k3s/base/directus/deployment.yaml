@@ -1,0 +1,86 @@
+# Directus Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: directus
+  namespace: wow
+  labels:
+    app: directus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: directus
+  template:
+    metadata:
+      labels:
+        app: directus
+    spec:
+      containers:
+        - name: directus
+          image: directus/directus:11.14.1
+          ports:
+            - containerPort: 8055
+          envFrom:
+            - configMapRef:
+                name: directus-env
+          env:
+            - name: AUTH_KEYCLOAK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: directus-secrets
+                  key: AUTH_KEYCLOAK_CLIENT_SECRET
+            - name: SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: directus-secrets
+                  key: SECRET
+            - name: ADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: directus-secrets
+                  key: ADMIN_EMAIL
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: directus-secrets
+                  key: ADMIN_PASSWORD
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: directus-secrets
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: directus-secrets
+                  key: DB_PASSWORD
+          volumeMounts:
+            - name: directus-database
+              mountPath: /directus/database
+            - name: directus-uploads
+              mountPath: /directus/uploads
+            - name: directus-extensions
+              mountPath: /directus/extensions
+            - name: directus-templates
+              mountPath: /directus/templates
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+      volumes:
+        - name: directus-uploads
+          persistentVolumeClaim:
+            claimName: directus-uploads-pvc
+        - name: directus-templates
+          persistentVolumeClaim:
+            claimName: directus-templates-pvc
+        - name: directus-extensions
+          persistentVolumeClaim:
+            claimName: directus-extensions-pvc
+        - name: directus-database
+          persistentVolumeClaim:
+            claimName: directus-database-pvc

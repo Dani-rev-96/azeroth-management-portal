@@ -1,0 +1,42 @@
+[
+  {
+    "slug": "weapons",
+    "sort": 1
+  },
+  {
+    "slug": "armor",
+    "sort": 2
+  },
+  {
+    "slug": "consumables",
+    "sort": 3
+  },
+  {
+    "slug": "trade_goods",
+    "sort": 4
+  },
+  {
+    "slug": "gems",
+    "sort": 5
+  },
+  {
+    "slug": "recipes",
+    "sort": 6
+  },
+  {
+    "slug": "glyphs",
+    "sort": 7
+  },
+  {
+    "slug": "containers",
+    "sort": 8
+  },
+  {
+    "slug": "mounts",
+    "sort": 9
+  },
+  {
+    "slug": "miscellaneous",
+    "sort": 10
+  }
+]

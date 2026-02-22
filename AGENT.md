@@ -7,14 +7,17 @@
 > - [ ] **Read this file first.** Understand the architecture, conventions, and key files before making changes.
 > - [ ] **Check `shared/utils/perks/`** if the task involves perks, buffs, scrolls, teleports, or the dice/gacha system. The registry is split across multiple files by group — don't look for a monolithic `perks.ts`.
 > - [ ] **Check `server/utils/config/index.ts`** if the task involves environment variables, feature flags, or perk config resolution.
+> - [ ] **Check `server/utils/directus.ts`** if the task involves Directus CMS integration, remote config fetching, or the async config variants.
 > - [ ] **Check `data/eluna/web_worker.lua`** if the task involves in-game delivery (items, spells, auras, teleports, bag delivery). This is the Lua bridge that processes queue tables.
 > - [ ] **Run `get_errors`** after every edit to catch issues immediately.
 > - [ ] **Update this file** if you add new files, directories, patterns, conventions, API routes, perk groups, delivery types, or config options. Keep it concise — tables and lists, not prose.
+> - [ ] **Dual maintenance**: When changing perks, shop categories, perk groups, or portal settings, update BOTH the code (TypeScript) AND the Directus schema/import data in `data/directus/`.
 >
 > **Common pitfalls:**
 >
 > - The perk registry is in `shared/utils/perks/` (a directory with barrel index), NOT a single file.
 > - `getPerkConfig()` in `server/utils/config/index.ts` returns `{ groups, perks, failDebuff*, critFailDebuff* }` — it resolves per-perk env overrides.
+> - API routes use `*Async()` config functions (e.g., `getShopConfigAsync()`) that try Directus first, then fall back to env vars. Don't import the old sync functions in API routes.
 > - Scroll delivery uses `'bag-item'` (direct to bags via `web_bag_requests`), NOT `'item'` (mail).
 > - Buff/scroll perks use `rankGroup` for deduplication — the UI shows only the highest applicable rank per character level.
 > - All queue tables are auto-created by `web_worker.lua` on startup.
@@ -60,6 +63,7 @@ docs/                → Detailed documentation (API, Auth, Config, Deploy, Dev,
 | `app/layouts/default.vue`      | Main layout (nav, footer, mobile menu)                                         |
 | `app/types/index.ts`           | All shared TypeScript types                                                    |
 | `server/utils/config/index.ts` | Central server config — reads `process.env` at runtime (K8s-safe), perk config |
+| `server/utils/directus.ts`     | Directus CMS client — types, fetch helper, 60s cache, converters, public API   |
 | `server/utils/db.ts`           | SQLite (better-sqlite3) for account_mappings — WAL mode, CRUD interface        |
 | `server/utils/mysql.ts`        | MySQL connection pools (mysql2/promise) — cached in Map                        |
 | `server/utils/auth.ts`         | Auth utilities: `getAuthenticatedUser()`, `requireGM()`, session management    |
@@ -184,20 +188,21 @@ Pure functions (not classes). Import pool factories from `server/utils/mysql.ts`
 
 #### Utils (`server/utils/`)
 
-| Utility        | File                | Purpose                                                                                                                                                |
-| -------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Config         | `config/index.ts`   | Central config hub. Reads `process.env` at runtime. `getRealmConfigs()`, `getAuthDbConfig()`, `getShopConfig()`, `getElunaConfig()`, `getPerkConfig()` |
-| DB (SQLite)    | `db.ts`             | `account_mappings` CRUD. WAL mode, periodic checkpointing, graceful shutdown.                                                                          |
-| MySQL          | `mysql.ts`          | Pool factories: `getAuthPool()`, `getCharactersPool(realmId)`, `getWorldPool(realmId)`. Cached in Map.                                                 |
-| Auth           | `auth.ts`           | `getAuthenticatedUser(event)`, `requireGM(event)`, `isDirectAuth()`, session CRUD. 4 auth modes.                                                       |
-| SRP-6a         | `srp6.ts`           | `verifySRP6Password()`, `createSRP6Credentials()`. Uses `@azerothcore/ac-nodejs-srp6`.                                                                 |
-| DBC DB         | `dbc-db.ts`         | Read-only SQLite for game data. `getItemById()`, `getSpellById()`, `getTalentsByTab()`, etc.                                                           |
-| API Errors     | `api-errors.ts`     | `handleApiError()`, factory functions: `notFoundError()`, `forbiddenError()`, `validationError()`.                                                     |
-| Account Filter | `account-filter.ts` | `getNonBotAccountFilter()` — SQL `IN(...)` clause excluding bot accounts. 30s cache.                                                                   |
-| Realm Query    | `realm-query.ts`    | `getTargetRealms()`, cross-realm query helpers.                                                                                                        |
-| Enchantments   | `enchantments.ts`   | WoW enchantment/suffix parsing for equipment display.                                                                                                  |
-| Export         | `export.ts`         | CSV/JSON export for admin data.                                                                                                                        |
-| DB Credentials | `db-credentials.ts` | Legacy credential loader (deprecated, use config/index.ts).                                                                                            |
+| Utility        | File                | Purpose                                                                                                                                                                                             |
+| -------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Config         | `config/index.ts`   | Central config hub. Reads `process.env` at runtime. `getRealmConfigs()`, `getAuthDbConfig()`, `getShopConfig()`, `getElunaConfig()`, `getPerkConfig()` + async Directus-aware variants (`*Async()`) |
+| Directus       | `directus.ts`       | Directus CMS client. Types, `directusFetch()`, 60s cache, converters to app types. Enabled via `NUXT_DIRECTUS_ENABLED`                                                                              |
+| DB (SQLite)    | `db.ts`             | `account_mappings` CRUD. WAL mode, periodic checkpointing, graceful shutdown.                                                                                                                       |
+| MySQL          | `mysql.ts`          | Pool factories: `getAuthPool()`, `getCharactersPool(realmId)`, `getWorldPool(realmId)`. Cached in Map.                                                                                              |
+| Auth           | `auth.ts`           | `getAuthenticatedUser(event)`, `requireGM(event)`, `isDirectAuth()`, session CRUD. 4 auth modes.                                                                                                    |
+| SRP-6a         | `srp6.ts`           | `verifySRP6Password()`, `createSRP6Credentials()`. Uses `@azerothcore/ac-nodejs-srp6`.                                                                                                              |
+| DBC DB         | `dbc-db.ts`         | Read-only SQLite for game data. `getItemById()`, `getSpellById()`, `getTalentsByTab()`, etc.                                                                                                        |
+| API Errors     | `api-errors.ts`     | `handleApiError()`, factory functions: `notFoundError()`, `forbiddenError()`, `validationError()`.                                                                                                  |
+| Account Filter | `account-filter.ts` | `getNonBotAccountFilter()` — SQL `IN(...)` clause excluding bot accounts. 30s cache.                                                                                                                |
+| Realm Query    | `realm-query.ts`    | `getTargetRealms()`, cross-realm query helpers.                                                                                                                                                     |
+| Enchantments   | `enchantments.ts`   | WoW enchantment/suffix parsing for equipment display.                                                                                                                                               |
+| Export         | `export.ts`         | CSV/JSON export for admin data.                                                                                                                                                                     |
+| DB Credentials | `db-credentials.ts` | Legacy credential loader (deprecated, use config/index.ts).                                                                                                                                         |
 
 ### Perk System (Gambling/Gacha)
 
@@ -285,6 +290,78 @@ The registry is split into **8 files by concern**. All exports are re-exported f
 | Teleport fail | 1604 (Dazed, -50% speed)  | 60s              | Set on all teleport perk definitions                          |
 | Buff fail     | 11196 (global default)    | = buff duration  | `failDebuffDurationMs` matches `auraDurationMs`               |
 
+### Directus CMS Integration (Optional)
+
+Directus can optionally replace environment variables as the configuration backend for shop, perks, and portal settings. When enabled, the server fetches config from Directus REST API with a 60-second in-memory cache, falling back to env vars if Directus is unreachable or disabled.
+
+#### Architecture
+
+```
+API Route → *Async() config function → isDirectusEnabled()?
+                                         ├── YES → directusFetch() → cache (60s TTL) → convert to app types
+                                         └── NO  → sync env-based function (existing behavior)
+```
+
+#### Environment Variables
+
+```bash
+NUXT_DIRECTUS_ENABLED=false        # Enable Directus as config backend (default: false)
+NUXT_DIRECTUS_URL=http://localhost:8055  # Directus instance URL
+NUXT_DIRECTUS_TOKEN=your-static-token    # Directus static API token (admin or read-only)
+```
+
+#### Directus Collections
+
+| Collection        | Type       | Purpose                                                   | App Equivalent                                                     |
+| ----------------- | ---------- | --------------------------------------------------------- | ------------------------------------------------------------------ |
+| `portal_settings` | Singleton  | Shop config, Eluna flags, perk gambling defaults          | `getShopConfig()` + `getElunaConfig()` + `getPerkConfig()` globals |
+| `perk_groups`     | List (5)   | Perk group metadata (label, icon, enabled, delivery type) | `PERK_GROUPS` in `shared/utils/perks/groups.ts`                    |
+| `perks`           | List (114) | Individual perk definitions with all config fields        | `PERK_REGISTRY` in `shared/utils/perks/index.ts`                   |
+| `shop_categories` | List (10)  | Shop item categories with display order                   | `categories` in `getShopConfig()`                                  |
+
+#### Key Files
+
+| File                                 | Purpose                                                                  |
+| ------------------------------------ | ------------------------------------------------------------------------ |
+| `server/utils/directus.ts`           | Client, types, cache, converters — single source of Directus logic       |
+| `data/directus/schema.json`          | Full Directus schema snapshot — import via `directus schema apply`       |
+| `data/directus/import-*.json`        | Data import files (portal_settings, perk_groups, perks, shop_categories) |
+| `scripts/generate-directus-data.cjs` | Generates import JSON files from current hardcoded TypeScript config     |
+
+#### Async Config Functions (`server/utils/config/index.ts`)
+
+All API routes use the `*Async()` variants which try Directus first, then fall back to sync env-based functions:
+
+| Async Function                | Sync Fallback            | Used By                                                                 |
+| ----------------------------- | ------------------------ | ----------------------------------------------------------------------- |
+| `getShopConfigAsync()`        | `getShopConfig()`        | shop/config, shop/items, shop/purchase, shop/history, shop/item-details |
+| `getElunaConfigAsync()`       | `getElunaConfig()`       | characters/activate-perk                                                |
+| `isElunaShopEnabledAsync()`   | `isElunaShopEnabled()`   | shop/config, shop/purchase                                              |
+| `isElunaGmMailEnabledAsync()` | `isElunaGmMailEnabled()` | admin/mail/send-item                                                    |
+| `getPerkConfigAsync()`        | `getPerkConfig()`        | characters/perk-config, characters/activate-perk                        |
+| `getPerkRegistryAsync()`      | `PERK_REGISTRY`          | characters/perk-config, characters/activate-perk                        |
+| `getPerkGroupsAsync()`        | `PERK_GROUPS`            | characters/perk-config                                                  |
+
+#### Directus Setup Instructions
+
+1. **Apply schema**: `npx directus schema apply data/directus/schema.json`
+2. **Import data**: Use Directus Admin UI or API to import the `data/directus/import-*.json` files into respective collections
+3. **Create API token**: In Directus Admin → Settings → Access Tokens → create a static token
+4. **Configure env**: Set `NUXT_DIRECTUS_ENABLED=true`, `NUXT_DIRECTUS_URL`, `NUXT_DIRECTUS_TOKEN`
+
+#### Dual Maintenance Convention
+
+When making changes that affect configurable data, update **both**:
+
+1. **TypeScript code**: Env vars, perk definitions in `shared/utils/perks/`, shop config
+2. **Directus artifacts**: Schema in `data/directus/schema.json`, import data (re-run `node scripts/generate-directus-data.cjs`)
+
+Examples:
+
+- **Adding a new perk**: Add to `shared/utils/perks/<group>.ts` → re-run generator → update schema if new fields
+- **Adding a shop category**: Update `getShopConfig()` → re-run generator
+- **Adding a new config field to portal_settings**: Add to `DirectusPortalSettings` type in `directus.ts` → update schema.json → update converter functions
+
 ### Databases
 
 | Database           | Engine | Purpose                                            | Access Pattern                                |
@@ -341,6 +418,7 @@ All in-process memory (no Redis):
 - Non-bot account IDs: 30s TTL
 - DBC database connections: permanent
 - Auth sessions (direct mode): 24h TTL (in-memory Map)
+- Directus config data: 60s TTL (in-memory cache, all collections refreshed together)
 
 ## Coding Conventions
 
@@ -448,6 +526,14 @@ NUXT_ELUNA_SHOP_ENABLED=true
 NUXT_ELUNA_GM_MAIL_ENABLED=true
 ```
 
+### Directus CMS (Optional)
+
+```bash
+NUXT_DIRECTUS_ENABLED=false              # Enable Directus as config backend
+NUXT_DIRECTUS_URL=http://localhost:8055   # Directus instance URL
+NUXT_DIRECTUS_TOKEN=your-static-token     # Directus static API token
+```
+
 ### Perk Configuration
 
 ```bash
@@ -479,3 +565,4 @@ NUXT_PERK_CRITFAIL_DEBUFF_DURATION_MS=600000
 | `scripts/import-item-display-info.js`   | `node scripts/...`   | Deprecated legacy importer (use import-dbc instead)                      |
 | `scripts/migrate-db-schema.js`          | `node scripts/...`   | Migrates `account_mappings` from Keycloak-specific → generic auth schema |
 | `scripts/cleanup-broken-mail-items.sql` | Manual SQL           | Diagnoses/fixes broken mail_items in `acore_characters`                  |
+| `scripts/generate-directus-data.cjs`    | `node scripts/...`   | Generates Directus import JSON files from current TypeScript config      |

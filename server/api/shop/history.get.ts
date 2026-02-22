@@ -10,12 +10,12 @@
  *   - limit: items per page (default 20, max 50)
  */
 
-import { getShopConfig } from '#server/utils/config'
+import { getShopConfigAsync } from '#server/utils/config'
 import type { ShopPurchaseHistoryEntry } from '~/types'
 
 export default defineEventHandler(async (event) => {
   try {
-    const shopConfig = await getShopConfig()
+    const shopConfig = await getShopConfigAsync()
 
     if (!shopConfig.enabled) {
       throw createError({

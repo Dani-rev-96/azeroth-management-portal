@@ -1,0 +1,26 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wow-classic.dani-home.de
+  namespace: wow
+spec:
+  secretName: wow-classic.dani-home.de
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - wow-classic.dani-home.de
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wow-wotlk.dani-home.de
+  namespace: wow
+spec:
+  secretName: wow-wotlk.dani-home.de
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - wow-wotlk.dani-home.de
+    - admin.wow-wotlk.dani-home.de

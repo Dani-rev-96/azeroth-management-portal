@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wow-frontend
+  namespace: wow
+spec:
+  selector:
+    matchLabels:
+      app: wow-frontend
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: wow-frontend
+    spec:
+      imagePullSecrets:
+        - name: docker-home
+      containers:
+        - name: wow-frontend
+          image: docker-hosted.dani-home.de/azeroth-management-portal:1.13.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: NITRO_PORT
+              value: "80"
+            - name: DB_PATH
+              value: "/data/sqlite/mappings.db"
+            - name: NUXT_PUBLIC_PUBLIC_PATH
+              value: "/data/public"
+            - name: NUXT_PUBLIC_DIRECTUS_URL
+              value: "https://admin.wow-wotlk.dani-home.de"
+            - name: NUXT_DIRECTUS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: management-access
+                  key: access-token
+            - name: NUXT_PUBLIC_AUTH_MODE
+              value: "oauth-proxy"
+            - name: NUXT_DB_AUTH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: acore-secrets
+                  key: acore-user-password
+            - name: NUXT_DB_REALM_0_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: acore-secrets
+                  key: acore-user-password
+            - name: NUXT_DB_REALM_0_SOAP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: acore-secrets
+                  key: acore-user-password
+            - name: NUXT_DB_REALM_1_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: acore-secrets
+                  key: acore-user-password
+            - name: NUXT_DB_REALM_1_SOAP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: acore-secrets
+                  key: acore-user-password
+            - name: NUXT_DB_REALM_2_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: acore-secrets
+                  key: acore-user-password
+            - name: NUXT_DB_REALM_2_SOAP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: acore-secrets
+                  key: acore-user-password
+          envFrom:
+            - configMapRef:
+                name: wow-frontend-env
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "256m"
+            limits:
+              memory: "2048Mi"
+              cpu: "2000m"
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: wow-frontend-sqllite-data
+              mountPath: /data/sqlite
+            - name: wow-frontend-data
+              mountPath: /data/public
+      volumes:
+        - name: wow-frontend-sqllite-data
+          persistentVolumeClaim:
+            claimName: wow-frontend-sqllite-data
+        - name: wow-frontend-data
+          persistentVolumeClaim:
+            claimName: wow-frontend-data

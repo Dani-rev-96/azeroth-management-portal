@@ -8,11 +8,13 @@
  * Only returns perks whose group is enabled.
  */
 
-import { PERK_REGISTRY, PERK_GROUPS, getActiveGroups, getPerksByGroup, type PerkGroup } from '~~/shared/utils/perks'
+import { PERK_GROUPS, getActiveGroups, getPerksByGroup, type PerkGroup } from '#shared/utils/perks'
 
 export default defineEventHandler(async () => {
-  const { getPerkConfig } = await import('#server/utils/config')
-  const config = getPerkConfig()
+  const { getPerkConfigAsync, getPerkRegistryAsync, getPerkGroupsAsync } = await import('#server/utils/config')
+  const config = await getPerkConfigAsync()
+  const registry = await getPerkRegistryAsync()
+  const groupsMeta = await getPerkGroupsAsync()
 
   // Build the response — only include groups that are enabled
   const groups: Array<{
@@ -41,8 +43,8 @@ export default defineEventHandler(async () => {
   for (const groupId of getActiveGroups()) {
     if (!config.groups[groupId]?.enabled) continue
 
-    const groupMeta = PERK_GROUPS.find(g => g.id === groupId)!
-    const perks = getPerksByGroup(groupId)
+    const groupMeta = groupsMeta.find(g => g.id === groupId)!
+    const perks = registry.filter(p => p.group === groupId)
 
     groups.push({
       id: groupId,

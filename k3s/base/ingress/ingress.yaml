@@ -1,0 +1,136 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: wow-frontend-ssl
+  namespace: wow
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    # Download route WITHOUT compress and auth
+    - kind: Rule
+      match: (Host(`wow-wotlk.dani-home.de`) || Host(`www.wow-wotlk.dani-home.de`)) && PathPrefix(`/api/downloads/`)
+      services:
+        - name: wow-frontend
+          kind: Service
+          port: 80
+      middlewares:
+        - name: wow-frontend-auth
+        - name: download-timeout
+      priority: 100  # Higher priority to match first
+    # All other routes WITH compress and auth
+    - kind: Rule
+      match: Host(`wow-wotlk.dani-home.de`) || Host(`www.wow-wotlk.dani-home.de`)
+      services:
+        - name: wow-frontend
+          kind: Service
+          port: 80
+      middlewares:
+        - name: compress
+        - name: wow-frontend-auth
+        - name: download-timeout
+  tls:
+    secretName: wow-wotlk.dani-home.de
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: wow-frontend-auth
+  namespace: wow
+spec:
+  forwardAuth:
+    address: https://oauth2-user.dani-home.de?rd=https://wow-wotlk.dani-home.de/
+    trustForwardHeader: true
+    authResponseHeaders:
+      - X-Auth-Request-Access-Token
+      - X-Auth-Request-User
+      - X-Auth-Request-Groups
+      - X-Auth-Request-Email
+      - X-Auth-Request-Preferred-Username
+      - Authorization
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: wow-frontend
+  namespace: wow
+spec:
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      match: Host(`wow-wotlk.dani-home.de`) || Host(`www.wow-wotlk.dani-home.de`)
+      services:
+        - name: wow-frontend
+          kind: Service
+          port: 80
+      middlewares:
+        - name: http-redirect
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: http-redirect
+  namespace: wow
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
+---
+# Middleware for long download timeouts
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: download-timeout
+  namespace: wow
+spec:
+  headers:
+    customRequestHeaders:
+      Connection: "keep-alive"
+---
+# HTTPS für Directus Admin
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: directus-secure
+  namespace: wow
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`admin.wow-wotlk.dani-home.de`)
+      services:
+        - name: directus
+          kind: Service
+          port: 8055
+  tls:
+    secretName: wow-wotlk.dani-home.de
+---
+# HTTP redirect für Directus Admin
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: directus-redirect
+  namespace: wow
+spec:
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      match: Host(`admin.wow-wotlk.dani-home.de`)
+      services:
+        - name: directus
+          kind: Service
+          port: 8055
+      middlewares:
+        - name: http-redirect
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: compress
+  namespace: wow
+spec:
+  compress: {}
+

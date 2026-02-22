@@ -6,7 +6,7 @@
  *   - realmId: realm to query
  */
 
-import { getShopConfig } from '#server/utils/config'
+import { getShopConfigAsync } from '#server/utils/config'
 import type { ShopItemDetails } from '~/types'
 import {
   getItemSpellEffects,
@@ -90,7 +90,7 @@ function getSubclassName(itemClass: number, subclass: number): string {
 
 export default defineEventHandler(async (event) => {
   try {
-    const shopConfig = await getShopConfig()
+    const shopConfig = await getShopConfigAsync()
 
     if (!shopConfig.enabled) {
       throw createError({

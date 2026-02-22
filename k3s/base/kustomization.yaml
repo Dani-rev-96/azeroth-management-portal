@@ -1,0 +1,33 @@
+# Kustomize Base - Gemeinsame Konfiguration
+# Für Deployment: kubectl apply -k k3s/overlays/production/
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: wow
+
+resources:
+  # Basis-Konfiguration
+  - basics/namespace.yaml
+  - basics/certificate.yaml
+
+  # PostgreSQL
+  - postgresql/pvc.yaml
+  - postgresql/deployment.yaml
+  - postgresql/service.yaml
+
+  # Directus CMS
+  - directus/pvc.yaml
+  - directus/deployment.yaml
+  - directus/service.yaml
+  - directus/config.yaml
+
+  # Nuxt Web App
+  - wow-wotlk.dani-home.de/pvc.yaml
+  - wow-wotlk.dani-home.de/config.yaml
+  - wow-wotlk.dani-home.de/deployment.yaml
+  - wow-wotlk.dani-home.de/service.yaml
+
+  # Ingress
+  - ingress/ingress.yaml
+
+# Hinweis: Secrets werden im Overlay hinzugefügt (verschlüsselt mit SOPS)

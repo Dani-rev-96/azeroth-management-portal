@@ -9,7 +9,7 @@
  *   - search: optional search term
  */
 
-import { getShopConfig } from '#server/utils/config'
+import { getShopConfigAsync } from '#server/utils/config'
 import type { ShopItem, ShopCategory } from '~/types'
 
 // Item class/subclass mappings for WoW 3.3.5a
@@ -49,7 +49,7 @@ const CATEGORY_FILTERS: Record<ShopCategory, { class: number; subclasses?: numbe
 
 export default defineEventHandler(async (event) => {
   try {
-    const shopConfig = await getShopConfig()
+    const shopConfig = await getShopConfigAsync()
 
     if (!shopConfig.enabled) {
       throw createError({

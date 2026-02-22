@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: directus-env
+  namespace: wow
+data:
+  DB_CLIENT: "pg"
+  DB_HOST: "postgresql"
+  DB_PORT: "5432"
+  DB_DATABASE: "directus"
+  CACHE_ENABLED: "true"
+  CORS_ENABLED: "true"
+  CORS_ORIGIN: "https://localhost,http://localhost,http://localhost:3000,https://localhost:3000,https://wow-wotlk.dani-home.de,https://admin.wow-wotlk.dani-home.de"
+  CORS_METHODS: "GET,POST,PATCH,DELETE"
+  CORS_ALLOWED_HEADERS: "Content-Type,Authorization"
+  CORS_EXPOSED_HEADERS: "Content-Range"
+  CACHE_AUTO_PURGE: "true"
+  PUBLIC_URL: "https://wow-wotlk.dani-home.de/"
+  AUTH_PROVIDERS: "keycloak"
+  AUTH_KEYCLOAK_DRIVER: "openid"
+  AUTH_KEYCLOAK_CLIENT_ID: "dani-home-directus"
+  AUTH_KEYCLOAK_CLIENT_SECRET: "secret"
+  AUTH_KEYCLOAK_ISSUER_URL: "https://user.dani-home.de/realms/dani-home.de/.well-known/openid-configuration"
+  AUTH_KEYCLOAK_IDENTIFIER_KEY: "email"
+  AUTH_KEYCLOAK_LABEL: "Keycloak"
+  AUTH_KEYCLOAK_ALLOW_PUBLIC_REGISTRATION: "true"
+  AUTH_KEYCLOAK_SYNC_USER_INFO: "true"
+  TELEMETRY: "false"
+  LOG_LEVEL: "debug"

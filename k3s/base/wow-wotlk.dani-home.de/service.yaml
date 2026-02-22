@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: wow-frontend
+  namespace: wow
+spec:
+  selector:
+    app: wow-frontend
+  ports:
+    - port: 80
+      targetPort: 80
+      name: wow-frontend
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 21600  # 6 hours

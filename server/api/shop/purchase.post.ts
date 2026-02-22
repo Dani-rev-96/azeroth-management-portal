@@ -12,12 +12,12 @@
  * allocates item GUIDs through the server's native APIs.
  */
 
-import { getShopConfig, isElunaShopEnabled } from '#server/utils/config'
+import { getShopConfigAsync, isElunaShopEnabledAsync } from '#server/utils/config'
 import type { ShopPurchaseRequest, ShopPurchaseResponse } from '~/types'
 
 export default defineEventHandler(async (event): Promise<ShopPurchaseResponse> => {
   try {
-    const shopConfig = getShopConfig()
+    const shopConfig = await getShopConfigAsync()
 
     if (!shopConfig.enabled) {
       throw createError({
@@ -27,7 +27,7 @@ export default defineEventHandler(async (event): Promise<ShopPurchaseResponse> =
     }
 
     // Check if Eluna features are enabled (required for item/money queue processing)
-    if (!isElunaShopEnabled()) {
+    if (!(await isElunaShopEnabledAsync())) {
       throw createError({
         statusCode: 503,
         statusMessage: 'Shop requires Eluna features to be enabled. Please configure NUXT_ELUNA_ENABLED and NUXT_ELUNA_SHOP_ENABLED.',
@@ -302,7 +302,7 @@ async function deliverViaMail(
   quantity: number,
   totalCost: number,
   username: string,
-  shopConfig: ReturnType<typeof getShopConfig>
+  shopConfig: Awaited<ReturnType<typeof getShopConfigAsync>>
 ): Promise<ShopPurchaseResponse> {
   // Queue money deduction via web_money_requests table
   // The Eluna script will process this for both online and offline characters

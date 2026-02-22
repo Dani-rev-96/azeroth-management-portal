@@ -1,0 +1,56 @@
+# Directus Uploads PersistentVolumeClaim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: directus-uploads-pvc
+  namespace: wow
+  labels:
+    app: directus
+spec:
+  accessModes: [ "ReadWriteOnce" ]
+  storageClassName: longhorn-fast
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: directus-extensions-pvc
+  namespace: wow
+  labels:
+    app: directus
+spec:
+  accessModes: [ "ReadWriteOnce" ]
+  storageClassName: longhorn-fast
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: directus-templates-pvc
+  namespace: wow
+  labels:
+    app: directus
+spec:
+  accessModes: [ "ReadWriteOnce" ]
+  storageClassName: longhorn-fast
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: directus-database-pvc
+  namespace: wow
+  labels:
+    app: directus
+spec:
+  accessModes: [ "ReadWriteOnce" ]
+  storageClassName: longhorn-fast
+  resources:
+    requests:
+      storage: 2Gi

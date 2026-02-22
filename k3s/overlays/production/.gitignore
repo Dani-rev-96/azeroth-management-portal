@@ -1,0 +1,7 @@
+# Unverschlüsselte Secrets ignorieren
+*.yaml
+!*.yaml.example
+
+# Nur verschlüsselte Dateien committen
+# !*.enc.yaml
+!kustomization.yaml

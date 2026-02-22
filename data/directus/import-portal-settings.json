@@ -1,0 +1,15 @@
+{
+  "id": 1,
+  "shop_enabled": true,
+  "shop_delivery_method": "mail",
+  "shop_markup_percent": 20,
+  "shop_mail_subject": "Your Shop Purchase",
+  "shop_mail_body": "Thank you for your purchase! Your items are attached.",
+  "eluna_enabled": true,
+  "eluna_shop_enabled": true,
+  "eluna_gm_mail_enabled": true,
+  "perk_fail_debuff_spell_id": 11196,
+  "perk_fail_debuff_duration_ms": 600000,
+  "perk_critfail_debuff_spell_id": 15007,
+  "perk_critfail_debuff_duration_ms": 600000
+}

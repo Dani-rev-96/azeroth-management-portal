@@ -1,0 +1,42 @@
+[
+  {
+    "id": "mount",
+    "label": "Mounts & Abilities",
+    "icon": "🦅",
+    "description": "Permanent mount and ability unlocks.",
+    "enabled": true,
+    "sort": 1
+  },
+  {
+    "id": "quest",
+    "label": "Quest Skips",
+    "icon": "📜",
+    "description": "Skip long quest chains by receiving key items directly.",
+    "enabled": true,
+    "sort": 2
+  },
+  {
+    "id": "buffs",
+    "label": "Class Buffs",
+    "icon": "✨",
+    "description": "Receive powerful class buffs applied directly to your character.",
+    "enabled": true,
+    "sort": 3
+  },
+  {
+    "id": "scrolls",
+    "label": "Stat Scrolls",
+    "icon": "📃",
+    "description": "Receive stat-boosting scrolls via in-game mail.",
+    "enabled": true,
+    "sort": 4
+  },
+  {
+    "id": "teleport",
+    "label": "Teleport",
+    "icon": "🌀",
+    "description": "Teleport your character to a major capital city. Requires online.",
+    "enabled": true,
+    "sort": 5
+  }
+]

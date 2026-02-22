@@ -143,8 +143,8 @@ async function applyDebuff(charPool: any, characterGuid: number, spellId: number
 export default defineEventHandler(async (event): Promise<ActivatePerkResponse> => {
   try {
     // ── Eluna check ──
-    const { getElunaConfig, getPerkConfig } = await import('#server/utils/config')
-    const elunaConfig = getElunaConfig()
+    const { getElunaConfigAsync, getPerkConfigAsync, getPerkRegistryAsync } = await import('#server/utils/config')
+    const elunaConfig = await getElunaConfigAsync()
     if (!elunaConfig.enabled) {
       throw createError({ statusCode: 503, statusMessage: 'This feature requires Eluna to be enabled on the server.' })
     }
@@ -164,13 +164,14 @@ export default defineEventHandler(async (event): Promise<ActivatePerkResponse> =
     }
 
     // ── Look up perk from registry ──
-    const perk = getPerkById(perkId)
+    const perkRegistry = await getPerkRegistryAsync()
+    const perk = perkRegistry.find(p => p.id === perkId)
     if (!perk) {
       throw createError({ statusCode: 400, statusMessage: `Unknown perk: ${perkId}` })
     }
 
     // ── Check perk group is enabled ──
-    const perkConfig = getPerkConfig()
+    const perkConfig = await getPerkConfigAsync()
     if (!perkConfig.groups[perk.group]?.enabled) {
       throw createError({ statusCode: 403, statusMessage: `The ${perk.group} perk group is currently disabled.` })
     }

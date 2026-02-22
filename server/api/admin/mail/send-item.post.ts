@@ -5,7 +5,7 @@
  * using the server's proper item GUID allocation.
  */
 
-import { isElunaGmMailEnabled } from '#server/utils/config'
+import { isElunaGmMailEnabledAsync } from '#server/utils/config'
 
 interface MailItem {
   itemId: number
@@ -15,7 +15,7 @@ interface MailItem {
 export default defineEventHandler(async (event) => {
   try {
     // Check if Eluna GM mail features are enabled
-    if (!isElunaGmMailEnabled()) {
+    if (!(await isElunaGmMailEnabledAsync())) {
       throw createError({
         statusCode: 503,
         statusMessage: 'GM Mail requires Eluna features to be enabled. Please configure NUXT_ELUNA_ENABLED and NUXT_ELUNA_GM_MAIL_ENABLED.',

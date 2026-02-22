@@ -1,0 +1,1216 @@
+{
+  "version": 1,
+  "directus": "11.0.0",
+  "collections": [
+    {
+      "collection": "portal_settings",
+      "meta": {
+        "collection": "portal_settings",
+        "icon": "settings",
+        "note": "Global portal configuration. Only one row should exist (singleton).",
+        "display_template": "Portal Settings",
+        "hidden": false,
+        "singleton": true,
+        "sort_field": null,
+        "archive_field": null,
+        "archive_value": null,
+        "unarchive_value": null,
+        "accountability": "all",
+        "group": null,
+        "color": "#6644FF"
+      },
+      "schema": {
+        "name": "portal_settings"
+      }
+    },
+    {
+      "collection": "perk_groups",
+      "meta": {
+        "collection": "perk_groups",
+        "icon": "category",
+        "note": "Perk group definitions. Each group can be enabled/disabled independently.",
+        "display_template": "{{icon}} {{label}}",
+        "hidden": false,
+        "singleton": false,
+        "sort_field": "sort",
+        "archive_field": "enabled",
+        "archive_value": "false",
+        "unarchive_value": "true",
+        "accountability": "all",
+        "group": null,
+        "color": "#FF6644"
+      },
+      "schema": {
+        "name": "perk_groups"
+      }
+    },
+    {
+      "collection": "perks",
+      "meta": {
+        "collection": "perks",
+        "icon": "casino",
+        "note": "Individual perk definitions with dice roll config and delivery settings.",
+        "display_template": "{{icon}} {{name}} ({{group}})",
+        "hidden": false,
+        "singleton": false,
+        "sort_field": "sort",
+        "archive_field": null,
+        "archive_value": null,
+        "unarchive_value": null,
+        "accountability": "all",
+        "group": null,
+        "color": "#44BBFF"
+      },
+      "schema": {
+        "name": "perks"
+      }
+    },
+    {
+      "collection": "shop_categories",
+      "meta": {
+        "collection": "shop_categories",
+        "icon": "shopping_cart",
+        "note": "Shop item categories. Order determines display order in the shop UI.",
+        "display_template": "{{slug}}",
+        "hidden": false,
+        "singleton": false,
+        "sort_field": "sort",
+        "archive_field": null,
+        "archive_value": null,
+        "unarchive_value": null,
+        "accountability": "all",
+        "group": null,
+        "color": "#44FF66"
+      },
+      "schema": {
+        "name": "shop_categories"
+      }
+    }
+  ],
+  "fields": [
+    {
+      "collection": "portal_settings",
+      "field": "id",
+      "type": "integer",
+      "meta": {
+        "collection": "portal_settings",
+        "field": "id",
+        "hidden": true,
+        "interface": "input",
+        "readonly": true,
+        "required": false
+      },
+      "schema": {
+        "name": "id",
+        "table": "portal_settings",
+        "data_type": "integer",
+        "is_nullable": false,
+        "is_primary_key": true,
+        "has_auto_increment": true
+      }
+    },
+    {
+      "collection": "portal_settings",
+      "field": "shop_enabled",
+      "type": "boolean",
+      "meta": {
+        "collection": "portal_settings",
+        "field": "shop_enabled",
+        "interface": "boolean",
+        "display": "boolean",
+        "note": "Master toggle for the shop system.",
+        "width": "half",
+        "group": null,
+        "required": false,
+        "options": {
+          "label": "Shop Enabled"
+        }
+      },
+      "schema": {
+        "name": "shop_enabled",
+        "table": "portal_settings",
+        "data_type": "boolean",
+        "default_value": true,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "portal_settings",
+      "field": "shop_delivery_method",
+      "type": "string",
+      "meta": {
+        "collection": "portal_settings",
+        "field": "shop_delivery_method",
+        "interface": "select-dropdown",
+        "display": "raw",
+        "note": "How purchased items are delivered to players.",
+        "width": "half",
+        "options": {
+          "choices": [
+            { "text": "Mail", "value": "mail" },
+            { "text": "Bag (requires SOAP)", "value": "bag" },
+            { "text": "Both", "value": "both" }
+          ]
+        }
+      },
+      "schema": {
+        "name": "shop_delivery_method",
+        "table": "portal_settings",
+        "data_type": "varchar",
+        "max_length": 10,
+        "default_value": "mail",
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "portal_settings",
+      "field": "shop_markup_percent",
+      "type": "integer",
+      "meta": {
+        "collection": "portal_settings",
+        "field": "shop_markup_percent",
+        "interface": "input",
+        "display": "raw",
+        "note": "Price markup percentage applied to shop items (e.g. 20 = +20%).",
+        "width": "half"
+      },
+      "schema": {
+        "name": "shop_markup_percent",
+        "table": "portal_settings",
+        "data_type": "integer",
+        "default_value": 20,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "portal_settings",
+      "field": "shop_mail_subject",
+      "type": "string",
+      "meta": {
+        "collection": "portal_settings",
+        "field": "shop_mail_subject",
+        "interface": "input",
+        "display": "raw",
+        "note": "Subject line for shop purchase mail.",
+        "width": "half"
+      },
+      "schema": {
+        "name": "shop_mail_subject",
+        "table": "portal_settings",
+        "data_type": "varchar",
+        "max_length": 255,
+        "default_value": "Your Shop Purchase",
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "portal_settings",
+      "field": "shop_mail_body",
+      "type": "text",
+      "meta": {
+        "collection": "portal_settings",
+        "field": "shop_mail_body",
+        "interface": "input-multiline",
+        "display": "raw",
+        "note": "Body text for shop purchase mail.",
+        "width": "half"
+      },
+      "schema": {
+        "name": "shop_mail_body",
+        "table": "portal_settings",
+        "data_type": "text",
+        "default_value": "Thank you for your purchase! Your items are attached.",
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "portal_settings",
+      "field": "eluna_enabled",
+      "type": "boolean",
+      "meta": {
+        "collection": "portal_settings",
+        "field": "eluna_enabled",
+        "interface": "boolean",
+        "display": "boolean",
+        "note": "Master toggle for all Eluna-dependent features (shop delivery, perks, GM mail).",
+        "width": "half",
+        "options": {
+          "label": "Eluna Enabled"
+        }
+      },
+      "schema": {
+        "name": "eluna_enabled",
+        "table": "portal_settings",
+        "data_type": "boolean",
+        "default_value": true,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "portal_settings",
+      "field": "eluna_shop_enabled",
+      "type": "boolean",
+      "meta": {
+        "collection": "portal_settings",
+        "field": "eluna_shop_enabled",
+        "interface": "boolean",
+        "display": "boolean",
+        "note": "Toggle for Eluna shop features (requires eluna_enabled=true).",
+        "width": "half",
+        "options": {
+          "label": "Eluna Shop Enabled"
+        }
+      },
+      "schema": {
+        "name": "eluna_shop_enabled",
+        "table": "portal_settings",
+        "data_type": "boolean",
+        "default_value": true,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "portal_settings",
+      "field": "eluna_gm_mail_enabled",
+      "type": "boolean",
+      "meta": {
+        "collection": "portal_settings",
+        "field": "eluna_gm_mail_enabled",
+        "interface": "boolean",
+        "display": "boolean",
+        "note": "Toggle for Eluna GM mail features (requires eluna_enabled=true).",
+        "width": "half",
+        "options": {
+          "label": "Eluna GM Mail Enabled"
+        }
+      },
+      "schema": {
+        "name": "eluna_gm_mail_enabled",
+        "table": "portal_settings",
+        "data_type": "boolean",
+        "default_value": true,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "portal_settings",
+      "field": "perk_fail_debuff_spell_id",
+      "type": "integer",
+      "meta": {
+        "collection": "portal_settings",
+        "field": "perk_fail_debuff_spell_id",
+        "interface": "input",
+        "display": "raw",
+        "note": "Spell ID applied on normal perk roll failure (default: 11196 = Recently Bandaged).",
+        "width": "half"
+      },
+      "schema": {
+        "name": "perk_fail_debuff_spell_id",
+        "table": "portal_settings",
+        "data_type": "integer",
+        "default_value": 11196,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "portal_settings",
+      "field": "perk_fail_debuff_duration_ms",
+      "type": "integer",
+      "meta": {
+        "collection": "portal_settings",
+        "field": "perk_fail_debuff_duration_ms",
+        "interface": "input",
+        "display": "raw",
+        "note": "Duration in ms of the normal fail debuff (default: 600000 = 10 min).",
+        "width": "half"
+      },
+      "schema": {
+        "name": "perk_fail_debuff_duration_ms",
+        "table": "portal_settings",
+        "data_type": "integer",
+        "default_value": 600000,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "portal_settings",
+      "field": "perk_critfail_debuff_spell_id",
+      "type": "integer",
+      "meta": {
+        "collection": "portal_settings",
+        "field": "perk_critfail_debuff_spell_id",
+        "interface": "input",
+        "display": "raw",
+        "note": "Spell ID applied on critical perk roll failure / roll 1 (default: 15007 = Resurrection Sickness).",
+        "width": "half"
+      },
+      "schema": {
+        "name": "perk_critfail_debuff_spell_id",
+        "table": "portal_settings",
+        "data_type": "integer",
+        "default_value": 15007,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "portal_settings",
+      "field": "perk_critfail_debuff_duration_ms",
+      "type": "integer",
+      "meta": {
+        "collection": "portal_settings",
+        "field": "perk_critfail_debuff_duration_ms",
+        "interface": "input",
+        "display": "raw",
+        "note": "Duration in ms of the critical fail debuff (default: 600000 = 10 min).",
+        "width": "half"
+      },
+      "schema": {
+        "name": "perk_critfail_debuff_duration_ms",
+        "table": "portal_settings",
+        "data_type": "integer",
+        "default_value": 600000,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "perk_groups",
+      "field": "id",
+      "type": "string",
+      "meta": {
+        "collection": "perk_groups",
+        "field": "id",
+        "interface": "input",
+        "display": "raw",
+        "note": "Unique group identifier (e.g. mount, quest, buffs, scrolls, teleport).",
+        "readonly": false,
+        "required": true
+      },
+      "schema": {
+        "name": "id",
+        "table": "perk_groups",
+        "data_type": "varchar",
+        "max_length": 50,
+        "is_nullable": false,
+        "is_primary_key": true,
+        "has_auto_increment": false
+      }
+    },
+    {
+      "collection": "perk_groups",
+      "field": "label",
+      "type": "string",
+      "meta": {
+        "collection": "perk_groups",
+        "field": "label",
+        "interface": "input",
+        "display": "raw",
+        "note": "Display name shown in the UI.",
+        "width": "half",
+        "required": true
+      },
+      "schema": {
+        "name": "label",
+        "table": "perk_groups",
+        "data_type": "varchar",
+        "max_length": 100,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "perk_groups",
+      "field": "icon",
+      "type": "string",
+      "meta": {
+        "collection": "perk_groups",
+        "field": "icon",
+        "interface": "input",
+        "display": "raw",
+        "note": "Emoji icon for the group.",
+        "width": "half"
+      },
+      "schema": {
+        "name": "icon",
+        "table": "perk_groups",
+        "data_type": "varchar",
+        "max_length": 10,
+        "default_value": "",
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "perk_groups",
+      "field": "description",
+      "type": "text",
+      "meta": {
+        "collection": "perk_groups",
+        "field": "description",
+        "interface": "input-multiline",
+        "display": "raw",
+        "note": "Description shown in the perk group header.",
+        "width": "full"
+      },
+      "schema": {
+        "name": "description",
+        "table": "perk_groups",
+        "data_type": "text",
+        "default_value": "",
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "perk_groups",
+      "field": "enabled",
+      "type": "boolean",
+      "meta": {
+        "collection": "perk_groups",
+        "field": "enabled",
+        "interface": "boolean",
+        "display": "boolean",
+        "note": "Whether this perk group is active. Disabled groups are hidden from the UI.",
+        "width": "half",
+        "options": {
+          "label": "Enabled"
+        }
+      },
+      "schema": {
+        "name": "enabled",
+        "table": "perk_groups",
+        "data_type": "boolean",
+        "default_value": true,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "perk_groups",
+      "field": "sort",
+      "type": "integer",
+      "meta": {
+        "collection": "perk_groups",
+        "field": "sort",
+        "interface": "input",
+        "hidden": true
+      },
+      "schema": {
+        "name": "sort",
+        "table": "perk_groups",
+        "data_type": "integer",
+        "is_nullable": true
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "id",
+      "type": "string",
+      "meta": {
+        "collection": "perks",
+        "field": "id",
+        "interface": "input",
+        "display": "raw",
+        "note": "Unique perk identifier (e.g. flying, buff-motw-r1, scroll-intellect-i, teleport-stormwind).",
+        "readonly": false,
+        "required": true
+      },
+      "schema": {
+        "name": "id",
+        "table": "perks",
+        "data_type": "varchar",
+        "max_length": 100,
+        "is_nullable": false,
+        "is_primary_key": true,
+        "has_auto_increment": false
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "group",
+      "type": "string",
+      "meta": {
+        "collection": "perks",
+        "field": "group",
+        "interface": "select-dropdown-m2o",
+        "display": "related-values",
+        "note": "The perk group this perk belongs to.",
+        "width": "half",
+        "required": true,
+        "options": {
+          "template": "{{icon}} {{label}}"
+        }
+      },
+      "schema": {
+        "name": "group",
+        "table": "perks",
+        "data_type": "varchar",
+        "max_length": 50,
+        "is_nullable": false,
+        "foreign_key_table": "perk_groups",
+        "foreign_key_column": "id"
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "name",
+      "type": "string",
+      "meta": {
+        "collection": "perks",
+        "field": "name",
+        "interface": "input",
+        "display": "raw",
+        "note": "Display name shown in the UI.",
+        "width": "half",
+        "required": true
+      },
+      "schema": {
+        "name": "name",
+        "table": "perks",
+        "data_type": "varchar",
+        "max_length": 255,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "icon",
+      "type": "string",
+      "meta": {
+        "collection": "perks",
+        "field": "icon",
+        "interface": "input",
+        "display": "raw",
+        "note": "Emoji icon.",
+        "width": "half"
+      },
+      "schema": {
+        "name": "icon",
+        "table": "perks",
+        "data_type": "varchar",
+        "max_length": 10,
+        "default_value": "",
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "description",
+      "type": "text",
+      "meta": {
+        "collection": "perks",
+        "field": "description",
+        "interface": "input-multiline",
+        "display": "raw",
+        "note": "Description shown when the perk is available.",
+        "width": "full"
+      },
+      "schema": {
+        "name": "description",
+        "table": "perks",
+        "data_type": "text",
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "success_message",
+      "type": "string",
+      "meta": {
+        "collection": "perks",
+        "field": "success_message",
+        "interface": "input",
+        "display": "raw",
+        "note": "Message shown on successful activation.",
+        "width": "full"
+      },
+      "schema": {
+        "name": "success_message",
+        "table": "perks",
+        "data_type": "varchar",
+        "max_length": 500,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "delivery_type",
+      "type": "string",
+      "meta": {
+        "collection": "perks",
+        "field": "delivery_type",
+        "interface": "select-dropdown",
+        "display": "raw",
+        "note": "How the perk is delivered in-game.",
+        "width": "half",
+        "required": true,
+        "options": {
+          "choices": [
+            { "text": "Spell (permanent learn)", "value": "spell" },
+            { "text": "Item (mailed)", "value": "item" },
+            { "text": "Bag Item (direct to bags)", "value": "bag-item" },
+            { "text": "Aura (temporary buff)", "value": "aura" },
+            { "text": "Teleport", "value": "teleport" }
+          ]
+        }
+      },
+      "schema": {
+        "name": "delivery_type",
+        "table": "perks",
+        "data_type": "varchar",
+        "max_length": 20,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "game_id",
+      "type": "integer",
+      "meta": {
+        "collection": "perks",
+        "field": "game_id",
+        "interface": "input",
+        "display": "raw",
+        "note": "Spell ID (for spell/aura) or Item Entry (for item/bag-item). 0 for teleport.",
+        "width": "half"
+      },
+      "schema": {
+        "name": "game_id",
+        "table": "perks",
+        "data_type": "integer",
+        "default_value": 0,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "aura_duration_ms",
+      "type": "integer",
+      "meta": {
+        "collection": "perks",
+        "field": "aura_duration_ms",
+        "interface": "input",
+        "display": "raw",
+        "note": "Buff duration in ms (aura delivery type only). null = N/A.",
+        "width": "half"
+      },
+      "schema": {
+        "name": "aura_duration_ms",
+        "table": "perks",
+        "data_type": "integer",
+        "is_nullable": true
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "required_level",
+      "type": "integer",
+      "meta": {
+        "collection": "perks",
+        "field": "required_level",
+        "interface": "input",
+        "display": "raw",
+        "note": "Minimum character level required (0 = any level).",
+        "width": "half"
+      },
+      "schema": {
+        "name": "required_level",
+        "table": "perks",
+        "data_type": "integer",
+        "default_value": 0,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "requires_online",
+      "type": "boolean",
+      "meta": {
+        "collection": "perks",
+        "field": "requires_online",
+        "interface": "boolean",
+        "display": "boolean",
+        "note": "Whether the character must be online.",
+        "width": "half",
+        "options": {
+          "label": "Requires Online"
+        }
+      },
+      "schema": {
+        "name": "requires_online",
+        "table": "perks",
+        "data_type": "boolean",
+        "default_value": true,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "one_time",
+      "type": "boolean",
+      "meta": {
+        "collection": "perks",
+        "field": "one_time",
+        "interface": "boolean",
+        "display": "boolean",
+        "note": "One-time permanent unlock (e.g. flying, quest items).",
+        "width": "half",
+        "options": {
+          "label": "One-Time"
+        }
+      },
+      "schema": {
+        "name": "one_time",
+        "table": "perks",
+        "data_type": "boolean",
+        "default_value": false,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "dice_sides",
+      "type": "integer",
+      "meta": {
+        "collection": "perks",
+        "field": "dice_sides",
+        "interface": "input",
+        "display": "raw",
+        "note": "Number of sides on the dice (e.g. 6 = d6, 20 = d20).",
+        "width": "half"
+      },
+      "schema": {
+        "name": "dice_sides",
+        "table": "perks",
+        "data_type": "integer",
+        "default_value": 6,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "roll_threshold",
+      "type": "integer",
+      "meta": {
+        "collection": "perks",
+        "field": "roll_threshold",
+        "interface": "input",
+        "display": "raw",
+        "note": "Minimum roll required to succeed.",
+        "width": "half"
+      },
+      "schema": {
+        "name": "roll_threshold",
+        "table": "perks",
+        "data_type": "integer",
+        "default_value": 2,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "daily_limit",
+      "type": "integer",
+      "meta": {
+        "collection": "perks",
+        "field": "daily_limit",
+        "interface": "input",
+        "display": "raw",
+        "note": "Max successful activations per day (0 = unlimited).",
+        "width": "half"
+      },
+      "schema": {
+        "name": "daily_limit",
+        "table": "perks",
+        "data_type": "integer",
+        "default_value": 0,
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "accent",
+      "type": "string",
+      "meta": {
+        "collection": "perks",
+        "field": "accent",
+        "interface": "input",
+        "display": "raw",
+        "note": "UI accent color (e.g. blue, red, green, purple, orange).",
+        "width": "half"
+      },
+      "schema": {
+        "name": "accent",
+        "table": "perks",
+        "data_type": "varchar",
+        "max_length": 20,
+        "default_value": "blue",
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "env_prefix",
+      "type": "string",
+      "meta": {
+        "collection": "perks",
+        "field": "env_prefix",
+        "interface": "input",
+        "display": "raw",
+        "note": "Env var prefix for overrides (e.g. FLYING → NUXT_PERK_FLYING_DICE_SIDES). Still used as fallback identifier.",
+        "width": "half"
+      },
+      "schema": {
+        "name": "env_prefix",
+        "table": "perks",
+        "data_type": "varchar",
+        "max_length": 50,
+        "default_value": "",
+        "is_nullable": false
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "rank_group",
+      "type": "string",
+      "meta": {
+        "collection": "perks",
+        "field": "rank_group",
+        "interface": "input",
+        "display": "raw",
+        "note": "Perks sharing a rank_group are deduplicated — UI shows only the highest-level qualifying rank.",
+        "width": "half"
+      },
+      "schema": {
+        "name": "rank_group",
+        "table": "perks",
+        "data_type": "varchar",
+        "max_length": 50,
+        "is_nullable": true
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "mail_subject",
+      "type": "string",
+      "meta": {
+        "collection": "perks",
+        "field": "mail_subject",
+        "interface": "input",
+        "display": "raw",
+        "note": "Mail subject for item delivery perks.",
+        "width": "half"
+      },
+      "schema": {
+        "name": "mail_subject",
+        "table": "perks",
+        "data_type": "varchar",
+        "max_length": 255,
+        "is_nullable": true
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "mail_body",
+      "type": "text",
+      "meta": {
+        "collection": "perks",
+        "field": "mail_body",
+        "interface": "input-multiline",
+        "display": "raw",
+        "note": "Mail body text for item delivery perks.",
+        "width": "half"
+      },
+      "schema": {
+        "name": "mail_body",
+        "table": "perks",
+        "data_type": "text",
+        "is_nullable": true
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "item_count",
+      "type": "integer",
+      "meta": {
+        "collection": "perks",
+        "field": "item_count",
+        "interface": "input",
+        "display": "raw",
+        "note": "Number of items to deliver (item/bag-item delivery types).",
+        "width": "half"
+      },
+      "schema": {
+        "name": "item_count",
+        "table": "perks",
+        "data_type": "integer",
+        "is_nullable": true
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "fail_debuff_spell_id",
+      "type": "integer",
+      "meta": {
+        "collection": "perks",
+        "field": "fail_debuff_spell_id",
+        "interface": "input",
+        "display": "raw",
+        "note": "Per-perk override: spell ID applied on normal fail. null = use global default.",
+        "width": "half"
+      },
+      "schema": {
+        "name": "fail_debuff_spell_id",
+        "table": "perks",
+        "data_type": "integer",
+        "is_nullable": true
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "fail_debuff_duration_ms",
+      "type": "integer",
+      "meta": {
+        "collection": "perks",
+        "field": "fail_debuff_duration_ms",
+        "interface": "input",
+        "display": "raw",
+        "note": "Per-perk override: fail debuff duration in ms. null = use global default.",
+        "width": "half"
+      },
+      "schema": {
+        "name": "fail_debuff_duration_ms",
+        "table": "perks",
+        "data_type": "integer",
+        "is_nullable": true
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "critfail_debuff_spell_id",
+      "type": "integer",
+      "meta": {
+        "collection": "perks",
+        "field": "critfail_debuff_spell_id",
+        "interface": "input",
+        "display": "raw",
+        "note": "Per-perk override: spell ID applied on critical fail. null = use global default.",
+        "width": "half"
+      },
+      "schema": {
+        "name": "critfail_debuff_spell_id",
+        "table": "perks",
+        "data_type": "integer",
+        "is_nullable": true
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "critfail_debuff_duration_ms",
+      "type": "integer",
+      "meta": {
+        "collection": "perks",
+        "field": "critfail_debuff_duration_ms",
+        "interface": "input",
+        "display": "raw",
+        "note": "Per-perk override: critical fail debuff duration in ms. null = use global default.",
+        "width": "half"
+      },
+      "schema": {
+        "name": "critfail_debuff_duration_ms",
+        "table": "perks",
+        "data_type": "integer",
+        "is_nullable": true
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "teleport_map_id",
+      "type": "integer",
+      "meta": {
+        "collection": "perks",
+        "field": "teleport_map_id",
+        "interface": "input",
+        "display": "raw",
+        "note": "Map ID for teleport perks (0=Eastern Kingdoms, 1=Kalimdor, 530=Outland, 571=Northrend).",
+        "width": "half"
+      },
+      "schema": {
+        "name": "teleport_map_id",
+        "table": "perks",
+        "data_type": "integer",
+        "is_nullable": true
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "teleport_x",
+      "type": "float",
+      "meta": {
+        "collection": "perks",
+        "field": "teleport_x",
+        "interface": "input",
+        "display": "raw",
+        "note": "Teleport X coordinate.",
+        "width": "half"
+      },
+      "schema": {
+        "name": "teleport_x",
+        "table": "perks",
+        "data_type": "float",
+        "is_nullable": true
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "teleport_y",
+      "type": "float",
+      "meta": {
+        "collection": "perks",
+        "field": "teleport_y",
+        "interface": "input",
+        "display": "raw",
+        "note": "Teleport Y coordinate.",
+        "width": "half"
+      },
+      "schema": {
+        "name": "teleport_y",
+        "table": "perks",
+        "data_type": "float",
+        "is_nullable": true
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "teleport_z",
+      "type": "float",
+      "meta": {
+        "collection": "perks",
+        "field": "teleport_z",
+        "interface": "input",
+        "display": "raw",
+        "note": "Teleport Z coordinate.",
+        "width": "half"
+      },
+      "schema": {
+        "name": "teleport_z",
+        "table": "perks",
+        "data_type": "float",
+        "is_nullable": true
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "teleport_o",
+      "type": "float",
+      "meta": {
+        "collection": "perks",
+        "field": "teleport_o",
+        "interface": "input",
+        "display": "raw",
+        "note": "Teleport orientation (facing direction).",
+        "width": "half"
+      },
+      "schema": {
+        "name": "teleport_o",
+        "table": "perks",
+        "data_type": "float",
+        "is_nullable": true
+      }
+    },
+    {
+      "collection": "perks",
+      "field": "sort",
+      "type": "integer",
+      "meta": {
+        "collection": "perks",
+        "field": "sort",
+        "interface": "input",
+        "hidden": true
+      },
+      "schema": {
+        "name": "sort",
+        "table": "perks",
+        "data_type": "integer",
+        "is_nullable": true
+      }
+    },
+    {
+      "collection": "shop_categories",
+      "field": "id",
+      "type": "integer",
+      "meta": {
+        "collection": "shop_categories",
+        "field": "id",
+        "hidden": true,
+        "interface": "input",
+        "readonly": true
+      },
+      "schema": {
+        "name": "id",
+        "table": "shop_categories",
+        "data_type": "integer",
+        "is_nullable": false,
+        "is_primary_key": true,
+        "has_auto_increment": true
+      }
+    },
+    {
+      "collection": "shop_categories",
+      "field": "slug",
+      "type": "string",
+      "meta": {
+        "collection": "shop_categories",
+        "field": "slug",
+        "interface": "input",
+        "display": "raw",
+        "note": "URL-safe category identifier (e.g. weapons, armor, trade_goods).",
+        "required": true,
+        "width": "half"
+      },
+      "schema": {
+        "name": "slug",
+        "table": "shop_categories",
+        "data_type": "varchar",
+        "max_length": 50,
+        "is_nullable": false,
+        "is_unique": true
+      }
+    },
+    {
+      "collection": "shop_categories",
+      "field": "sort",
+      "type": "integer",
+      "meta": {
+        "collection": "shop_categories",
+        "field": "sort",
+        "interface": "input",
+        "hidden": true
+      },
+      "schema": {
+        "name": "sort",
+        "table": "shop_categories",
+        "data_type": "integer",
+        "is_nullable": true
+      }
+    }
+  ],
+  "relations": [
+    {
+      "collection": "perks",
+      "field": "group",
+      "related_collection": "perk_groups",
+      "meta": {
+        "many_collection": "perks",
+        "many_field": "group",
+        "one_collection": "perk_groups",
+        "one_field": "perks",
+        "one_deselect_action": "nullify",
+        "junction_field": null
+      },
+      "schema": {
+        "table": "perks",
+        "column": "group",
+        "foreign_key_table": "perk_groups",
+        "foreign_key_column": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "SET NULL"
+      }
+    }
+  ]
+}

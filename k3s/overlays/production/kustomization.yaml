@@ -1,0 +1,19 @@
+# Kustomize Production Overlay
+#
+# Deployment:
+#   ./k3s/deploy.sh
+#
+# Oder manuell:
+#   sops -d k3s/overlays/production/postgresql-secrets.enc.yaml | kubectl apply -f -
+#   sops -d k3s/overlays/production/directus-secrets.enc.yaml | kubectl apply -f -
+#   kubectl apply -k k3s/overlays/production/
+#
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Basis-Konfiguration importieren (alle Ressourcen aus base/)
+resources:
+  - ../../base
+
+# Secrets werden mit SOPS verschlüsselt und separat angewendet.
+# Siehe: postgresql-secrets.enc.yaml, directus-secrets.enc.yaml

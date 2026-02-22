@@ -10,7 +10,18 @@
  */
 
 import type { RealmConfig } from '~/types'
-import { PERK_REGISTRY, PERK_GROUPS, type PerkGroup, type PerkDefinition } from '~~/shared/utils/perks'
+import { PERK_REGISTRY, PERK_GROUPS, type PerkGroup, type PerkDefinition } from '#shared/utils/perks'
+import {
+  isDirectusEnabled,
+  getDirectusSettings,
+  getDirectusPerkGroups,
+  getDirectusPerks,
+  getDirectusShopCategories,
+  toAppPerkGroupMeta,
+  toAppPerkDefinition,
+  type DirectusPerkGroup,
+  type DirectusPerk,
+} from '#server/utils/directus'
 
 export interface RealmSoapConfig {
   enabled: boolean
@@ -314,4 +325,140 @@ export const getPerkConfig = () => {
     critFailDebuffSpellId: parseInt(process.env.NUXT_PERK_CRITFAIL_DEBUFF_SPELL_ID || '15007', 10),
     critFailDebuffDurationMs: parseInt(process.env.NUXT_PERK_CRITFAIL_DEBUFF_DURATION_MS || '600000', 10),
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Directus-aware async variants
+// These try Directus first, falling back to env/hardcoded.
+// Use these in API routes instead of the sync versions above.
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Async shop config — tries Directus, falls back to env/hardcoded.
+ */
+export async function getShopConfigAsync() {
+  if (!isDirectusEnabled()) return getShopConfig()
+
+  const [settings, categories] = await Promise.all([
+    getDirectusSettings(),
+    getDirectusShopCategories(),
+  ])
+
+  if (!settings) return getShopConfig()
+
+  const fallback = getShopConfig()
+  return {
+    enabled: settings.shop_enabled,
+    priceMarkupPercent: settings.shop_markup_percent,
+    deliveryMethod: settings.shop_delivery_method as 'mail' | 'bag' | 'both',
+    mailSubject: settings.shop_mail_subject,
+    mailBody: settings.shop_mail_body,
+    categories: (categories && categories.length > 0
+      ? categories.map(c => c.slug)
+      : fallback.categories) as readonly string[],
+  }
+}
+
+/**
+ * Async Eluna config — tries Directus, falls back to env/hardcoded.
+ */
+export async function getElunaConfigAsync() {
+  if (!isDirectusEnabled()) return getElunaConfig()
+
+  const settings = await getDirectusSettings()
+  if (!settings) return getElunaConfig()
+
+  return {
+    enabled: settings.eluna_enabled,
+    shopEnabled: settings.eluna_shop_enabled,
+    gmMailEnabled: settings.eluna_gm_mail_enabled,
+  }
+}
+
+/**
+ * Check if Eluna shop features are available (async Directus-aware)
+ */
+export async function isElunaShopEnabledAsync(): Promise<boolean> {
+  const config = await getElunaConfigAsync()
+  return config.enabled && config.shopEnabled
+}
+
+/**
+ * Check if Eluna GM mail features are available (async Directus-aware)
+ */
+export async function isElunaGmMailEnabledAsync(): Promise<boolean> {
+  const config = await getElunaConfigAsync()
+  return config.enabled && config.gmMailEnabled
+}
+
+/**
+ * Async perk config — tries Directus for perk definitions and group toggles,
+ * falls back to env + hardcoded PERK_REGISTRY.
+ *
+ * When Directus is active, perk definitions (dice, threshold, limit, level)
+ * come from Directus rows — env var overrides are NOT applied on top.
+ * This means Directus is the single source of truth for perk tuning.
+ */
+export async function getPerkConfigAsync() {
+  if (!isDirectusEnabled()) return getPerkConfig()
+
+  const [settings, dGroups, dPerks] = await Promise.all([
+    getDirectusSettings(),
+    getDirectusPerkGroups(),
+    getDirectusPerks(),
+  ])
+
+  // Fall back if any critical data is missing
+  if (!dGroups || !dPerks) return getPerkConfig()
+
+  // Build group enabled map from Directus
+  const groups = {} as Record<PerkGroup, PerkGroupConfig>
+  for (const dg of dGroups) {
+    groups[dg.id as PerkGroup] = { enabled: dg.enabled }
+  }
+
+  // Build per-perk resolved config from Directus (no env override layer)
+  const perks = {} as Record<string, ResolvedPerkConfig>
+  for (const dp of dPerks) {
+    perks[dp.id] = {
+      diceSides: dp.dice_sides,
+      rollThreshold: dp.roll_threshold,
+      dailyLimit: dp.daily_limit,
+      requiredLevel: dp.required_level,
+    }
+  }
+
+  return {
+    groups,
+    perks,
+    failDebuffSpellId: settings?.perk_fail_debuff_spell_id ?? parseInt(process.env.NUXT_PERK_FAIL_DEBUFF_SPELL_ID || '11196', 10),
+    failDebuffDurationMs: settings?.perk_fail_debuff_duration_ms ?? parseInt(process.env.NUXT_PERK_FAIL_DEBUFF_DURATION_MS || '600000', 10),
+    critFailDebuffSpellId: settings?.perk_critfail_debuff_spell_id ?? parseInt(process.env.NUXT_PERK_CRITFAIL_DEBUFF_SPELL_ID || '15007', 10),
+    critFailDebuffDurationMs: settings?.perk_critfail_debuff_duration_ms ?? parseInt(process.env.NUXT_PERK_CRITFAIL_DEBUFF_DURATION_MS || '600000', 10),
+  }
+}
+
+/**
+ * Get the full perk registry — tries Directus, falls back to hardcoded.
+ * Returns PerkDefinition[] for use in perk-config and activate-perk routes.
+ */
+export async function getPerkRegistryAsync(): Promise<PerkDefinition[]> {
+  if (!isDirectusEnabled()) return PERK_REGISTRY
+
+  const dPerks = await getDirectusPerks()
+  if (!dPerks || dPerks.length === 0) return PERK_REGISTRY
+
+  return dPerks.map(toAppPerkDefinition)
+}
+
+/**
+ * Get perk group metadata — tries Directus, falls back to hardcoded.
+ */
+export async function getPerkGroupsAsync() {
+  if (!isDirectusEnabled()) return PERK_GROUPS
+
+  const dGroups = await getDirectusPerkGroups()
+  if (!dGroups || dGroups.length === 0) return PERK_GROUPS
+
+  return dGroups.map(toAppPerkGroupMeta)
 }
