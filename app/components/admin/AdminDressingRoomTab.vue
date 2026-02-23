@@ -656,14 +656,14 @@ onUnmounted(() => {
                     type="number"
                     :min="0"
                     :max="450"
-                    placeholder="Skill"
+                    placeholder="Current level"
                   />
                   <UiInput
                     v-model="professionMax"
                     type="number"
                     :min="0"
                     :max="450"
-                    placeholder="Max"
+                    placeholder="Max level"
                   />
                   <UiButton
                     size="sm"
@@ -674,7 +674,7 @@ onUnmounted(() => {
                     Set
                   </UiButton>
                 </div>
-                <p class="form-hint">Set both to 0 to remove a profession</p>
+                <p class="form-hint">Current = your progress (e.g. 375). Max = rank cap (75/150/225/300/375/450). Set both to 0 to remove.</p>
               </div>
             </div>
           </div>

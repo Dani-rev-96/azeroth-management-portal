@@ -23,7 +23,7 @@
     Format: [{"entry":12345,"count":1},{"entry":67890,"count":2}]
 
     Author: AzerothCore Nix Flake Project
-    Version: 2.9
+    Version: 2.10
 ]]
 
 local SCRIPT_NAME = "web_worker"
@@ -1012,7 +1012,10 @@ local function processSpellRow(row)
 
     -- Teach the spell
     player:LearnSpell(spellId)
-    player:SaveToDB()
+
+    -- NOTE: No SaveToDB() here — LearnSpell() updates memory and client
+    -- immediately. The server's periodic auto-save persists the change.
+    -- Calling SaveToDB() can conflict with concurrent skill updates.
 
     -- Notify player
     if reason and reason ~= "" then
@@ -1286,11 +1289,22 @@ local function processSkillRow(row)
             player:SetSkill(skillId, step, skillValue, skillMax)
         end
 
-        player:SaveToDB()
+        -- NOTE: We do NOT call player:SaveToDB() here.
+        -- SetSkill() updates the player object in memory and sends the
+        -- update to the client immediately. The server's periodic auto-save
+        -- will persist the change to the database.
+        -- Calling SaveToDB() here can conflict with concurrent spell learning
+        -- (training spells for the profession rank).
 
         -- Notify player
         if reason and reason ~= "" then
             player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s", reason))
+        else
+            if skillValue == 0 and skillMax == 0 then
+                player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r Profession skill %d has been removed.", skillId))
+            else
+                player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r Profession skill updated to %d/%d.", skillValue, skillMax))
+            end
         end
 
         PrintInfo(string.format("[%s] Skill: Processed %d for online player %d (skill %d: %d/%d)",
@@ -1469,6 +1483,19 @@ local function processQuestRow(row)
     local player = GetPlayerByGUID(guid)
     if player then
         if action == "complete" then
+            -- Check if quest is already rewarded
+            local alreadyRewarded = CharDBQuery(string.format(
+                "SELECT quest FROM character_queststatus_rewarded WHERE guid = %d AND quest = %d",
+                guid, questId
+            ))
+            if alreadyRewarded then
+                PrintInfo(string.format("[%s] Quest: Quest %d already rewarded for player %d, skipping",
+                    SCRIPT_NAME, questId, guid))
+                markDone("web_quest_requests", id)
+                return true
+            end
+
+            -- Use CompleteQuest to mark objectives done (updates client immediately)
             local ok, err = pcall(function()
                 player:CompleteQuest(questId)
             end)
@@ -1478,23 +1505,17 @@ local function processQuestRow(row)
                 return false
             end
 
-            -- Also ensure DB reflects rewarded state
-            -- (CompleteQuest only marks as "ready to turn in", not "rewarded")
-            CharDBExecute(string.format(
-                "DELETE FROM character_queststatus WHERE guid = %d AND quest = %d",
-                guid, questId
-            ))
-            CharDBExecute(string.format(
-                "INSERT IGNORE INTO character_queststatus_rewarded (guid, quest, active) VALUES (%d, %d, 1)",
-                guid, questId
-            ))
-
-            player:SaveToDB()
+            -- NOTE: CompleteQuest() marks the quest as "ready to turn in" in the
+            -- server's memory and sends the update to the client immediately.
+            -- We do NOT manipulate the DB here because SaveToDB() would overwrite
+            -- our changes. The player can visit the quest giver to turn in and
+            -- receive proper rewards (XP, gold, items, reputation).
+            -- This matches the behavior of the GM command ".quest complete".
 
             if reason and reason ~= "" then
-                player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s (relog for full effect)", reason))
+                player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s", reason))
             else
-                player:SendBroadcastMessage("|cff00ff00[GM]|r A quest has been completed for you! (relog for full effect)")
+                player:SendBroadcastMessage("|cff00ff00[GM]|r Quest objectives completed! Visit the quest giver to turn in for rewards.")
             end
         end
 
@@ -2143,18 +2164,13 @@ local function onPlayerLogin(event, player)
                 end)
 
                 if questOk then
-                    -- Also ensure DB reflects rewarded state
-                    CharDBExecute(string.format(
-                        "DELETE FROM character_queststatus WHERE guid = %d AND quest = %d",
-                        guid, questReqQuestId
-                    ))
-                    CharDBExecute(string.format(
-                        "INSERT IGNORE INTO character_queststatus_rewarded (guid, quest, active) VALUES (%d, %d, 1)",
-                        guid, questReqQuestId
-                    ))
+                    -- CompleteQuest marks objectives done immediately on login.
+                    -- Player can turn in at quest giver for proper rewards.
 
                     if questReason and questReason ~= "" then
                         player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s", questReason))
+                    else
+                        player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r Quest %d objectives completed! Visit the quest giver to turn in.", questReqQuestId))
                     end
                     markDone("web_quest_requests", questReqId)
                     processed = processed + 1

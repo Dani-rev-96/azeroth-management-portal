@@ -5,8 +5,10 @@
  *
  * Body: { guid: number, realmId: string, questIds: number[] }
  *
- * Uses web_quest_requests Eluna queue when enabled to properly
- * complete quests via server API (handles rewards, follow-ups, etc).
+ * Uses web_quest_requests Eluna queue when enabled.
+ * For online players: CompleteQuest() marks objectives done instantly.
+ * Player visits quest giver to turn in and receive rewards (XP, gold, items, rep).
+ * For offline players: direct DB manipulation marks quest as rewarded.
  */
 import { getAuthenticatedFeatureUser } from '#server/utils/auth'
 import { getCharactersDbPool } from '#server/utils/mysql'
