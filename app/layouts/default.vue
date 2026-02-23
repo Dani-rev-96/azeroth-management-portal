@@ -33,7 +33,7 @@
             <span class="nav-icon">👥</span>
             Community
           </NuxtLink>
-          <NuxtLink v-if="isGM" to="/admin" class="nav-link nav-link-admin">
+          <NuxtLink v-if="hasAdminAccess" to="/admin" class="nav-link nav-link-admin">
             <span class="nav-icon">🛡️</span>
             Admin
           </NuxtLink>
@@ -102,7 +102,7 @@
           <span class="nav-icon">👥</span>
           Community
         </NuxtLink>
-        <NuxtLink v-if="isGM" to="/admin" class="mobile-nav-link mobile-nav-link-admin" @click="mobileMenuOpen = false">
+        <NuxtLink v-if="hasAdminAccess" to="/admin" class="mobile-nav-link mobile-nav-link-admin" @click="mobileMenuOpen = false">
           <span class="nav-icon">🛡️</span>
           Admin
         </NuxtLink>
@@ -132,6 +132,7 @@
 const authStore = useAuthStore()
 const { logoutAndRedirect } = useAuth()
 const isGM = computed(() => authStore.user?.isGM || false)
+const hasAdminAccess = computed(() => authStore.hasAdminAccess)
 const mobileMenuOpen = ref(false)
 const userMenuOpen = ref(false)
 

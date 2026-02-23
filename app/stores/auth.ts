@@ -6,6 +6,7 @@ export const useAuthStore = defineStore('auth', () => {
   // State
   const user = ref<AuthUser | null>(null)
   const token = ref<string | undefined>(undefined)
+  const featureGrants = ref<Set<string>>(new Set())
 
   // Getters
   const isAuthenticated = computed(() => !!user.value)
@@ -13,6 +14,7 @@ export const useAuthStore = defineStore('auth', () => {
   const currentUser = computed(() => user.value)
   const userId = computed(() => user.value?.sub)
   const username = computed(() => user.value?.preferred_username)
+  const hasAdminAccess = computed(() => !!(user.value?.isGM) || featureGrants.value.size > 0)
 
   // Actions
   function setUser(nextUser: AuthUser, nextToken?: string) {
@@ -23,6 +25,7 @@ export const useAuthStore = defineStore('auth', () => {
   function clearAuth() {
     user.value = null
     token.value = undefined
+    featureGrants.value = new Set()
   }
 
   function initializeFromHeaders(headers: Record<string, string>) {
@@ -58,8 +61,24 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function initializeAuth(): Promise<boolean> {
-    // Extend here if you later need header parsing or prechecks
-    return fetchCurrentUser()
+    const success = await fetchCurrentUser()
+    if (success && !user.value?.isGM) {
+      await fetchFeatureGrants()
+    }
+    return success
+  }
+
+  /**
+   * Fetch active feature grants for the current user.
+   * Called after auth init for non-GM users.
+   */
+  async function fetchFeatureGrants(): Promise<void> {
+    try {
+      const data = await $fetch<{ features: Array<{ id: string }>; hasAny: boolean }>('/api/admin/my-features')
+      featureGrants.value = new Set((data.features || []).map(f => f.id))
+    } catch {
+      featureGrants.value = new Set()
+    }
   }
 
   async function logout() {
@@ -76,17 +95,20 @@ export const useAuthStore = defineStore('auth', () => {
     // state
     user,
     token,
+    featureGrants,
     // getters
     isAuthenticated,
     isLoggedIn,
     currentUser,
     userId,
     username,
+    hasAdminAccess,
     // actions
     setUser,
     clearAuth,
     initializeFromHeaders,
     fetchCurrentUser,
+    fetchFeatureGrants,
     initializeAuth,
     logout,
   }

@@ -21,16 +21,15 @@ import AdminBackupTab from '~/components/admin/AdminBackupTab.vue'
 import AdminDressingRoomTab from '~/components/admin/AdminDressingRoomTab.vue'
 import AdminFeatureGrantsTab from '~/components/admin/AdminFeatureGrantsTab.vue'
 import { useAuthStore } from '~/stores/auth'
-import { ref, computed, watchEffect } from 'vue'
+import { ref, computed, watchEffect, watch } from 'vue'
 
 // Auth check
 const authStore = useAuthStore()
 const isGM = computed(() => authStore.user?.isGM || false)
 const gmLevel = computed(() => authStore.user?.gmLevel || 0)
 
-// Feature grants for non-GM users
-const myFeatures = ref<Set<string>>(new Set())
-const hasAnyAccess = computed(() => isGM.value || myFeatures.value.size > 0)
+// Feature grants from the auth store (fetched during initializeAuth)
+const hasAnyAccess = computed(() => authStore.hasAdminAccess)
 
 // Feature-ID → tab-ID mapping
 const FEATURE_TAB_MAP: Record<string, string[]> = {
@@ -61,15 +60,31 @@ const tabs = computed(() => {
   if (isGM.value) return allTabs
   // Non-GM users only see tabs matching their active feature grants
   const allowedTabIds = new Set<string>()
-  for (const featureId of myFeatures.value) {
+  for (const featureId of authStore.featureGrants) {
     const tabIds = FEATURE_TAB_MAP[featureId]
     if (tabIds) tabIds.forEach(id => allowedTabIds.add(id))
   }
   return allTabs.filter(t => allowedTabIds.has(t.id))
 })
 
+/** Check if the current user can access a specific tab */
+function canAccessTab(tabId: string): boolean {
+  if (isGM.value) return true
+  return tabs.value.some(t => t.id === tabId)
+}
+
 // URL-synced tab state
 const { activeTab } = useUrlTab('accounts')
+
+// Enforce tab access: redirect to first allowed tab if current tab is not permitted
+watch([activeTab, tabs], ([currentTab, availableTabs]) => {
+  if (isGM.value) return
+  if (availableTabs.length === 0) return
+  const isAllowed = availableTabs.some(t => t.id === currentTab)
+  if (!isAllowed) {
+    activeTab.value = availableTabs[0].id
+  }
+}, { immediate: true })
 
 // Data state
 const accounts = ref<AccountRow[]>([])
@@ -106,17 +121,12 @@ const deletingFile = ref('')
 watchEffect(async () => {
   if (!authStore.isAuthenticated) return
 
-  // Check for feature grants (non-GM users)
-  if (!isGM.value) {
-    try {
-      const data = await $fetch<{ features: Array<{ feature_id: string }> }>('/api/admin/my-features')
-      myFeatures.value = new Set((data.features || []).map(f => f.feature_id))
-    } catch {
-      myFeatures.value = new Set()
-    }
+  // Ensure feature grants are loaded (may already be from auth init)
+  if (!isGM.value && authStore.featureGrants.size === 0) {
+    await authStore.fetchFeatureGrants()
 
-    // If not GM and no feature grants, redirect
-    if (myFeatures.value.size === 0) {
+    // If still no access, redirect
+    if (!authStore.hasAdminAccess) {
       navigateTo('/')
       return
     }
@@ -309,7 +319,7 @@ async function handleFileDelete(filename: string) {
       <UiEmptyState
         icon="🚫"
         title="Access Denied"
-        message="You need GM privileges to access this page."
+        message="You need GM privileges or an active feature grant to access this page."
       >
         <template #action>
           <UiButton @click="navigateTo('/')">Return Home</UiButton>
@@ -326,7 +336,7 @@ async function handleFileDelete(filename: string) {
       />
 
       <!-- Accounts Tab -->
-      <UiTabPanel id="accounts" :active="activeTab === 'accounts'">
+      <UiTabPanel v-if="canAccessTab('accounts')" id="accounts" :active="activeTab === 'accounts'">
         <AdminAccountsTab
           :accounts="accounts"
           :loading="loadingAccounts"
@@ -337,7 +347,7 @@ async function handleFileDelete(filename: string) {
       </UiTabPanel>
 
       <!-- Mappings Tab -->
-      <UiTabPanel id="mappings" :active="activeTab === 'mappings'">
+      <UiTabPanel v-if="canAccessTab('mappings')" id="mappings" :active="activeTab === 'mappings'">
         <AdminMappingsTab
           :mappings="mappings"
           :loading="loadingMappings"
@@ -345,7 +355,7 @@ async function handleFileDelete(filename: string) {
       </UiTabPanel>
 
       <!-- Link Accounts Tab (Admin) -->
-      <UiTabPanel id="link-accounts" :active="activeTab === 'link-accounts'">
+      <UiTabPanel v-if="canAccessTab('link-accounts')" id="link-accounts" :active="activeTab === 'link-accounts'">
         <AdminLinkAccountsTab
           :mappings="mappings"
           :accounts="accounts"
@@ -355,7 +365,7 @@ async function handleFileDelete(filename: string) {
       </UiTabPanel>
 
       <!-- GM Management Tab -->
-      <UiTabPanel id="gms" :active="activeTab === 'gms'">
+      <UiTabPanel v-if="canAccessTab('gms')" id="gms" :active="activeTab === 'gms'">
         <UiSectionHeader title="GM Management" />
 
         <AdminGMForm
@@ -376,7 +386,7 @@ async function handleFileDelete(filename: string) {
       </UiTabPanel>
 
       <!-- Files Tab -->
-      <UiTabPanel id="files" :active="activeTab === 'files'">
+      <UiTabPanel v-if="canAccessTab('files')" id="files" :active="activeTab === 'files'">
         <AdminFilesTab
           :files="publicFiles"
           :loading="loadingFiles"
@@ -391,17 +401,17 @@ async function handleFileDelete(filename: string) {
       </UiTabPanel>
 
       <!-- Backup & Restore Tab -->
-      <UiTabPanel id="backup" :active="activeTab === 'backup'">
+      <UiTabPanel v-if="canAccessTab('backup')" id="backup" :active="activeTab === 'backup'">
         <AdminBackupTab :realms="realmsList" />
       </UiTabPanel>
 
       <!-- Dressing Room Tab -->
-      <UiTabPanel id="dressingroom" :active="activeTab === 'dressingroom'">
+      <UiTabPanel v-if="canAccessTab('dressingroom')" id="dressingroom" :active="activeTab === 'dressingroom'">
         <AdminDressingRoomTab :realms="realmsList" />
       </UiTabPanel>
 
       <!-- Feature Grants Tab -->
-      <UiTabPanel id="feature-grants" :active="activeTab === 'feature-grants'">
+      <UiTabPanel v-if="canAccessTab('feature-grants')" id="feature-grants" :active="activeTab === 'feature-grants'">
         <AdminFeatureGrantsTab />
       </UiTabPanel>
     </div>
