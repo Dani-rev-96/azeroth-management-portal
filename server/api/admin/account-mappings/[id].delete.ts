@@ -2,12 +2,12 @@
  * DELETE /api/admin/account-mappings/:id
  * Delete an account mapping by ID (GM only)
  */
-import { getAuthenticatedGM } from '#server/utils/auth'
+import { getAuthenticatedFeatureUser } from '#server/utils/auth'
 
 export default defineEventHandler(async (event) => {
   try {
     // Authenticate and check GM status
-    await getAuthenticatedGM(event)
+    await getAuthenticatedFeatureUser(event, 'admin.mappings')
 
     const id = getRouterParam(event, 'id')
     const mappingId = parseInt(id || '', 10)

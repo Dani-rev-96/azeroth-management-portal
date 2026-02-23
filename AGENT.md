@@ -56,22 +56,24 @@ docs/                → Detailed documentation (API, Auth, Config, Deploy, Dev,
 
 ### Key Files
 
-| File                           | Purpose                                                                        |
-| ------------------------------ | ------------------------------------------------------------------------------ |
-| `nuxt.config.ts`               | Nuxt config: modules, runtime config defaults, Vite/SCSS settings              |
-| `app/app.vue`                  | Root Vue component                                                             |
-| `app/layouts/default.vue`      | Main layout (nav, footer, mobile menu)                                         |
-| `app/types/index.ts`           | All shared TypeScript types                                                    |
-| `server/utils/config/index.ts` | Central server config — reads `process.env` at runtime (K8s-safe), perk config |
-| `server/utils/directus.ts`     | Directus CMS client — types, fetch helper, 60s cache, converters, public API   |
-| `server/utils/db.ts`           | SQLite (better-sqlite3) for account_mappings — WAL mode, CRUD interface        |
-| `server/utils/mysql.ts`        | MySQL connection pools (mysql2/promise) — cached in Map                        |
-| `server/utils/auth.ts`         | Auth utilities: `getAuthenticatedUser()`, `requireGM()`, session management    |
-| `server/utils/dbc-db.ts`       | DBC SQLite databases (items, spells, talents) — read-only server assets        |
-| `server/utils/srp6.ts`         | SRP-6a password verification/creation (AzerothCore compatible)                 |
-| `data/eluna/web_worker.lua`    | Eluna bridge script — processes all queue tables in-game (v2.8)                |
-| `shared/utils/perks/index.ts`  | Perk registry barrel — re-exports types, groups, per-group arrays, helpers     |
-| `shared/utils/config/index.ts` | Type-only re-exports for client/server shared config types                     |
+| File                            | Purpose                                                                                       |
+| ------------------------------- | --------------------------------------------------------------------------------------------- |
+| `nuxt.config.ts`                | Nuxt config: modules, runtime config defaults, Vite/SCSS settings                             |
+| `app/app.vue`                   | Root Vue component                                                                            |
+| `app/layouts/default.vue`       | Main layout (nav, footer, mobile menu)                                                        |
+| `app/types/index.ts`            | All shared TypeScript types                                                                   |
+| `server/utils/config/index.ts`  | Central server config — reads `process.env` at runtime (K8s-safe), perk config                |
+| `server/utils/directus.ts`      | Directus CMS client — types, fetch helper, 60s cache, converters, public API                  |
+| `server/utils/db.ts`            | SQLite (better-sqlite3) for account_mappings — WAL mode, CRUD interface                       |
+| `server/utils/mysql.ts`         | MySQL connection pools (mysql2/promise) — cached in Map                                       |
+| `server/utils/auth.ts`          | Auth utilities: `getAuthenticatedUser()`, `getAuthenticatedFeatureUser()`, session management |
+| `server/utils/user-settings.ts` | SQLite for feature grants — WAL mode, ADMIN_FEATURES registry, FeatureGrantDB CRUD            |
+| `server/utils/dbc-db.ts`        | DBC SQLite databases (items, spells, talents) — read-only server assets                       |
+| `server/utils/srp6.ts`          | SRP-6a password verification/creation (AzerothCore compatible)                                |
+| `server/utils/dressingroom.ts`  | Dressing room helpers — character ownership verification for own-account-only grants          |
+| `data/eluna/web_worker.lua`     | Eluna bridge script — processes all queue tables in-game (v2.9)                               |
+| `shared/utils/perks/index.ts`   | Perk registry barrel — re-exports types, groups, per-group arrays, helpers                    |
+| `shared/utils/config/index.ts`  | Type-only re-exports for client/server shared config types                                    |
 
 ## Directory Structure
 
@@ -148,17 +150,17 @@ All use **Composition API** pattern: `defineStore('name', () => { ... })`.
 
 File-based routing with HTTP verb suffixes: `.get.ts`, `.post.ts`, `.delete.ts`. Dynamic params via `[paramName]` directories. **No PUT/PATCH** — mutations use POST.
 
-| Group           | Files                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Auth                                                   |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `auth/`         | `config.get`, `login.post`, `logout.post`, `me.get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Public (config), Direct-mode (login/logout), Any (me)  |
-| `accounts/`     | `create.post`, `map.post`, `password.post`, `detail/[accountId].get`, `map/[externalId]/[wowAccountId].delete`, `user/[externalId].get`, `user/mapping/[wowAccountId].get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Authenticated                                          |
-| `characters/`   | `action.post`, `activate-perk.post`, `perk-config.get`, `perk-status.get`, `[guid]/[realmId].get`, `talent-tree/[classId].get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Authenticated (action, perks), Public (detail, talent) |
-| `admin/`        | `accounts.get`, `account-mappings.get`, `account-mappings.post`, `account-mappings/[id].delete`, `backup/list.get`, `backup/create.post`, `backup/restore.post`, `dressingroom/characters.get`, `dressingroom/character/[guid]/[realmId].get`, `dressingroom/reputations/[guid]/[realmId].get`, `dressingroom/modify-money.post`, `dressingroom/add-item.post`, `dressingroom/teach-spell.post`, `dressingroom/set-profession.post`, `dressingroom/set-level.post`, `dressingroom/set-reputation.post`, `dressingroom/quest-search.get`, `dressingroom/complete-quest.post`, `dressingroom/add-achievement.post`, `dressingroom/set-title.post`, `export.post`, `files/upload.post`, `files/[filename].delete`, `gm/set-level.post`, `items/search.get`, `mail/send.post` | GM required (`requireGM()`)                            |
-| `community/`    | `online.get`, `stats.get`, `top-players.get`, `pvp-stats.get`, `players.get`, `zones.get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Public                                                 |
-| `shop/`         | `config.get`, `items.get`, `purchase.post`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Varies                                                 |
-| `downloads/`    | `list.get`, `[filename].get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Public                                                 |
-| `stats/`        | `overview.get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Public                                                 |
-| `realms.get.ts` | Realm list (also K8s health endpoint)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Public                                                 |
+| Group           | Files                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Auth                                                   |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `auth/`         | `config.get`, `login.post`, `logout.post`, `me.get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Public (config), Direct-mode (login/logout), Any (me)  |
+| `accounts/`     | `create.post`, `map.post`, `password.post`, `detail/[accountId].get`, `map/[externalId]/[wowAccountId].delete`, `user/[externalId].get`, `user/mapping/[wowAccountId].get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Authenticated                                          |
+| `characters/`   | `action.post`, `activate-perk.post`, `perk-config.get`, `perk-status.get`, `[guid]/[realmId].get`, `talent-tree/[classId].get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Authenticated (action, perks), Public (detail, talent) |
+| `admin/`        | `accounts.get`, `account-mappings.get`, `account-mappings.post`, `account-mappings/[id].delete`, `backup/list.get`, `backup/create.post`, `backup/restore.post`, `dressingroom/characters.get`, `dressingroom/character/[guid]/[realmId].get`, `dressingroom/reputations/[guid]/[realmId].get`, `dressingroom/modify-money.post`, `dressingroom/add-item.post`, `dressingroom/teach-spell.post`, `dressingroom/spell-search.get`, `dressingroom/set-profession.post`, `dressingroom/set-level.post`, `dressingroom/set-reputation.post`, `dressingroom/quest-search.get`, `dressingroom/complete-quest.post`, `dressingroom/add-achievement.post`, `dressingroom/set-title.post`, `export.post`, `files/upload.post`, `files/[filename].delete`, `gm/set-level.post`, `items/search.get`, `mail/send.post` | GM or feature grant (`getAuthenticatedFeatureUser()`)  |
+| `community/`    | `online.get`, `stats.get`, `top-players.get`, `pvp-stats.get`, `players.get`, `zones.get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Public                                                 |
+| `shop/`         | `config.get`, `items.get`, `purchase.post`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Varies                                                 |
+| `downloads/`    | `list.get`, `[filename].get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Public                                                 |
+| `stats/`        | `overview.get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Public                                                 |
+| `realms.get.ts` | Realm list (also K8s health endpoint)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Public                                                 |
 
 **API handler pattern**:
 
@@ -364,13 +366,14 @@ Examples:
 
 ### Databases
 
-| Database           | Engine | Purpose                                            | Access Pattern                                |
-| ------------------ | ------ | -------------------------------------------------- | --------------------------------------------- |
-| `acore_auth`       | MySQL  | Shared auth DB (accounts, bans, GM access)         | `getAuthPool()` — single pool                 |
-| `acore_characters` | MySQL  | Per-realm character data + Eluna queue tables      | `getCharactersPool(realmId)` — per-realm pool |
-| `acore_world`      | MySQL  | Per-realm game data (items, spells, templates)     | `getWorldPool(realmId)` — per-realm pool      |
-| `mappings.db`      | SQLite | External auth → WoW account links                  | `server/utils/db.ts` — single instance        |
-| DBC databases      | SQLite | Read-only game data cache (items, spells, talents) | `server/utils/dbc-db.ts` — server assets      |
+| Database           | Engine | Purpose                                            | Access Pattern                                                                     |
+| ------------------ | ------ | -------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `acore_auth`       | MySQL  | Shared auth DB (accounts, bans, GM access)         | `getAuthPool()` — single pool                                                      |
+| `acore_characters` | MySQL  | Per-realm character data + Eluna queue tables      | `getCharactersPool(realmId)` — per-realm pool                                      |
+| `acore_world`      | MySQL  | Per-realm game data (items, spells, templates)     | `getWorldPool(realmId)` — per-realm pool                                           |
+| `mappings.db`      | SQLite | External auth → WoW account links                  | `server/utils/db.ts` — single instance                                             |
+| `user-settings.db` | SQLite | Feature grants (time-limited admin access)         | `server/utils/user-settings.ts` — single instance, `USER_SETTINGS_DB_PATH` env var |
+| DBC databases      | SQLite | Read-only game data cache (items, spells, talents) | `server/utils/dbc-db.ts` — server assets                                           |
 
 ### Multi-Realm Support
 
@@ -412,51 +415,103 @@ GM-only character editing tool for restoring or modifying characters. Accessible
 
 #### API Routes
 
-| Route                                                      | Purpose                                                  |
-| ---------------------------------------------------------- | -------------------------------------------------------- |
-| `GET /api/admin/dressingroom/characters`                   | Search characters by name/GUID across realms             |
-| `GET /api/admin/dressingroom/character/[guid]/[realmId]`   | Get full character details (items, professions, spells)  |
-| `POST /api/admin/dressingroom/modify-money`                | Set character money (in copper)                          |
-| `POST /api/admin/dressingroom/set-level`                   | Set character level (1-80)                               |
-| `POST /api/admin/dressingroom/add-item`                    | Add items via Eluna bag queue or mail                    |
-| `POST /api/admin/dressingroom/teach-spell`                 | Teach spells (Eluna queue or direct DB insert)           |
-| `POST /api/admin/dressingroom/set-profession`              | Set/update/remove profession skill levels                |
-| `GET /api/admin/dressingroom/reputations/[guid]/[realmId]` | Get all character reputations with faction names         |
-| `POST /api/admin/dressingroom/set-reputation`              | Set reputation standing for a faction (Eluna queue)      |
-| `GET /api/admin/dressingroom/quest-search`                 | Search quests by name/ID from world DB                   |
-| `POST /api/admin/dressingroom/complete-quest`              | Mark quests as completed (Eluna queue)                   |
-| `POST /api/admin/dressingroom/add-achievement`             | Grant achievements (direct DB only, no Eluna API)        |
-| `POST /api/admin/dressingroom/set-title`                   | Add/remove/set active title (Eluna queue for add/remove) |
+| Route                                                      | Purpose                                                   |
+| ---------------------------------------------------------- | --------------------------------------------------------- |
+| `GET /api/admin/dressingroom/characters`                   | Search characters by name/GUID across realms              |
+| `GET /api/admin/dressingroom/character/[guid]/[realmId]`   | Get full character details (items, professions, spells)   |
+| `POST /api/admin/dressingroom/modify-money`                | Set/add/remove character money (mode: set/add/remove)     |
+| `POST /api/admin/dressingroom/set-level`                   | Set character level (1-80)                                |
+| `POST /api/admin/dressingroom/add-item`                    | Add items via Eluna bag queue or mail                     |
+| `POST /api/admin/dressingroom/teach-spell`                 | Teach spells (Eluna queue or direct DB insert)            |
+| `GET /api/admin/dressingroom/spell-search`                 | Search spells by name or ID from DBC database             |
+| `POST /api/admin/dressingroom/set-profession`              | Set/update/remove profession + auto-teach training spells |
+| `GET /api/admin/dressingroom/reputations/[guid]/[realmId]` | Get all character reputations with faction names          |
+| `POST /api/admin/dressingroom/set-reputation`              | Set reputation standing for a faction (Eluna queue)       |
+| `GET /api/admin/dressingroom/quest-search`                 | Search quests by name/ID from world DB                    |
+| `POST /api/admin/dressingroom/complete-quest`              | Mark quests as completed (Eluna queue)                    |
+| `POST /api/admin/dressingroom/add-achievement`             | Grant achievements (direct DB only, no Eluna API)         |
+| `POST /api/admin/dressingroom/set-title`                   | Add/remove/set active title (Eluna queue for add/remove)  |
 
 #### Key Details
 
 - Item delivery uses Eluna `web_bag_requests` if enabled, falls back to `web_item_requests` (mail)
 - Spell teaching uses Eluna `web_spell_requests` if enabled, falls back to direct `character_spell` insert
-- Profession skills are managed via `character_skills` table (direct DB update)
+- Spell search by name uses `searchSpellsByName()` from `dbc-db.ts` (LIKE query on spell.db)
+- Profession skills are managed via `character_skills` table + profession training spells (auto-taught per tier)
+- Profession training spells: each profession has Apprentice→Grand Master tier spells that must exist in `character_spell` for skill level to display correctly in-game (mapping in `set-profession.post.ts` `PROFESSION_TRAINING_SPELLS`)
 - Money, level, and professions are routed through Eluna queue tables when Eluna is enabled (safe for online players)
 - Reputations, quests, and titles also use Eluna queue tables when enabled
 - Achievements have **no Eluna API** — always direct DB insert; online players must relog
 - Title bitmask: `characters.knownTitles` is space-separated uint32 array, each bit = title ID
-- Quest completion uses `character_queststatus_rewarded` table; Eluna `player:CompleteQuest()` handles rewards
+- Money supports `mode` parameter: `set` (exact value), `add` (add to current, cap at gold cap), `remove` (subtract from current, floor at 0)
+- Quest completion: Eluna `player:CompleteQuest()` only sets QUEST_STATUS_COMPLETE (ready to turn in), so the Lua script also does DB manipulation (INSERT into `character_queststatus_rewarded`, DELETE from `character_queststatus`) to properly mark as rewarded. Broadcast messages note "(relog for full effect)"
 - Reputation standing range: -42000 (Hated) to 42999 (Exalted max)
 - When Eluna is disabled, direct DB writes are used (only safe for offline characters)
 - Supported professions: Blacksmithing, Leatherworking, Alchemy, Herbalism, Mining, Tailoring, Engineering, Enchanting, Skinning, Jewelcrafting, Inscription, First Aid, Cooking, Fishing, Riding
+- All character-specific dressingroom routes verify character ownership when `ownAccountOnly` is true (via `verifyCharacterOwnership()` from `server/utils/dressingroom.ts`)
+- `character_spell` table in this AzerothCore version has NO `disabled` column — INSERT uses `(guid, spell, specMask)` with `specMask=255`
 
 #### UI Components
 
 `AdminDressingRoomTab.vue` — Two-phase: search character → edit character. Main editor has a two-column grid plus an extended grid with 4 sub-components:
 
 - **Left column**: Level, Money, Professions (with current values display)
-- **Right column**: Add Items (search + queue), Teach Spells (by ID), Current Equipment display
+- **Right column**: Add Items (search + queue), Teach Spells (search by name + manual ID), Current Equipment display
 - **Extended grid** (below, 2-column):
   - `AdminDressingRoomReputation.vue` — Faction list, per-faction standing selector, bulk set-all, known-only filter
   - `AdminDressingRoomQuests.vue` — Quest search by name/ID, completion status, batch complete
   - `AdminDressingRoomAchievements.vue` — Achievement ID input (comma/space separated), grant button, relog warning
   - `AdminDressingRoomTitles.vue` — Title list with known/unknown filter, add/remove toggle, active title selector, grant-all, custom ID input
 
+### Feature Grants (Admin)
+
+Time-limited admin feature access system. GMs can grant non-GM users temporary access to specific admin features.
+
+#### Feature ID Registry (`ADMIN_FEATURES` in `server/utils/user-settings.ts`)
+
+| Feature ID            | Label            | Gated Tabs/Routes                                      |
+| --------------------- | ---------------- | ------------------------------------------------------ |
+| `admin.accounts`      | All Accounts     | accounts tab, `accounts.get`                           |
+| `admin.mappings`      | Account Mappings | mappings tab, `account-mappings.*`                     |
+| `admin.link-accounts` | Link Accounts    | link-accounts tab                                      |
+| `admin.gm`            | GM Management    | gms tab, `gm/set-level`                                |
+| `admin.mail`          | Send Mail        | gms tab, `mail/send-item`                              |
+| `admin.files`         | File Management  | files tab, `files/upload`, `files/delete`              |
+| `admin.backup`        | Backup & Restore | backup tab, `backup/*`                                 |
+| `admin.dressingroom`  | Dressing Room    | dressingroom tab, all `dressingroom/*`, `items/search` |
+| `admin.export`        | Data Export      | `export.post`                                          |
+
+#### API Routes
+
+| Route                                   | Auth              | Purpose                               |
+| --------------------------------------- | ----------------- | ------------------------------------- |
+| `GET /api/admin/features`               | GM only           | List available feature IDs + metadata |
+| `GET /api/admin/feature-grants`         | GM only           | List all grants (enriched status)     |
+| `POST /api/admin/feature-grants`        | GM only           | Create a new grant                    |
+| `DELETE /api/admin/feature-grants/[id]` | GM only           | Delete/revoke a grant                 |
+| `GET /api/admin/my-features`            | Any authenticated | Get current user's active features    |
+
+#### Key Details
+
+- Database: `user-settings.db` (SQLite, WAL mode), env `USER_SETTINGS_DB_PATH`
+- Table: `feature_grants` (user_id, username, feature_id, start_time, end_time, granted_by, reason, own_account_only)
+- Auth function: `getAuthenticatedFeatureUser(event, featureId)` — checks GM first, then checks active feature grant
+- Returns `{ ...user, gmLevel, grantedVia: 'gm' | 'feature-grant', ownAccountOnly: boolean }`
+- `own_account_only` flag: when set, user can only edit characters belonging to their linked WoW accounts (verified via `verifyCharacterOwnership()` in `server/utils/dressingroom.ts` which checks `account_mappings`)
+- Admin page shows only tabs the user has access to (GMs see all, feature-grant users see only granted tabs)
+- Feature grant management itself is GM-only (creating/deleting grants)
+
+#### UI Component
+
+`AdminFeatureGrantsTab.vue` — Self-contained tab with:
+
+- Grant table with status badges (Active/Expired/Upcoming), filter bar
+- Create grant form (user ID, username, feature, start/end datetime, reason, own-account-only checkbox)
+- Revoke button per grant
+
 ### Eluna Integration
 
-The web portal queues requests in MySQL tables; the Eluna Lua script (`data/eluna/web_worker.lua` v2.8) polls and processes them in-game every 1 second:
+The web portal queues requests in MySQL tables; the Eluna Lua script (`data/eluna/web_worker.lua` v2.9) polls and processes them in-game every 1 second:
 
 | Queue Table               | Purpose                | Status Flow                                      |
 | ------------------------- | ---------------------- | ------------------------------------------------ |
@@ -523,7 +578,7 @@ All in-process memory (no Redis):
 
 - **API route naming**: `resource.verb.ts` (e.g., `create.post.ts`), dynamic params as `[param]` directories.
 - **Mutations use POST only** — no PUT/PATCH routes exist.
-- **Auth checks**: `getAuthenticatedUser(event)` for user routes, `requireGM(event)` for admin routes.
+- **Auth checks**: `getAuthenticatedUser(event)` for user routes, `getAuthenticatedFeatureUser(event, 'admin.xxx')` for admin routes (allows GM OR time-limited feature grant), `getAuthenticatedGM(event)` only for feature-grant management routes.
 - **Error handling**: `throw createError({ statusCode, statusMessage })`. Catch blocks re-throw H3 errors, wrap unknowns in 500.
 - **Database queries**: Always use parameterized queries (`pool.execute(sql, [params])`).
 - **Services are pure functions**, not classes.

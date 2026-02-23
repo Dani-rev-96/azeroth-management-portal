@@ -5,13 +5,14 @@
  *
  * Body: { guid: number, realmId: string, spellIds: number[] }
  */
-import { getAuthenticatedGM } from '#server/utils/auth'
+import { getAuthenticatedFeatureUser } from '#server/utils/auth'
 import { getCharactersDbPool } from '#server/utils/mysql'
 import { getElunaConfig } from '#server/utils/config'
+import { verifyCharacterOwnership } from '#server/utils/dressingroom'
 
 export default defineEventHandler(async (event) => {
   try {
-    const { username } = await getAuthenticatedGM(event)
+    const { id: userId, username, ownAccountOnly } = await getAuthenticatedFeatureUser(event, 'admin.dressingroom')
 
     const body = await readBody(event)
     const { guid, realmId, spellIds } = body as {
@@ -37,12 +38,14 @@ export default defineEventHandler(async (event) => {
 
     // Verify character exists
     const [chars] = await charPool.query(
-      'SELECT guid, name, online FROM characters WHERE guid = ? AND deleteDate IS NULL',
+      'SELECT guid, name, online, account FROM characters WHERE guid = ? AND deleteDate IS NULL',
       [guid]
     )
     if ((chars as any[]).length === 0) {
       throw createError({ statusCode: 404, statusMessage: 'Character not found' })
     }
+
+    if (ownAccountOnly) verifyCharacterOwnership(userId, (chars as any[])[0].account)
 
     const charName = (chars as any[])[0].name
     const elunaConfig = getElunaConfig()
@@ -52,7 +55,7 @@ export default defineEventHandler(async (event) => {
     // Check which spells the character already knows
     const spellPlaceholders = spellIds.map(() => '?').join(',')
     const [knownSpells] = await charPool.query(
-      `SELECT spell FROM character_spell WHERE guid = ? AND spell IN (${spellPlaceholders}) AND disabled = 0`,
+      `SELECT spell FROM character_spell WHERE guid = ? AND spell IN (${spellPlaceholders})`,
       [guid, ...spellIds]
     )
     const knownSet = new Set((knownSpells as any[]).map(s => s.spell))
@@ -84,8 +87,8 @@ export default defineEventHandler(async (event) => {
       for (const spellId of newSpells) {
         try {
           await charPool.query(
-            `INSERT IGNORE INTO character_spell (guid, spell, specMask, disabled)
-             VALUES (?, ?, 255, 0)`,
+            `INSERT IGNORE INTO character_spell (guid, spell, specMask)
+             VALUES (?, ?, 255)`,
             [guid, spellId]
           )
           taught++

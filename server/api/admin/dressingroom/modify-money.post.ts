@@ -1,27 +1,34 @@
 /**
  * POST /api/admin/dressingroom/modify-money
- * Set or modify a character's gold
+ * Set, add, or remove a character's gold
  * GM only
  *
- * Body: { guid: number, realmId: string, money: number }
+ * Body: { guid: number, realmId: string, money: number, mode?: 'set' | 'add' | 'remove' }
  * Money is in copper (1 gold = 10000 copper)
+ * - mode 'set' (default): set money to exact value
+ * - mode 'add': add amount to current money (capped at gold cap)
+ * - mode 'remove': subtract amount from current money (floor at 0)
  *
  * Uses web_money_requests Eluna queue when enabled to avoid
  * server memory cache conflicts with online players.
  */
-import { getAuthenticatedGM } from '#server/utils/auth'
+import { getAuthenticatedFeatureUser } from '#server/utils/auth'
 import { getCharactersDbPool } from '#server/utils/mysql'
 import { getElunaConfig } from '#server/utils/config'
+import { verifyCharacterOwnership } from '#server/utils/dressingroom'
+
+const MAX_MONEY = 2147483647 // Gold cap: 214748g 36s 47c
 
 export default defineEventHandler(async (event) => {
   try {
-    const { username } = await getAuthenticatedGM(event)
+    const { id: userId, username, ownAccountOnly } = await getAuthenticatedFeatureUser(event, 'admin.dressingroom')
 
     const body = await readBody(event)
-    const { guid, realmId, money } = body as {
+    const { guid, realmId, money, mode = 'set' } = body as {
       guid: number
       realmId: string
       money: number
+      mode?: 'set' | 'add' | 'remove'
     }
 
     if (!guid || typeof guid !== 'number') {
@@ -33,16 +40,15 @@ export default defineEventHandler(async (event) => {
     if (money === undefined || typeof money !== 'number' || money < 0) {
       throw createError({ statusCode: 400, statusMessage: 'Money must be a non-negative number (in copper)' })
     }
-
-    // Cap at gold cap (214748g 36s 47c)
-    const maxMoney = 2147483647
-    const finalMoney = Math.min(money, maxMoney)
+    if (!['set', 'add', 'remove'].includes(mode)) {
+      throw createError({ statusCode: 400, statusMessage: 'Mode must be set, add, or remove' })
+    }
 
     const pool = await getCharactersDbPool(realmId)
 
     // Verify character exists and get current money
     const [chars] = await pool.query(
-      'SELECT guid, name, money FROM characters WHERE guid = ? AND deleteDate IS NULL',
+      'SELECT guid, name, money, account FROM characters WHERE guid = ? AND deleteDate IS NULL',
       [guid]
     )
 
@@ -50,9 +56,23 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 404, statusMessage: 'Character not found' })
     }
 
+    if (ownAccountOnly) verifyCharacterOwnership(userId, (chars as any[])[0].account)
+
     const oldMoney = Number((chars as any[])[0].money)
     const charName = (chars as any[])[0].name
+
+    // Compute final money based on mode
+    let finalMoney: number
+    if (mode === 'add') {
+      finalMoney = Math.min(oldMoney + money, MAX_MONEY)
+    } else if (mode === 'remove') {
+      finalMoney = Math.max(oldMoney - money, 0)
+    } else {
+      finalMoney = Math.min(money, MAX_MONEY)
+    }
+
     const deltaMoney = finalMoney - oldMoney
+    const modeLabel = mode === 'add' ? 'added' : mode === 'remove' ? 'removed' : 'set'
 
     const elunaConfig = getElunaConfig()
 
@@ -62,10 +82,10 @@ export default defineEventHandler(async (event) => {
       await pool.query(
         `INSERT INTO web_money_requests (character_guid, delta_copper, reason, status)
          VALUES (?, ?, ?, 'pending')`,
-        [guid, deltaMoney, `GM DressingRoom: ${username} set money to ${finalMoney}`]
+        [guid, deltaMoney, `GM DressingRoom: ${username} ${modeLabel} money → ${finalMoney} copper`]
       )
 
-      console.log(`[DressingRoom] GM ${username} queued money change for ${charName} (${guid}): ${oldMoney} → ${finalMoney} copper (delta: ${deltaMoney})`)
+      console.log(`[DressingRoom] GM ${username} ${modeLabel} money for ${charName} (${guid}): ${oldMoney} → ${finalMoney} copper (delta: ${deltaMoney})`)
 
       return {
         success: true,
@@ -78,11 +98,11 @@ export default defineEventHandler(async (event) => {
       // Direct DB update (only safe for offline characters)
       await pool.query('UPDATE characters SET money = ? WHERE guid = ?', [finalMoney, guid])
 
-      console.log(`[DressingRoom] GM ${username} set money for ${charName} (${guid}): ${oldMoney} → ${finalMoney} copper`)
+      console.log(`[DressingRoom] GM ${username} ${modeLabel} money for ${charName} (${guid}): ${oldMoney} → ${finalMoney} copper`)
 
       return {
         success: true,
-        message: `Set ${charName}'s gold to ${formatMoney(finalMoney)}`,
+        message: `${mode === 'add' ? 'Added' : mode === 'remove' ? 'Removed' : 'Set'} ${charName}'s gold ${mode === 'set' ? 'to' : mode === 'add' ? '(now' : '(now'} ${formatMoney(finalMoney)}${mode !== 'set' ? ')' : ''}`,
         oldMoney,
         newMoney: finalMoney,
         method: 'direct',

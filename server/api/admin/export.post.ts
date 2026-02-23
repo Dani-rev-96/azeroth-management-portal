@@ -1,5 +1,5 @@
 import { exportMappings, exportForDirectus, exportToSQL } from '#server/utils/export'
-import { getAuthenticatedGM } from '#server/utils/auth'
+import { getAuthenticatedFeatureUser } from '#server/utils/auth'
 
 /**
  * POST /api/admin/export
@@ -8,7 +8,7 @@ import { getAuthenticatedGM } from '#server/utils/auth'
  */
 export default defineEventHandler(async (event) => {
   // Require GM authentication
-  await getAuthenticatedGM(event)
+  await getAuthenticatedFeatureUser(event, 'admin.export')
 
   const body = await readBody(event)
   const format = body.format || 'json'

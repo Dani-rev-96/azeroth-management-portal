@@ -5,12 +5,12 @@
  *
  * Query: ?q=<search>&realmId=<realmId>&guid=<charGuid>
  */
-import { getAuthenticatedGM } from '#server/utils/auth'
+import { getAuthenticatedFeatureUser } from '#server/utils/auth'
 import { getWorldDbPool, getCharactersDbPool } from '#server/utils/mysql'
 
 export default defineEventHandler(async (event) => {
   try {
-    await getAuthenticatedGM(event)
+    await getAuthenticatedFeatureUser(event, 'admin.dressingroom')
 
     const query = getQuery(event)
     const q = (query.q as string || '').trim()

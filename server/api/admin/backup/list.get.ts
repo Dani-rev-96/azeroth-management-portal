@@ -3,13 +3,13 @@
  * List available databases and realms for backup/restore
  * GM only
  */
-import { getAuthenticatedGM } from '#server/utils/auth'
+import { getAuthenticatedFeatureUser } from '#server/utils/auth'
 import { getRealms, getAuthDbConfig } from '#server/utils/config'
 import { getAuthDbPool, getCharactersDbPool } from '#server/utils/mysql'
 
 export default defineEventHandler(async (event) => {
   try {
-    await getAuthenticatedGM(event)
+    await getAuthenticatedFeatureUser(event, 'admin.backup')
 
     const realms = getRealms()
     const authConfig = getAuthDbConfig()

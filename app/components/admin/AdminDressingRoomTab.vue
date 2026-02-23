@@ -49,6 +49,7 @@ const actionSuccess = ref('')
 const goldAmount = ref<number | null>(null)
 const silverAmount = ref<number | null>(null)
 const copperAmount = ref<number | null>(null)
+const moneyMode = ref<'set' | 'add' | 'remove'>('set')
 
 // Level form
 const newLevel = ref<number | null>(null)
@@ -62,6 +63,11 @@ const selectedItems = ref<Array<{ itemId: number; count: number; name: string; q
 
 // Spell form
 const spellIdInput = ref('')
+const spellSearchQuery = ref('')
+const spellSearchResults = ref<Array<{ id: number; name: string; rank: string; description: string }>>([])
+const isSearchingSpells = ref(false)
+const showSpellDropdown = ref(false)
+const selectedSpells = ref<Array<{ id: number; name: string; rank: string }>>([])
 
 // Profession form
 const professionSkillId = ref<number | null>(null)
@@ -186,6 +192,7 @@ async function setMoney() {
         guid: selectedCharacter.value.guid,
         realmId: selectedCharacter.value.realmId,
         money: totalCopper.value,
+        mode: moneyMode.value,
       },
     })
     actionSuccess.value = data.message
@@ -301,16 +308,59 @@ async function sendItems() {
 }
 
 // Spell Management
-async function teachSpells() {
-  if (!selectedCharacter.value || !spellIdInput.value.trim()) return
+let spellSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
-  const spellIds = spellIdInput.value
+watch(spellSearchQuery, (query: string) => {
+  if (spellSearchTimeout) clearTimeout(spellSearchTimeout)
+  if (!query || query.length < 2 || !selectedCharacter.value) {
+    spellSearchResults.value = []
+    showSpellDropdown.value = false
+    return
+  }
+  spellSearchTimeout = setTimeout(() => searchSpells(query), 300)
+})
+
+async function searchSpells(query: string) {
+  if (!selectedCharacter.value) return
+  isSearchingSpells.value = true
+  try {
+    const response = await $fetch<{ spells: Array<{ id: number; name: string; rank: string; description: string }> }>('/api/admin/dressingroom/spell-search', {
+      query: { q: query, limit: 30 },
+    })
+    spellSearchResults.value = response.spells || []
+    showSpellDropdown.value = spellSearchResults.value.length > 0
+  } catch {
+    spellSearchResults.value = []
+  } finally {
+    isSearchingSpells.value = false
+  }
+}
+
+function addSpell(spell: { id: number; name: string; rank: string }) {
+  if (selectedSpells.value.some(s => s.id === spell.id)) return
+  selectedSpells.value.push({ id: spell.id, name: spell.name, rank: spell.rank })
+  spellSearchQuery.value = ''
+  showSpellDropdown.value = false
+}
+
+function removeSpell(index: number) {
+  selectedSpells.value.splice(index, 1)
+}
+
+async function teachSpells() {
+  if (!selectedCharacter.value) return
+
+  // Combine manual IDs and selected spells
+  const manualIds = spellIdInput.value
     .split(/[\s,;]+/)
     .map((s: string) => parseInt(s.trim()))
     .filter((n: number) => !isNaN(n) && n > 0)
 
-  if (spellIds.length === 0) {
-    actionError.value = 'Enter valid spell IDs (comma or space separated)'
+  const searchIds = selectedSpells.value.map(s => s.id)
+  const allIds = [...new Set([...manualIds, ...searchIds])]
+
+  if (allIds.length === 0) {
+    actionError.value = 'Enter spell IDs or search and select spells'
     return
   }
 
@@ -324,11 +374,12 @@ async function teachSpells() {
       body: {
         guid: selectedCharacter.value.guid,
         realmId: selectedCharacter.value.realmId,
-        spellIds,
+        spellIds: allIds,
       },
     })
     actionSuccess.value = data.message
     spellIdInput.value = ''
+    selectedSpells.value = []
     await refreshCharacter()
   } catch (error: any) {
     actionError.value = error.data?.statusMessage || 'Failed to teach spells'
@@ -529,6 +580,29 @@ onUnmounted(() => {
             <div class="editor-card">
               <h3 class="editor-card__title">💰 Money</h3>
               <div class="money-form">
+                <div class="money-mode">
+                  <button
+                    class="money-mode__btn"
+                    :class="{ 'money-mode__btn--active': moneyMode === 'set' }"
+                    @click="moneyMode = 'set'"
+                  >
+                    Set
+                  </button>
+                  <button
+                    class="money-mode__btn"
+                    :class="{ 'money-mode__btn--active': moneyMode === 'add' }"
+                    @click="moneyMode = 'add'"
+                  >
+                    Add
+                  </button>
+                  <button
+                    class="money-mode__btn money-mode__btn--remove"
+                    :class="{ 'money-mode__btn--active': moneyMode === 'remove' }"
+                    @click="moneyMode = 'remove'"
+                  >
+                    Remove
+                  </button>
+                </div>
                 <div class="money-inputs">
                   <div class="money-field">
                     <UiInput v-model="goldAmount" type="number" :min="0" placeholder="0" />
@@ -544,8 +618,11 @@ onUnmounted(() => {
                   </div>
                 </div>
                 <UiButton size="sm" :loading="actionLoading" @click="setMoney">
-                  Set Money
+                  {{ moneyMode === 'set' ? 'Set Money' : moneyMode === 'add' ? 'Add Money' : 'Remove Money' }}
                 </UiButton>
+                <p v-if="moneyMode !== 'set'" class="form-hint">
+                  {{ moneyMode === 'add' ? 'Adds the entered amount to current gold' : 'Subtracts the entered amount from current gold (floor at 0)' }}
+                </p>
               </div>
             </div>
 
@@ -685,19 +762,60 @@ onUnmounted(() => {
             <div class="editor-card">
               <h3 class="editor-card__title">✨ Teach Spells</h3>
               <p class="form-hint">
-                Enter spell IDs separated by commas or spaces.
+                Search spells by name or enter IDs directly.
                 Known spells: {{ characterDetail.spellCount }}
               </p>
+
+              <!-- Spell Search -->
+              <div class="spell-search">
+                <div class="spell-search__input-wrapper">
+                  <input
+                    v-model="spellSearchQuery"
+                    type="text"
+                    class="spell-search__input"
+                    placeholder="Search spells by name..."
+                    @focus="showSpellDropdown = spellSearchResults.length > 0"
+                  />
+                  <span v-if="isSearchingSpells" class="spell-search__loading">⏳</span>
+                </div>
+
+                <div v-if="showSpellDropdown && spellSearchResults.length > 0" class="spell-search__dropdown">
+                  <div
+                    v-for="spell in spellSearchResults"
+                    :key="spell.id"
+                    class="spell-search__result"
+                    @click="addSpell(spell)"
+                  >
+                    <span class="spell-search__name">
+                      {{ spell.name }}
+                      <span v-if="spell.rank" class="spell-search__rank">({{ spell.rank }})</span>
+                    </span>
+                    <span class="spell-search__meta">ID: {{ spell.id }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Selected spells from search -->
+              <div v-if="selectedSpells.length > 0" class="selected-spells">
+                <div v-for="(spell, index) in selectedSpells" :key="spell.id" class="selected-spell">
+                  <span class="selected-spell__name">{{ spell.name }}</span>
+                  <span v-if="spell.rank" class="selected-spell__rank">({{ spell.rank }})</span>
+                  <span class="selected-spell__id">#{{ spell.id }}</span>
+                  <button type="button" class="selected-spell__remove" @click="removeSpell(index)">✕</button>
+                </div>
+              </div>
+
+              <!-- Manual ID input -->
               <div class="spell-form">
                 <UiInput
                   v-model="spellIdInput"
                   type="text"
-                  placeholder="e.g. 48443, 48461, 53307"
+                  placeholder="Or enter spell IDs: 48443, 48461, 53307"
                 />
                 <UiButton
                   size="sm"
                   :loading="actionLoading"
-                  :disabled="!spellIdInput.trim()"
+                  :disabled="!spellIdInput.trim() && selectedSpells.length === 0"
                   @click="teachSpells"
                 >
                   ✨ Teach Spells
@@ -918,6 +1036,41 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: $spacing-3;
+}
+
+.money-mode {
+  display: flex;
+  gap: $spacing-1;
+  background: $bg-primary;
+  border-radius: $radius-md;
+  padding: 2px;
+
+  &__btn {
+    flex: 1;
+    padding: $spacing-1 $spacing-2;
+    border: none;
+    background: transparent;
+    color: $text-secondary;
+    font-size: $font-size-xs;
+    font-weight: 600;
+    border-radius: $radius-sm;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      color: $text-primary;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    &--active {
+      background: $color-accent;
+      color: $text-primary;
+    }
+
+    &--remove.money-mode__btn--active {
+      background: $color-danger;
+    }
+  }
 }
 
 .money-inputs {
@@ -1164,6 +1317,137 @@ onUnmounted(() => {
   &__ilvl {
     color: $text-muted;
     text-align: right;
+  }
+}
+
+// Spell Search
+.spell-search {
+  position: relative;
+
+  &__input-wrapper {
+    position: relative;
+  }
+
+  &__input {
+    width: 100%;
+    padding: $spacing-3 $spacing-4;
+    padding-right: $spacing-10;
+    background: $bg-primary;
+    border: 1px solid $border-primary;
+    border-radius: $radius-lg;
+    color: $text-primary;
+    font-size: $font-size-base;
+    font-family: inherit;
+    transition: border-color $transition-base;
+
+    &::placeholder { color: $text-muted; }
+    &:focus { outline: none; border-color: $purple-primary; }
+  }
+
+  &__loading {
+    position: absolute;
+    right: $spacing-3;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: $font-size-lg;
+    animation: spin 1s linear infinite;
+  }
+
+  &__dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    max-height: 250px;
+    overflow-y: auto;
+    background: $bg-secondary;
+    border: 1px solid $border-primary;
+    border-radius: $radius-md;
+    box-shadow: $shadow-lg;
+    z-index: 100;
+    margin-top: $spacing-1;
+  }
+
+  &__result {
+    padding: $spacing-2 $spacing-3;
+    cursor: pointer;
+    transition: background $transition-fast;
+
+    &:hover { background: $bg-tertiary; }
+    &:not(:last-child) { border-bottom: 1px solid $border-primary; }
+  }
+
+  &__name {
+    display: block;
+    color: $purple-light;
+    font-weight: $font-weight-medium;
+    font-size: $font-size-sm;
+  }
+
+  &__rank {
+    color: $text-muted;
+    font-weight: $font-weight-normal;
+    font-size: $font-size-xs;
+  }
+
+  &__meta {
+    font-size: $font-size-xs;
+    color: $text-muted;
+  }
+}
+
+// Selected Spells
+.selected-spells {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-1;
+}
+
+.selected-spell {
+  display: flex;
+  align-items: center;
+  gap: $spacing-2;
+  padding: $spacing-1 $spacing-2;
+  background: $bg-primary;
+  border-radius: $radius-sm;
+  border-left: 3px solid $purple-primary;
+
+  &__name {
+    color: $purple-light;
+    font-weight: $font-weight-medium;
+    font-size: $font-size-sm;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+  }
+
+  &__rank {
+    color: $text-muted;
+    font-size: $font-size-xs;
+    flex-shrink: 0;
+  }
+
+  &__id {
+    font-size: $font-size-xs;
+    color: $text-muted;
+    font-family: monospace;
+    flex-shrink: 0;
+  }
+
+  &__remove {
+    background: none;
+    border: none;
+    color: $error-light;
+    font-size: $font-size-sm;
+    cursor: pointer;
+    padding: $spacing-1;
+    border-radius: $radius-sm;
+    line-height: 1;
+    transition: background $transition-fast;
+    flex-shrink: 0;
+
+    &:hover { background: rgba($error-light, 0.1); }
   }
 }
 

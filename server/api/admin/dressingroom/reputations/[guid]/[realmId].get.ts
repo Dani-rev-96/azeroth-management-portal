@@ -3,8 +3,9 @@
  * Get all character reputations with faction names
  * GM only
  */
-import { getAuthenticatedGM } from '#server/utils/auth'
+import { getAuthenticatedFeatureUser } from '#server/utils/auth'
 import { getCharactersDbPool } from '#server/utils/mysql'
+import { verifyCharacterOwnership } from '#server/utils/dressingroom'
 
 // WotLK 3.3.5a faction IDs and names
 const FACTION_NAMES: Record<number, string> = {
@@ -63,7 +64,7 @@ function getStandingName(standing: number): string {
 
 export default defineEventHandler(async (event) => {
   try {
-    await getAuthenticatedGM(event)
+    const { id: userId, ownAccountOnly } = await getAuthenticatedFeatureUser(event, 'admin.dressingroom')
 
     const guid = parseInt(getRouterParam(event, 'guid') || '0')
     const realmId = getRouterParam(event, 'realmId') || ''
@@ -76,12 +77,14 @@ export default defineEventHandler(async (event) => {
 
     // Verify character exists
     const [chars] = await charPool.query(
-      'SELECT guid, name FROM characters WHERE guid = ? AND deleteDate IS NULL',
+      'SELECT guid, name, account FROM characters WHERE guid = ? AND deleteDate IS NULL',
       [guid]
     )
     if ((chars as any[]).length === 0) {
       throw createError({ statusCode: 404, statusMessage: 'Character not found' })
     }
+
+    if (ownAccountOnly) verifyCharacterOwnership(userId, (chars as any[])[0].account)
 
     // Get all reputations
     const [reps] = await charPool.query(

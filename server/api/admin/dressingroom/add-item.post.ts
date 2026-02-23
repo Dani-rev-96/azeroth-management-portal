@@ -5,13 +5,14 @@
  *
  * Body: { guid: number, realmId: string, items: Array<{ itemId: number, count: number }> }
  */
-import { getAuthenticatedGM } from '#server/utils/auth'
+import { getAuthenticatedFeatureUser } from '#server/utils/auth'
 import { getCharactersDbPool, getWorldDbPool } from '#server/utils/mysql'
 import { getElunaConfig } from '#server/utils/config'
+import { verifyCharacterOwnership } from '#server/utils/dressingroom'
 
 export default defineEventHandler(async (event) => {
   try {
-    const { username } = await getAuthenticatedGM(event)
+    const { id: userId, username, ownAccountOnly } = await getAuthenticatedFeatureUser(event, 'admin.dressingroom')
 
     const body = await readBody(event)
     const { guid, realmId, items } = body as {
@@ -38,12 +39,14 @@ export default defineEventHandler(async (event) => {
 
     // Verify character exists
     const [chars] = await charPool.query(
-      'SELECT guid, name, online FROM characters WHERE guid = ? AND deleteDate IS NULL',
+      'SELECT guid, name, online, account FROM characters WHERE guid = ? AND deleteDate IS NULL',
       [guid]
     )
     if ((chars as any[]).length === 0) {
       throw createError({ statusCode: 404, statusMessage: 'Character not found' })
     }
+
+    if (ownAccountOnly) verifyCharacterOwnership(userId, (chars as any[])[0].account)
 
     const charName = (chars as any[])[0].name
 

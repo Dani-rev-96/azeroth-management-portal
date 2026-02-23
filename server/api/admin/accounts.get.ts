@@ -5,7 +5,7 @@
 export default defineEventHandler(async (event) => {
   try {
     // Authenticate and check GM status
-    const { username } = await getAuthenticatedGM(event)
+    const { username } = await getAuthenticatedFeatureUser(event, 'admin.accounts')
 
     // Get all accounts with GM status
     const { getAllAccountsWithGMStatus } = await import('#server/services/gm')

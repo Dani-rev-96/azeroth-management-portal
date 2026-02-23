@@ -23,7 +23,7 @@
     Format: [{"entry":12345,"count":1},{"entry":67890,"count":2}]
 
     Author: AzerothCore Nix Flake Project
-    Version: 2.8
+    Version: 2.9
 ]]
 
 local SCRIPT_NAME = "web_worker"
@@ -1478,12 +1478,23 @@ local function processQuestRow(row)
                 return false
             end
 
+            -- Also ensure DB reflects rewarded state
+            -- (CompleteQuest only marks as "ready to turn in", not "rewarded")
+            CharDBExecute(string.format(
+                "DELETE FROM character_queststatus WHERE guid = %d AND quest = %d",
+                guid, questId
+            ))
+            CharDBExecute(string.format(
+                "INSERT IGNORE INTO character_queststatus_rewarded (guid, quest, active) VALUES (%d, %d, 1)",
+                guid, questId
+            ))
+
             player:SaveToDB()
 
             if reason and reason ~= "" then
-                player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s", reason))
+                player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s (relog for full effect)", reason))
             else
-                player:SendBroadcastMessage("|cff00ff00[GM]|r A quest has been completed for you!")
+                player:SendBroadcastMessage("|cff00ff00[GM]|r A quest has been completed for you! (relog for full effect)")
             end
         end
 
@@ -2132,6 +2143,16 @@ local function onPlayerLogin(event, player)
                 end)
 
                 if questOk then
+                    -- Also ensure DB reflects rewarded state
+                    CharDBExecute(string.format(
+                        "DELETE FROM character_queststatus WHERE guid = %d AND quest = %d",
+                        guid, questReqQuestId
+                    ))
+                    CharDBExecute(string.format(
+                        "INSERT IGNORE INTO character_queststatus_rewarded (guid, quest, active) VALUES (%d, %d, 1)",
+                        guid, questReqQuestId
+                    ))
+
                     if questReason and questReason ~= "" then
                         player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s", questReason))
                     end

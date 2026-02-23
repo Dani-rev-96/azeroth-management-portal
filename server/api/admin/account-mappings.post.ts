@@ -4,12 +4,12 @@
  *
  * Links an external user to a WoW account without requiring credentials
  */
-import { getAuthenticatedGM } from '#server/utils/auth'
+import { getAuthenticatedFeatureUser } from '#server/utils/auth'
 
 export default defineEventHandler(async (event) => {
   try {
     // Authenticate and check GM status
-    await getAuthenticatedGM(event)
+    await getAuthenticatedFeatureUser(event, 'admin.mappings')
 
     const body = await readBody(event)
     const { externalId, displayName, email, wowAccountId } = body

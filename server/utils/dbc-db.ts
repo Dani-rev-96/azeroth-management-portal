@@ -208,6 +208,14 @@ export async function getSpellBatch(spellIds: number[]): Promise<Spell[]> {
   return stmt.all(...spellIds) as Spell[]
 }
 
+export async function searchSpellsByName(searchTerm: string, limit: number = 50): Promise<Spell[]> {
+  const db = await getDatabase('spell.db')
+  const stmt = db.prepare(
+    `SELECT * FROM spell WHERE name LIKE ? AND name != '' ORDER BY name ASC, id ASC LIMIT ?`
+  )
+  return stmt.all(`%${searchTerm}%`, limit) as Spell[]
+}
+
 // ==================== Talent ====================
 
 export interface Talent {

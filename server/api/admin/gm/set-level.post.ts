@@ -5,7 +5,7 @@
 export default defineEventHandler(async (event) => {
   try {
     // Authenticate and check GM status
-    const { username, gmLevel: currentGMLevel } = await getAuthenticatedGM(event)
+    const { username, gmLevel: currentGMLevel } = await getAuthenticatedFeatureUser(event, 'admin.gm')
 
     const body = await readBody(event)
     const { accountId, gmLevel, realmId, comment } = body

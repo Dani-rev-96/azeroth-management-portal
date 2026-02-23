@@ -5,7 +5,7 @@
 export default defineEventHandler(async (event) => {
   try {
     // Authenticate and check GM status
-    await getAuthenticatedGM(event)
+    await getAuthenticatedFeatureUser(event, 'admin.mappings')
 
     // Get all mappings
     const { AccountMappingDB } = await import('#server/utils/db')

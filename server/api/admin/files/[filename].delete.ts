@@ -8,7 +8,7 @@ import { join, basename } from 'path'
 export default defineEventHandler(async (event) => {
   try {
     // Authenticate and check GM status
-    await getAuthenticatedGM(event)
+    await getAuthenticatedFeatureUser(event, 'admin.files')
     const filename = getRouterParam(event, 'filename')
 
     if (!filename) {

@@ -7,7 +7,7 @@
  */
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { getAuthenticatedGM } from '#server/utils/auth'
+import { getAuthenticatedFeatureUser } from '#server/utils/auth'
 import { getAuthDbConfig, getRealmConfig, getRealms } from '#server/utils/config'
 
 const execFileAsync = promisify(execFile)
@@ -22,7 +22,7 @@ interface BackupDbConfig {
 
 export default defineEventHandler(async (event) => {
   try {
-    const { username } = await getAuthenticatedGM(event)
+    const { username } = await getAuthenticatedFeatureUser(event, 'admin.backup')
 
     const body = await readBody(event)
     const { databases, realmId } = body as {

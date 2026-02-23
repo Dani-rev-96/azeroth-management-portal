@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Authenticate and check GM status
-    const { username } = await getAuthenticatedGM(event)
+    const { username } = await getAuthenticatedFeatureUser(event, 'admin.mail')
 
     const body = await readBody(event)
     const {

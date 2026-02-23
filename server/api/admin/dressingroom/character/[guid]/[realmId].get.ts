@@ -3,12 +3,13 @@
  * Get full character details for dressing room editing
  * GM only — returns items, professions, money, spells, and basic info
  */
-import { getAuthenticatedGM } from '#server/utils/auth'
+import { getAuthenticatedFeatureUser } from '#server/utils/auth'
 import { getCharactersDbPool, getWorldDbPool } from '#server/utils/mysql'
+import { verifyCharacterOwnership } from '#server/utils/dressingroom'
 
 export default defineEventHandler(async (event) => {
   try {
-    await getAuthenticatedGM(event)
+    const { id: userId, ownAccountOnly } = await getAuthenticatedFeatureUser(event, 'admin.dressingroom')
 
     const guid = parseInt(getRouterParam(event, 'guid') || '0')
     const realmId = getRouterParam(event, 'realmId') || ''
@@ -38,6 +39,8 @@ export default defineEventHandler(async (event) => {
         statusMessage: 'Character not found',
       })
     }
+
+    if (ownAccountOnly) verifyCharacterOwnership(userId, (characters as any[])[0].account)
 
     const character = (characters as any[])[0]
 

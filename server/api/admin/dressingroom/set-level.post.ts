@@ -8,13 +8,14 @@
  * Uses web_level_requests Eluna queue when enabled to avoid
  * server memory cache conflicts with online players.
  */
-import { getAuthenticatedGM } from '#server/utils/auth'
+import { getAuthenticatedFeatureUser } from '#server/utils/auth'
 import { getCharactersDbPool } from '#server/utils/mysql'
 import { getElunaConfig } from '#server/utils/config'
+import { verifyCharacterOwnership } from '#server/utils/dressingroom'
 
 export default defineEventHandler(async (event) => {
   try {
-    const { username } = await getAuthenticatedGM(event)
+    const { id: userId, username, ownAccountOnly } = await getAuthenticatedFeatureUser(event, 'admin.dressingroom')
 
     const body = await readBody(event)
     const { guid, realmId, level } = body as {
@@ -37,12 +38,14 @@ export default defineEventHandler(async (event) => {
 
     // Verify character exists
     const [chars] = await pool.query(
-      'SELECT guid, name, level FROM characters WHERE guid = ? AND deleteDate IS NULL',
+      'SELECT guid, name, level, account FROM characters WHERE guid = ? AND deleteDate IS NULL',
       [guid]
     )
     if ((chars as any[]).length === 0) {
       throw createError({ statusCode: 404, statusMessage: 'Character not found' })
     }
+
+    if (ownAccountOnly) verifyCharacterOwnership(userId, (chars as any[])[0].account)
 
     const charName = (chars as any[])[0].name
     const oldLevel = (chars as any[])[0].level

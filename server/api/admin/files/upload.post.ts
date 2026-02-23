@@ -12,7 +12,7 @@ import type { Readable } from 'stream'
 export default defineEventHandler(async (event) => {
   try {
     // Authenticate and check GM status
-    await getAuthenticatedGM(event)
+    await getAuthenticatedFeatureUser(event, 'admin.files')
 
     const config = useRuntimeConfig()
     const publicDir = config.public.publicPath

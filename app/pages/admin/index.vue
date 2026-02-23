@@ -19,6 +19,7 @@ import AdminMailForm, { type MailFormData } from '~/components/admin/AdminMailFo
 import AdminFilesTab, { type FileInfo } from '~/components/admin/AdminFilesTab.vue'
 import AdminBackupTab from '~/components/admin/AdminBackupTab.vue'
 import AdminDressingRoomTab from '~/components/admin/AdminDressingRoomTab.vue'
+import AdminFeatureGrantsTab from '~/components/admin/AdminFeatureGrantsTab.vue'
 import { useAuthStore } from '~/stores/auth'
 import { ref, computed, watchEffect } from 'vue'
 
@@ -27,8 +28,25 @@ const authStore = useAuthStore()
 const isGM = computed(() => authStore.user?.isGM || false)
 const gmLevel = computed(() => authStore.user?.gmLevel || 0)
 
+// Feature grants for non-GM users
+const myFeatures = ref<Set<string>>(new Set())
+const hasAnyAccess = computed(() => isGM.value || myFeatures.value.size > 0)
+
+// Feature-ID → tab-ID mapping
+const FEATURE_TAB_MAP: Record<string, string[]> = {
+  'admin.accounts': ['accounts'],
+  'admin.mappings': ['mappings'],
+  'admin.link-accounts': ['link-accounts'],
+  'admin.gm': ['gms'],
+  'admin.mail': ['gms'],
+  'admin.files': ['files'],
+  'admin.backup': ['backup'],
+  'admin.dressingroom': ['dressingroom'],
+  'admin.export': ['mappings'],
+}
+
 // Tab configuration
-const tabs = [
+const allTabs = [
   { id: 'accounts', label: 'All Accounts', icon: '👥' },
   { id: 'mappings', label: 'Account Mappings', icon: '🔗' },
   { id: 'link-accounts', label: 'Link Accounts', icon: '🔧' },
@@ -36,7 +54,19 @@ const tabs = [
   { id: 'files', label: 'File Management', icon: '📁' },
   { id: 'backup', label: 'Backup & Restore', icon: '💾' },
   { id: 'dressingroom', label: 'Dressing Room', icon: '👗' },
+  { id: 'feature-grants', label: 'Feature Grants', icon: '🔓' },
 ]
+
+const tabs = computed(() => {
+  if (isGM.value) return allTabs
+  // Non-GM users only see tabs matching their active feature grants
+  const allowedTabIds = new Set<string>()
+  for (const featureId of myFeatures.value) {
+    const tabIds = FEATURE_TAB_MAP[featureId]
+    if (tabIds) tabIds.forEach(id => allowedTabIds.add(id))
+  }
+  return allTabs.filter(t => allowedTabIds.has(t.id))
+})
 
 // URL-synced tab state
 const { activeTab } = useUrlTab('accounts')
@@ -72,18 +102,33 @@ const uploadError = ref('')
 const uploadSuccess = ref('')
 const deletingFile = ref('')
 
-// Load data when authenticated as GM
+// Load data when authenticated
 watchEffect(async () => {
-  if (authStore.isAuthenticated && isGM.value) {
-    await Promise.all([
-      fetchAccounts(),
-      fetchMappings(),
-      fetchFiles(),
-      loadRealms()
-    ])
-  } else if (authStore.isAuthenticated && !isGM.value) {
-    navigateTo('/')
+  if (!authStore.isAuthenticated) return
+
+  // Check for feature grants (non-GM users)
+  if (!isGM.value) {
+    try {
+      const data = await $fetch<{ features: Array<{ feature_id: string }> }>('/api/admin/my-features')
+      myFeatures.value = new Set((data.features || []).map(f => f.feature_id))
+    } catch {
+      myFeatures.value = new Set()
+    }
+
+    // If not GM and no feature grants, redirect
+    if (myFeatures.value.size === 0) {
+      navigateTo('/')
+      return
+    }
   }
+
+  // Load data (GM gets everything, feature-grant users get what they access)
+  await Promise.all([
+    fetchAccounts(),
+    fetchMappings(),
+    fetchFiles(),
+    loadRealms()
+  ])
 })
 
 async function loadRealms() {
@@ -260,7 +305,7 @@ async function handleFileDelete(filename: string) {
     </UiPageHeader>
 
     <!-- Access Denied -->
-    <section v-if="!isGM" class="access-denied">
+    <section v-if="!hasAnyAccess" class="access-denied">
       <UiEmptyState
         icon="🚫"
         title="Access Denied"
@@ -353,6 +398,11 @@ async function handleFileDelete(filename: string) {
       <!-- Dressing Room Tab -->
       <UiTabPanel id="dressingroom" :active="activeTab === 'dressingroom'">
         <AdminDressingRoomTab :realms="realmsList" />
+      </UiTabPanel>
+
+      <!-- Feature Grants Tab -->
+      <UiTabPanel id="feature-grants" :active="activeTab === 'feature-grants'">
+        <AdminFeatureGrantsTab />
       </UiTabPanel>
     </div>
   </div>

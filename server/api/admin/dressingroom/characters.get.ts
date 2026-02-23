@@ -5,13 +5,13 @@
  *
  * Query: { search?: string, realmId?: string }
  */
-import { getAuthenticatedGM } from '#server/utils/auth'
+import { getAuthenticatedFeatureUser } from '#server/utils/auth'
 import { getRealms } from '#server/utils/config'
 import { getCharactersDbPool } from '#server/utils/mysql'
 
 export default defineEventHandler(async (event) => {
   try {
-    await getAuthenticatedGM(event)
+    await getAuthenticatedFeatureUser(event, 'admin.dressingroom')
 
     const query = getQuery(event)
     const search = (query.search as string || '').trim()

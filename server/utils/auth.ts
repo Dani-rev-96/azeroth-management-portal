@@ -148,6 +148,51 @@ export async function getAuthenticatedGM(event: H3Event): Promise<AuthenticatedU
 }
 
 /**
+ * Get authenticated user and verify they have access to a specific admin feature.
+ * Access is granted if the user is a GM OR has an active time-limited feature grant.
+ *
+ * @param event - The H3 event object
+ * @param featureId - The feature ID to check (from ADMIN_FEATURES)
+ * @returns Object containing id, username, email, gmLevel, and grantedVia
+ * @throws 401 if not authenticated
+ * @throws 403 if no GM privileges and no active feature grant
+ */
+export async function getAuthenticatedFeatureUser(
+  event: H3Event,
+  featureId: string
+): Promise<AuthenticatedUserInfo & { gmLevel: number; grantedVia: 'gm' | 'feature-grant'; ownAccountOnly: boolean }> {
+  const config = useRuntimeConfig()
+  const authMode = config.public.authMode
+  const { id, username, email } = await getAuthenticatedUser(event)
+
+  // Check GM level first
+  const { getUserGMLevel } = await import('#server/services/gm')
+  let gmLevel
+  if (authMode === 'mock') {
+    gmLevel = config.public.mockGMLevel || 0
+  } else {
+    gmLevel = await getUserGMLevel(id)
+  }
+
+  // Full GMs always pass with no restrictions
+  if (gmLevel > 0) {
+    return { id, username, email, gmLevel, grantedVia: 'gm', ownAccountOnly: false }
+  }
+
+  // Not a GM — check for active feature grant
+  const { FeatureGrantDB } = await import('#server/utils/user-settings')
+  const grant = FeatureGrantDB.getActiveGrant(id, featureId)
+  if (grant) {
+    return { id, username, email, gmLevel: 0, grantedVia: 'feature-grant', ownAccountOnly: grant.own_account_only === 1 }
+  }
+
+  throw createError({
+    statusCode: 403,
+    statusMessage: 'Access denied - GM privileges or feature grant required',
+  })
+}
+
+/**
  * Session data for direct WoW account authentication
  */
 export interface DirectAuthSession {
