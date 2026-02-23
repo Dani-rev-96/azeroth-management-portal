@@ -28,7 +28,10 @@ const emit = defineEmits<{
 
 function handleChange(event: Event) {
   const target = event.target as HTMLSelectElement
-  emit('update:modelValue', target.value)
+  const raw = target.value
+  // Preserve numeric types: if the value looks like a number, emit as number
+  const numeric = Number(raw)
+  emit('update:modelValue', raw !== '' && !isNaN(numeric) ? numeric : raw)
 }
 </script>
 

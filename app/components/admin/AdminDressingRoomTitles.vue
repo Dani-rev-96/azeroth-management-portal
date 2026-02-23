@@ -276,8 +276,8 @@ async function grantAllTitles() {
   <div class="title-editor">
     <h3 class="editor-card__title">👑 Titles</h3>
 
-    <UiMessage v-if="error" type="error" :message="error" />
-    <UiMessage v-if="success" type="success" :message="success" />
+    <UiMessage v-if="error" variant="error">{{ error }}</UiMessage>
+    <UiMessage v-if="success" variant="success">{{ success }}</UiMessage>
 
     <!-- Active title selector -->
     <div class="chosen-title">

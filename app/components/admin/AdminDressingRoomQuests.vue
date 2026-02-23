@@ -106,8 +106,8 @@ async function completeQuests() {
   <div class="quest-editor">
     <h3 class="editor-card__title">📜 Quests</h3>
 
-    <UiMessage v-if="error" type="error" :message="error" />
-    <UiMessage v-if="success" type="success" :message="success" />
+    <UiMessage v-if="error" variant="error">{{ error }}</UiMessage>
+    <UiMessage v-if="success" variant="success">{{ success }}</UiMessage>
 
     <p class="form-hint">Search by quest name or ID, then select quests to mark as completed.</p>
 

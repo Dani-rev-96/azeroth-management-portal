@@ -104,7 +104,14 @@ const isValid = computed(() => {
 watch(searchQuery, (query) => {
   if (searchTimeout) clearTimeout(searchTimeout)
 
-  if (!query || query.length < 2 || !realmId.value) {
+  if (!query || query.length < 1 || !realmId.value) {
+    searchResults.value = []
+    showSearchDropdown.value = false
+    return
+  }
+
+  // Non-numeric queries need at least 2 characters
+  if (query.length < 2 && !/^\d+$/.test(query)) {
     searchResults.value = []
     showSearchDropdown.value = false
     return
@@ -152,7 +159,7 @@ function selectItem(item: SearchItem) {
     selectedItems.value.push({
       itemId: item.id,
       itemCount: 1,
-      name: item.name,
+      name: (item as any).localeName || item.name,
       quality: item.quality,
     })
   }
@@ -268,7 +275,7 @@ onUnmounted(() => {
               v-model="searchQuery"
               type="text"
               class="item-search__input"
-              placeholder="Search items by name..."
+              placeholder="Search items by name or ID..."
               :disabled="!realmId"
               @focus="showSearchDropdown = searchResults.length > 0"
             />
@@ -284,9 +291,10 @@ onUnmounted(() => {
               :style="{ '--quality-color': getQualityColor(item.quality) }"
               @click="selectItem(item)"
             >
-              <span class="item-search__name">{{ item.name }}</span>
+              <span class="item-search__name">{{ item.localeName || item.name }}</span>
               <span class="item-search__meta">
                 <span class="item-search__quality">{{ getQualityName(item.quality) }}</span>
+                <template v-if="item.localeName && item.localeName !== item.name"><span class="item-search__id">{{ item.name }}</span></template>
                 <span class="item-search__id">ID: {{ item.id }}</span>
                 <span v-if="item.itemLevel" class="item-search__ilvl">iLvl {{ item.itemLevel }}</span>
               </span>

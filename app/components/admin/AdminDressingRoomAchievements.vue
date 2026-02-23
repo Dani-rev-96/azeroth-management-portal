@@ -62,13 +62,14 @@ async function grantAchievements() {
   <div class="achievement-editor">
     <h3 class="editor-card__title">🏆 Achievements</h3>
 
-    <UiMessage v-if="error" type="error" :message="error" />
-    <UiMessage v-if="success" type="success" :message="success" />
+    <UiMessage v-if="error" variant="error">{{ error }}</UiMessage>
+    <UiMessage v-if="success" variant="success">{{ success }}</UiMessage>
     <UiMessage
       v-if="requiresRelog"
-      type="warning"
-      message="Player is online — they need to relog to see granted achievements."
-    />
+      variant="warning"
+    >
+      Player is online — they need to relog to see granted achievements.
+    </UiMessage>
 
     <p class="form-hint">
       Enter achievement IDs separated by commas or spaces.

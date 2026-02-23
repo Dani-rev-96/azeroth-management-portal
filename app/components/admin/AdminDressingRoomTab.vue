@@ -234,7 +234,13 @@ let itemSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
 watch(itemSearchQuery, (query: string) => {
   if (itemSearchTimeout) clearTimeout(itemSearchTimeout)
-  if (!query || query.length < 2 || !selectedCharacter.value) {
+  if (!query || query.length < 1 || !selectedCharacter.value) {
+    itemSearchResults.value = []
+    showItemDropdown.value = false
+    return
+  }
+  // Non-numeric queries need at least 2 characters
+  if (query.length < 2 && !/^\d+$/.test(query)) {
     itemSearchResults.value = []
     showItemDropdown.value = false
     return
@@ -270,7 +276,7 @@ function addItem(item: any) {
     selectedItems.value.push({
       itemId: item.id,
       count: 1,
-      name: item.name,
+      name: item.localeName || item.name,
       quality: item.quality,
     })
   }
@@ -691,7 +697,7 @@ onUnmounted(() => {
                     v-model="itemSearchQuery"
                     type="text"
                     class="item-search__input"
-                    placeholder="Search items by name..."
+                    placeholder="Search items by name or ID..."
                     @focus="showItemDropdown = itemSearchResults.length > 0"
                   />
                   <span v-if="isSearchingItems" class="item-search__loading">⏳</span>
@@ -705,8 +711,9 @@ onUnmounted(() => {
                     :style="{ '--quality-color': QUALITY_COLORS[item.quality] || '#fff' }"
                     @click="addItem(item)"
                   >
-                    <span class="item-search__name">{{ item.name }}</span>
+                    <span class="item-search__name">{{ item.localeName || item.name }}</span>
                     <span class="item-search__meta">
+                      <template v-if="item.localeName && item.localeName !== item.name">{{ item.name }} · </template>
                       ID: {{ item.id }}
                       <span v-if="item.itemLevel">· iLvl {{ item.itemLevel }}</span>
                     </span>
