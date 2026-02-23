@@ -8,6 +8,11 @@
     - Spell learning (web_spell_requests)
     - Aura/debuff application (web_aura_requests)
     - Teleportation to coordinates (web_teleport_requests)
+    - Level setting (web_level_requests)
+    - Skill/profession setting (web_skill_requests)
+    - Reputation setting (web_reputation_requests)
+    - Quest completion (web_quest_requests)
+    - Title management (web_title_requests)
 
     Using a single polling timer is more efficient than separate scripts,
     reduces database connections, and shares common utility functions.
@@ -18,7 +23,7 @@
     Format: [{"entry":12345,"count":1},{"entry":67890,"count":2}]
 
     Author: AzerothCore Nix Flake Project
-    Version: 2.6
+    Version: 2.8
 ]]
 
 local SCRIPT_NAME = "web_worker"
@@ -155,6 +160,91 @@ CREATE TABLE IF NOT EXISTS web_teleport_requests (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 ]]
 
+local CREATE_LEVEL_TABLE_SQL = [[
+CREATE TABLE IF NOT EXISTS web_level_requests (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    character_guid INT UNSIGNED NOT NULL,
+    level TINYINT UNSIGNED NOT NULL,
+    reason VARCHAR(255) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP NULL DEFAULT NULL,
+    status ENUM('pending','done','error','waiting') NOT NULL DEFAULT 'pending',
+    error_text VARCHAR(255) NULL,
+    PRIMARY KEY (id),
+    KEY idx_pending (status, created_at),
+    KEY idx_char (character_guid)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+]]
+
+local CREATE_SKILL_TABLE_SQL = [[
+CREATE TABLE IF NOT EXISTS web_skill_requests (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    character_guid INT UNSIGNED NOT NULL,
+    skill_id SMALLINT UNSIGNED NOT NULL,
+    skill_value SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    skill_max SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    reason VARCHAR(255) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP NULL DEFAULT NULL,
+    status ENUM('pending','done','error','waiting') NOT NULL DEFAULT 'pending',
+    error_text VARCHAR(255) NULL,
+    PRIMARY KEY (id),
+    KEY idx_pending (status, created_at),
+    KEY idx_char (character_guid)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+]]
+
+local CREATE_REPUTATION_TABLE_SQL = [[
+CREATE TABLE IF NOT EXISTS web_reputation_requests (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    character_guid INT UNSIGNED NOT NULL,
+    faction_id INT UNSIGNED NOT NULL,
+    standing INT NOT NULL DEFAULT 0,
+    reason VARCHAR(255) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP NULL DEFAULT NULL,
+    status ENUM('pending','done','error','waiting') NOT NULL DEFAULT 'pending',
+    error_text VARCHAR(255) NULL,
+    PRIMARY KEY (id),
+    KEY idx_pending (status, created_at),
+    KEY idx_char (character_guid)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+]]
+
+local CREATE_QUEST_TABLE_SQL = [[
+CREATE TABLE IF NOT EXISTS web_quest_requests (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    character_guid INT UNSIGNED NOT NULL,
+    quest_id INT UNSIGNED NOT NULL,
+    action ENUM('complete','remove') NOT NULL DEFAULT 'complete',
+    reason VARCHAR(255) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP NULL DEFAULT NULL,
+    status ENUM('pending','done','error','waiting') NOT NULL DEFAULT 'pending',
+    error_text VARCHAR(255) NULL,
+    PRIMARY KEY (id),
+    KEY idx_pending (status, created_at),
+    KEY idx_char (character_guid)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+]]
+
+local CREATE_TITLE_TABLE_SQL = [[
+CREATE TABLE IF NOT EXISTS web_title_requests (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    character_guid INT UNSIGNED NOT NULL,
+    title_id INT UNSIGNED NOT NULL,
+    action ENUM('add','remove') NOT NULL DEFAULT 'add',
+    reason VARCHAR(255) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP NULL DEFAULT NULL,
+    status ENUM('pending','done','error','waiting') NOT NULL DEFAULT 'pending',
+    error_text VARCHAR(255) NULL,
+    PRIMARY KEY (id),
+    KEY idx_pending (status, created_at),
+    KEY idx_char (character_guid)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+]]
+
 --------------------------------------------------------------------------------
 -- SQL Queries
 --------------------------------------------------------------------------------
@@ -199,6 +289,36 @@ local SELECT_PENDING_AURA_SQL = string.format(
 -- For teleport requests, we also select 'waiting' status (player was offline, retry)
 local SELECT_PENDING_TELEPORT_SQL = string.format(
     "SELECT id, character_guid, map_id, x, y, z, o, reason FROM web_teleport_requests WHERE status IN ('pending', 'waiting') ORDER BY id ASC LIMIT %d",
+    BATCH_SIZE
+)
+
+-- For level requests, we also select 'waiting' status (player was offline, retry)
+local SELECT_PENDING_LEVEL_SQL = string.format(
+    "SELECT id, character_guid, level, reason FROM web_level_requests WHERE status IN ('pending', 'waiting') ORDER BY id ASC LIMIT %d",
+    BATCH_SIZE
+)
+
+-- For skill requests, we also select 'waiting' status (player was offline, retry)
+local SELECT_PENDING_SKILL_SQL = string.format(
+    "SELECT id, character_guid, skill_id, skill_value, skill_max, reason FROM web_skill_requests WHERE status IN ('pending', 'waiting') ORDER BY id ASC LIMIT %d",
+    BATCH_SIZE
+)
+
+-- For reputation requests, we also select 'waiting' status (player was offline, retry)
+local SELECT_PENDING_REPUTATION_SQL = string.format(
+    "SELECT id, character_guid, faction_id, standing, reason FROM web_reputation_requests WHERE status IN ('pending', 'waiting') ORDER BY id ASC LIMIT %d",
+    BATCH_SIZE
+)
+
+-- For quest requests, we also select 'waiting' status (player was offline, retry)
+local SELECT_PENDING_QUEST_SQL = string.format(
+    "SELECT id, character_guid, quest_id, action, reason FROM web_quest_requests WHERE status IN ('pending', 'waiting') ORDER BY id ASC LIMIT %d",
+    BATCH_SIZE
+)
+
+-- For title requests, we also select 'waiting' status (player was offline, retry)
+local SELECT_PENDING_TITLE_SQL = string.format(
+    "SELECT id, character_guid, title_id, action, reason FROM web_title_requests WHERE status IN ('pending', 'waiting') ORDER BY id ASC LIMIT %d",
     BATCH_SIZE
 )
 
@@ -330,6 +450,51 @@ end
 local function markWaitingTeleport(id)
     CharDBExecute(string.format(
         "UPDATE web_teleport_requests SET status='waiting' WHERE id=%d",
+        id
+    ))
+end
+
+--- Mark a level request as waiting (player offline)
+---@param id number
+local function markWaitingLevel(id)
+    CharDBExecute(string.format(
+        "UPDATE web_level_requests SET status='waiting' WHERE id=%d",
+        id
+    ))
+end
+
+--- Mark a skill request as waiting (player offline)
+---@param id number
+local function markWaitingSkill(id)
+    CharDBExecute(string.format(
+        "UPDATE web_skill_requests SET status='waiting' WHERE id=%d",
+        id
+    ))
+end
+
+--- Mark a reputation request as waiting (player offline)
+---@param id number
+local function markWaitingReputation(id)
+    CharDBExecute(string.format(
+        "UPDATE web_reputation_requests SET status='waiting' WHERE id=%d",
+        id
+    ))
+end
+
+--- Mark a quest request as waiting (player offline)
+---@param id number
+local function markWaitingQuest(id)
+    CharDBExecute(string.format(
+        "UPDATE web_quest_requests SET status='waiting' WHERE id=%d",
+        id
+    ))
+end
+
+--- Mark a title request as waiting (player offline)
+---@param id number
+local function markWaitingTitle(id)
+    CharDBExecute(string.format(
+        "UPDATE web_title_requests SET status='waiting' WHERE id=%d",
         id
     ))
 end
@@ -995,6 +1160,487 @@ local function processTeleportRow(row)
 end
 
 --------------------------------------------------------------------------------
+-- Level Request Processing
+--------------------------------------------------------------------------------
+
+--- Process a single level request row
+--- Sets the character's level via player:SetLevel() if online,
+--- or direct DB update if offline (safe since server won't overwrite)
+---@param row userdata Query row
+---@return boolean success
+local function processLevelRow(row)
+    local id = tonumber(row:GetUInt32(0))
+    local guid = tonumber(row:GetUInt32(1))
+    local level = tonumber(row:GetUInt32(2))
+    local reason = row:GetString(3)
+
+    if not id or id == 0 then
+        PrintError(string.format("[%s] Level: Invalid request id", SCRIPT_NAME))
+        return false
+    end
+
+    if not guid or guid == 0 then
+        markError("web_level_requests", id, "invalid character_guid")
+        return false
+    end
+
+    if not level or level < 1 or level > 80 then
+        markError("web_level_requests", id, string.format("invalid level: %s", tostring(level)))
+        return false
+    end
+
+    -- Try online player first (uses proper server API)
+    local player = GetPlayerByGUID(guid)
+    if player then
+        local oldLevel = player:GetLevel()
+        player:SetLevel(level)
+        player:SaveToDB()
+
+        -- Notify player
+        if reason and reason ~= "" then
+            player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s", reason))
+        else
+            player:SendBroadcastMessage(string.format(
+                "|cff00ff00[GM]|r Your level has been set to %d!", level
+            ))
+        end
+
+        PrintInfo(string.format("[%s] Level: Processed %d for online player %d (%d -> %d)",
+            SCRIPT_NAME, id, guid, oldLevel, level))
+        markDone("web_level_requests", id)
+        return true
+    else
+        -- Player offline - direct DB update is safe (no in-memory cache to conflict)
+        local query = CharDBQuery(string.format(
+            "SELECT guid FROM characters WHERE guid = %d", guid
+        ))
+
+        if not query then
+            markError("web_level_requests", id, "character not found")
+            return false
+        end
+
+        CharDBExecute(string.format(
+            "UPDATE characters SET level = %d WHERE guid = %d",
+            level, guid
+        ))
+
+        PrintInfo(string.format("[%s] Level: Processed %d for offline player %d (set to %d)",
+            SCRIPT_NAME, id, guid, level))
+        markDone("web_level_requests", id)
+        return true
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Skill/Profession Request Processing
+--------------------------------------------------------------------------------
+
+--- Process a single skill request row
+--- Sets the character's skill via player:SetSkill() if online,
+--- or direct DB update if offline (safe since server won't overwrite)
+---@param row userdata Query row
+---@return boolean success
+local function processSkillRow(row)
+    local id = tonumber(row:GetUInt32(0))
+    local guid = tonumber(row:GetUInt32(1))
+    local skillId = tonumber(row:GetUInt32(2))
+    local skillValue = tonumber(row:GetUInt32(3)) or 0
+    local skillMax = tonumber(row:GetUInt32(4)) or 0
+    local reason = row:GetString(5)
+
+    if not id or id == 0 then
+        PrintError(string.format("[%s] Skill: Invalid request id", SCRIPT_NAME))
+        return false
+    end
+
+    if not guid or guid == 0 then
+        markError("web_skill_requests", id, "invalid character_guid")
+        return false
+    end
+
+    if not skillId or skillId == 0 then
+        markError("web_skill_requests", id, "invalid skill_id")
+        return false
+    end
+
+    -- Try online player first (uses proper server API)
+    local player = GetPlayerByGUID(guid)
+    if player then
+        if skillValue == 0 and skillMax == 0 then
+            -- Remove the skill: set step to 0 which effectively removes it
+            -- SetSkill(skillId, step, currVal, maxVal) - step 0 removes
+            player:SetSkill(skillId, 0, 0, 0)
+        else
+            -- Determine the step (rank) from max value
+            -- Grand Master = 6 (450), Master = 5 (375), Artisan = 4 (300),
+            -- Expert = 3 (225), Journeyman = 2 (150), Apprentice = 1 (75)
+            local step = 1
+            if skillMax >= 450 then step = 6
+            elseif skillMax >= 375 then step = 5
+            elseif skillMax >= 300 then step = 4
+            elseif skillMax >= 225 then step = 3
+            elseif skillMax >= 150 then step = 2
+            end
+
+            player:SetSkill(skillId, step, skillValue, skillMax)
+        end
+
+        player:SaveToDB()
+
+        -- Notify player
+        if reason and reason ~= "" then
+            player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s", reason))
+        end
+
+        PrintInfo(string.format("[%s] Skill: Processed %d for online player %d (skill %d: %d/%d)",
+            SCRIPT_NAME, id, guid, skillId, skillValue, skillMax))
+        markDone("web_skill_requests", id)
+        return true
+    else
+        -- Player offline - direct DB update is safe
+        local query = CharDBQuery(string.format(
+            "SELECT guid FROM characters WHERE guid = %d", guid
+        ))
+
+        if not query then
+            markError("web_skill_requests", id, "character not found")
+            return false
+        end
+
+        if skillValue == 0 and skillMax == 0 then
+            -- Remove the skill
+            CharDBExecute(string.format(
+                "DELETE FROM character_skills WHERE guid = %d AND skill = %d",
+                guid, skillId
+            ))
+            PrintInfo(string.format("[%s] Skill: Processed %d for offline player %d (removed skill %d)",
+                SCRIPT_NAME, id, guid, skillId))
+        else
+            -- Check if skill exists
+            local skillQuery = CharDBQuery(string.format(
+                "SELECT skill FROM character_skills WHERE guid = %d AND skill = %d",
+                guid, skillId
+            ))
+
+            if skillQuery then
+                -- Update existing
+                CharDBExecute(string.format(
+                    "UPDATE character_skills SET value = %d, max = %d WHERE guid = %d AND skill = %d",
+                    skillValue, skillMax, guid, skillId
+                ))
+            else
+                -- Insert new
+                CharDBExecute(string.format(
+                    "INSERT INTO character_skills (guid, skill, value, max) VALUES (%d, %d, %d, %d)",
+                    guid, skillId, skillValue, skillMax
+                ))
+            end
+            PrintInfo(string.format("[%s] Skill: Processed %d for offline player %d (skill %d: %d/%d)",
+                SCRIPT_NAME, id, guid, skillId, skillValue, skillMax))
+        end
+
+        markDone("web_skill_requests", id)
+        return true
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Reputation Request Processing
+--------------------------------------------------------------------------------
+
+--- Process a single reputation request row
+--- Sets faction standing via player:SetReputation() if online,
+--- or direct DB update if offline
+---@param row userdata Query row
+---@return boolean success
+local function processReputationRow(row)
+    local id = tonumber(row:GetUInt32(0))
+    local guid = tonumber(row:GetUInt32(1))
+    local factionId = tonumber(row:GetUInt32(2))
+    local standing = tonumber(row:GetInt32(3)) or 0
+    local reason = row:GetString(4)
+
+    if not id or id == 0 then
+        PrintError(string.format("[%s] Reputation: Invalid request id", SCRIPT_NAME))
+        return false
+    end
+
+    if not guid or guid == 0 then
+        markError("web_reputation_requests", id, "invalid character_guid")
+        return false
+    end
+
+    if not factionId or factionId == 0 then
+        markError("web_reputation_requests", id, "invalid faction_id")
+        return false
+    end
+
+    -- Try online player first
+    local player = GetPlayerByGUID(guid)
+    if player then
+        local ok, err = pcall(function()
+            player:SetReputation(factionId, standing)
+        end)
+
+        if not ok then
+            markError("web_reputation_requests", id, string.format("SetReputation failed: %s", tostring(err)))
+            return false
+        end
+
+        player:SaveToDB()
+
+        if reason and reason ~= "" then
+            player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s", reason))
+        end
+
+        PrintInfo(string.format("[%s] Reputation: Processed %d for online player %d (faction %d: %d)",
+            SCRIPT_NAME, id, guid, factionId, standing))
+        markDone("web_reputation_requests", id)
+        return true
+    else
+        -- Player offline - direct DB update
+        local query = CharDBQuery(string.format(
+            "SELECT guid FROM characters WHERE guid = %d", guid
+        ))
+
+        if not query then
+            markError("web_reputation_requests", id, "character not found")
+            return false
+        end
+
+        -- Check if reputation row exists
+        local repQuery = CharDBQuery(string.format(
+            "SELECT faction FROM character_reputation WHERE guid = %d AND faction = %d",
+            guid, factionId
+        ))
+
+        if repQuery then
+            CharDBExecute(string.format(
+                "UPDATE character_reputation SET standing = %d WHERE guid = %d AND faction = %d",
+                standing, guid, factionId
+            ))
+        else
+            CharDBExecute(string.format(
+                "INSERT INTO character_reputation (guid, faction, standing, flags) VALUES (%d, %d, %d, 1)",
+                guid, factionId, standing
+            ))
+        end
+
+        PrintInfo(string.format("[%s] Reputation: Processed %d for offline player %d (faction %d: %d)",
+            SCRIPT_NAME, id, guid, factionId, standing))
+        markDone("web_reputation_requests", id)
+        return true
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Quest Request Processing
+--------------------------------------------------------------------------------
+
+--- Process a single quest request row
+--- Completes a quest via player:CompleteQuest() if online,
+--- or direct DB insert if offline
+---@param row userdata Query row
+---@return boolean success
+local function processQuestRow(row)
+    local id = tonumber(row:GetUInt32(0))
+    local guid = tonumber(row:GetUInt32(1))
+    local questId = tonumber(row:GetUInt32(2))
+    local action = row:GetString(3) or "complete"
+    local reason = row:GetString(4)
+
+    if not id or id == 0 then
+        PrintError(string.format("[%s] Quest: Invalid request id", SCRIPT_NAME))
+        return false
+    end
+
+    if not guid or guid == 0 then
+        markError("web_quest_requests", id, "invalid character_guid")
+        return false
+    end
+
+    if not questId or questId == 0 then
+        markError("web_quest_requests", id, "invalid quest_id")
+        return false
+    end
+
+    -- Try online player first
+    local player = GetPlayerByGUID(guid)
+    if player then
+        if action == "complete" then
+            local ok, err = pcall(function()
+                player:CompleteQuest(questId)
+            end)
+
+            if not ok then
+                markError("web_quest_requests", id, string.format("CompleteQuest failed: %s", tostring(err)))
+                return false
+            end
+
+            player:SaveToDB()
+
+            if reason and reason ~= "" then
+                player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s", reason))
+            else
+                player:SendBroadcastMessage("|cff00ff00[GM]|r A quest has been completed for you!")
+            end
+        end
+
+        PrintInfo(string.format("[%s] Quest: Processed %d for online player %d (quest %d, action: %s)",
+            SCRIPT_NAME, id, guid, questId, action))
+        markDone("web_quest_requests", id)
+        return true
+    else
+        -- Player offline - direct DB manipulation
+        local query = CharDBQuery(string.format(
+            "SELECT guid FROM characters WHERE guid = %d", guid
+        ))
+
+        if not query then
+            markError("web_quest_requests", id, "character not found")
+            return false
+        end
+
+        if action == "complete" then
+            -- Remove from active quest log
+            CharDBExecute(string.format(
+                "DELETE FROM character_queststatus WHERE guid = %d AND quest = %d",
+                guid, questId
+            ))
+            -- Insert into rewarded table
+            CharDBExecute(string.format(
+                "INSERT IGNORE INTO character_queststatus_rewarded (guid, quest, active) VALUES (%d, %d, 1)",
+                guid, questId
+            ))
+        end
+
+        PrintInfo(string.format("[%s] Quest: Processed %d for offline player %d (quest %d, action: %s)",
+            SCRIPT_NAME, id, guid, questId, action))
+        markDone("web_quest_requests", id)
+        return true
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Title Request Processing
+--------------------------------------------------------------------------------
+
+--- Process a single title request row
+--- Adds/removes titles via player:SetKnownTitle()/UnsetKnownTitle() if online,
+--- or direct bitmask manipulation if offline
+---@param row userdata Query row
+---@return boolean success
+local function processTitleRow(row)
+    local id = tonumber(row:GetUInt32(0))
+    local guid = tonumber(row:GetUInt32(1))
+    local titleId = tonumber(row:GetUInt32(2))
+    local action = row:GetString(3) or "add"
+    local reason = row:GetString(4)
+
+    if not id or id == 0 then
+        PrintError(string.format("[%s] Title: Invalid request id", SCRIPT_NAME))
+        return false
+    end
+
+    if not guid or guid == 0 then
+        markError("web_title_requests", id, "invalid character_guid")
+        return false
+    end
+
+    if not titleId then
+        markError("web_title_requests", id, "invalid title_id")
+        return false
+    end
+
+    -- Try online player first
+    local player = GetPlayerByGUID(guid)
+    if player then
+        local ok, err
+        if action == "add" then
+            ok, err = pcall(function()
+                player:SetKnownTitle(titleId)
+            end)
+        else
+            ok, err = pcall(function()
+                player:UnsetKnownTitle(titleId)
+            end)
+        end
+
+        if not ok then
+            markError("web_title_requests", id, string.format("Title %s failed: %s", action, tostring(err)))
+            return false
+        end
+
+        player:SaveToDB()
+
+        if reason and reason ~= "" then
+            player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s", reason))
+        end
+
+        PrintInfo(string.format("[%s] Title: Processed %d for online player %d (title %d, action: %s)",
+            SCRIPT_NAME, id, guid, titleId, action))
+        markDone("web_title_requests", id)
+        return true
+    else
+        -- Player offline - manipulate knownTitles bitmask directly
+        local query = CharDBQuery(string.format(
+            "SELECT knownTitles FROM characters WHERE guid = %d", guid
+        ))
+
+        if not query then
+            markError("web_title_requests", id, "character not found")
+            return false
+        end
+
+        local knownTitles = query:GetString(0) or ""
+        local fields = {}
+        for field in knownTitles:gmatch("%S+") do
+            table.insert(fields, tonumber(field) or 0)
+        end
+
+        local fieldIndex = math.floor(titleId / 32) + 1 -- Lua is 1-indexed
+        local bitIndex = titleId % 32
+
+        -- Ensure array is large enough
+        while #fields < fieldIndex do
+            table.insert(fields, 0)
+        end
+
+        if action == "add" then
+            -- Use bit manipulation: set the bit
+            local mask = 2 ^ bitIndex
+            if fields[fieldIndex] % (mask * 2) < mask then
+                fields[fieldIndex] = fields[fieldIndex] + mask
+            end
+        else
+            -- Clear the bit
+            local mask = 2 ^ bitIndex
+            if fields[fieldIndex] % (mask * 2) >= mask then
+                fields[fieldIndex] = fields[fieldIndex] - mask
+            end
+        end
+
+        -- Rebuild the string
+        local parts = {}
+        for _, v in ipairs(fields) do
+            table.insert(parts, tostring(math.floor(v)))
+        end
+        local newKnownTitles = table.concat(parts, " ")
+
+        CharDBExecute(string.format(
+            "UPDATE characters SET knownTitles = '%s' WHERE guid = %d",
+            escapeSql(newKnownTitles), guid
+        ))
+
+        PrintInfo(string.format("[%s] Title: Processed %d for offline player %d (title %d, action: %s)",
+            SCRIPT_NAME, id, guid, titleId, action))
+        markDone("web_title_requests", id)
+        return true
+    end
+end
+
+--------------------------------------------------------------------------------
 -- Main Polling Function
 --------------------------------------------------------------------------------
 
@@ -1106,6 +1752,86 @@ local function pollAllQueues(eventId, delay, repeats)
                 totalWaiting = totalWaiting + 1
             end
         until not teleportQuery:NextRow()
+    end
+
+    -- Process level requests
+    local levelQuery = CharDBQuery(SELECT_PENDING_LEVEL_SQL)
+    if levelQuery then
+        repeat
+            local ok, result = pcall(processLevelRow, levelQuery)
+            if not ok then
+                totalErrors = totalErrors + 1
+                PrintError(string.format("[%s] Level error: %s", SCRIPT_NAME, tostring(result)))
+            elseif result then
+                totalProcessed = totalProcessed + 1
+            else
+                totalWaiting = totalWaiting + 1
+            end
+        until not levelQuery:NextRow()
+    end
+
+    -- Process skill requests
+    local skillQuery = CharDBQuery(SELECT_PENDING_SKILL_SQL)
+    if skillQuery then
+        repeat
+            local ok, result = pcall(processSkillRow, skillQuery)
+            if not ok then
+                totalErrors = totalErrors + 1
+                PrintError(string.format("[%s] Skill error: %s", SCRIPT_NAME, tostring(result)))
+            elseif result then
+                totalProcessed = totalProcessed + 1
+            else
+                totalWaiting = totalWaiting + 1
+            end
+        until not skillQuery:NextRow()
+    end
+
+    -- Process reputation requests
+    local repQuery = CharDBQuery(SELECT_PENDING_REPUTATION_SQL)
+    if repQuery then
+        repeat
+            local ok, result = pcall(processReputationRow, repQuery)
+            if not ok then
+                totalErrors = totalErrors + 1
+                PrintError(string.format("[%s] Reputation error: %s", SCRIPT_NAME, tostring(result)))
+            elseif result then
+                totalProcessed = totalProcessed + 1
+            else
+                totalWaiting = totalWaiting + 1
+            end
+        until not repQuery:NextRow()
+    end
+
+    -- Process quest requests
+    local questQuery = CharDBQuery(SELECT_PENDING_QUEST_SQL)
+    if questQuery then
+        repeat
+            local ok, result = pcall(processQuestRow, questQuery)
+            if not ok then
+                totalErrors = totalErrors + 1
+                PrintError(string.format("[%s] Quest error: %s", SCRIPT_NAME, tostring(result)))
+            elseif result then
+                totalProcessed = totalProcessed + 1
+            else
+                totalWaiting = totalWaiting + 1
+            end
+        until not questQuery:NextRow()
+    end
+
+    -- Process title requests
+    local titleQuery = CharDBQuery(SELECT_PENDING_TITLE_SQL)
+    if titleQuery then
+        repeat
+            local ok, result = pcall(processTitleRow, titleQuery)
+            if not ok then
+                totalErrors = totalErrors + 1
+                PrintError(string.format("[%s] Title error: %s", SCRIPT_NAME, tostring(result)))
+            elseif result then
+                totalProcessed = totalProcessed + 1
+            else
+                totalWaiting = totalWaiting + 1
+            end
+        until not titleQuery:NextRow()
     end
 
     -- Only log if something happened
@@ -1277,6 +2003,187 @@ local function onPlayerLogin(event, player)
         ))
     end
 
+    -- Check for waiting level requests for this player (only apply the latest)
+    local levelQuery = CharDBQuery(string.format(
+        "SELECT id, level, reason FROM web_level_requests WHERE character_guid = %d AND status = 'waiting' ORDER BY id DESC LIMIT 1",
+        guid
+    ))
+
+    if levelQuery then
+        PrintInfo(string.format("[%s] Processing waiting level request for player %d on login", SCRIPT_NAME, guid))
+
+        local lvlReqId = tonumber(levelQuery:GetUInt32(0))
+        local lvlLevel = tonumber(levelQuery:GetUInt32(1))
+        local lvlReason = levelQuery:GetString(2)
+
+        if lvlLevel and lvlLevel >= 1 and lvlLevel <= 80 then
+            player:SetLevel(lvlLevel)
+
+            if lvlReason and lvlReason ~= "" then
+                player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s", lvlReason))
+            else
+                player:SendBroadcastMessage(string.format(
+                    "|cff00ff00[GM]|r Your level has been set to %d!", lvlLevel
+                ))
+            end
+
+            markDone("web_level_requests", lvlReqId)
+            processed = processed + 1
+        else
+            markError("web_level_requests", lvlReqId, "invalid level on login")
+            errors = errors + 1
+        end
+
+        -- Mark any remaining waiting level requests as done (stale - only latest matters)
+        CharDBExecute(string.format(
+            "UPDATE web_level_requests SET status='done', processed_at=NOW() WHERE character_guid = %d AND status = 'waiting'",
+            guid
+        ))
+    end
+
+    -- Check for waiting skill requests for this player
+    local skillLoginQuery = CharDBQuery(string.format(
+        "SELECT id, skill_id, skill_value, skill_max, reason FROM web_skill_requests WHERE character_guid = %d AND status = 'waiting' ORDER BY id ASC LIMIT %d",
+        guid, BATCH_SIZE
+    ))
+
+    if skillLoginQuery then
+        PrintInfo(string.format("[%s] Processing waiting skill requests for player %d on login", SCRIPT_NAME, guid))
+
+        repeat
+            local skillReqId = tonumber(skillLoginQuery:GetUInt32(0))
+            local skillReqSkillId = tonumber(skillLoginQuery:GetUInt32(1))
+            local skillReqValue = tonumber(skillLoginQuery:GetUInt32(2)) or 0
+            local skillReqMax = tonumber(skillLoginQuery:GetUInt32(3)) or 0
+            local skillReason = skillLoginQuery:GetString(4)
+
+            if skillReqValue == 0 and skillReqMax == 0 then
+                player:SetSkill(skillReqSkillId, 0, 0, 0)
+            else
+                local step = 1
+                if skillReqMax >= 450 then step = 6
+                elseif skillReqMax >= 375 then step = 5
+                elseif skillReqMax >= 300 then step = 4
+                elseif skillReqMax >= 225 then step = 3
+                elseif skillReqMax >= 150 then step = 2
+                end
+                player:SetSkill(skillReqSkillId, step, skillReqValue, skillReqMax)
+            end
+
+            if skillReason and skillReason ~= "" then
+                player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s", skillReason))
+            end
+
+            markDone("web_skill_requests", skillReqId)
+            processed = processed + 1
+        until not skillLoginQuery:NextRow()
+    end
+
+    -- Check for waiting reputation requests for this player
+    local repLoginQuery = CharDBQuery(string.format(
+        "SELECT id, faction_id, standing, reason FROM web_reputation_requests WHERE character_guid = %d AND status = 'waiting' ORDER BY id ASC LIMIT %d",
+        guid, BATCH_SIZE
+    ))
+
+    if repLoginQuery then
+        PrintInfo(string.format("[%s] Processing waiting reputation requests for player %d on login", SCRIPT_NAME, guid))
+
+        repeat
+            local repReqId = tonumber(repLoginQuery:GetUInt32(0))
+            local repFactionId = tonumber(repLoginQuery:GetUInt32(1))
+            local repStanding = tonumber(repLoginQuery:GetInt32(2)) or 0
+            local repReason = repLoginQuery:GetString(3)
+
+            local repOk, repErr = pcall(function()
+                player:SetReputation(repFactionId, repStanding)
+            end)
+
+            if repOk then
+                if repReason and repReason ~= "" then
+                    player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s", repReason))
+                end
+                markDone("web_reputation_requests", repReqId)
+                processed = processed + 1
+            else
+                markError("web_reputation_requests", repReqId, string.format("SetReputation failed on login: %s", tostring(repErr)))
+                errors = errors + 1
+            end
+        until not repLoginQuery:NextRow()
+    end
+
+    -- Check for waiting quest requests for this player
+    local questLoginQuery = CharDBQuery(string.format(
+        "SELECT id, quest_id, action, reason FROM web_quest_requests WHERE character_guid = %d AND status = 'waiting' ORDER BY id ASC LIMIT %d",
+        guid, BATCH_SIZE
+    ))
+
+    if questLoginQuery then
+        PrintInfo(string.format("[%s] Processing waiting quest requests for player %d on login", SCRIPT_NAME, guid))
+
+        repeat
+            local questReqId = tonumber(questLoginQuery:GetUInt32(0))
+            local questReqQuestId = tonumber(questLoginQuery:GetUInt32(1))
+            local questAction = questLoginQuery:GetString(2) or "complete"
+            local questReason = questLoginQuery:GetString(3)
+
+            if questAction == "complete" then
+                local questOk, questErr = pcall(function()
+                    player:CompleteQuest(questReqQuestId)
+                end)
+
+                if questOk then
+                    if questReason and questReason ~= "" then
+                        player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s", questReason))
+                    end
+                    markDone("web_quest_requests", questReqId)
+                    processed = processed + 1
+                else
+                    markError("web_quest_requests", questReqId, string.format("CompleteQuest failed on login: %s", tostring(questErr)))
+                    errors = errors + 1
+                end
+            end
+        until not questLoginQuery:NextRow()
+    end
+
+    -- Check for waiting title requests for this player
+    local titleLoginQuery = CharDBQuery(string.format(
+        "SELECT id, title_id, action, reason FROM web_title_requests WHERE character_guid = %d AND status = 'waiting' ORDER BY id ASC LIMIT %d",
+        guid, BATCH_SIZE
+    ))
+
+    if titleLoginQuery then
+        PrintInfo(string.format("[%s] Processing waiting title requests for player %d on login", SCRIPT_NAME, guid))
+
+        repeat
+            local titleReqId = tonumber(titleLoginQuery:GetUInt32(0))
+            local titleReqTitleId = tonumber(titleLoginQuery:GetUInt32(1))
+            local titleAction = titleLoginQuery:GetString(2) or "add"
+            local titleReason = titleLoginQuery:GetString(3)
+
+            local titleOk, titleErr
+            if titleAction == "add" then
+                titleOk, titleErr = pcall(function()
+                    player:SetKnownTitle(titleReqTitleId)
+                end)
+            else
+                titleOk, titleErr = pcall(function()
+                    player:UnsetKnownTitle(titleReqTitleId)
+                end)
+            end
+
+            if titleOk then
+                if titleReason and titleReason ~= "" then
+                    player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s", titleReason))
+                end
+                markDone("web_title_requests", titleReqId)
+                processed = processed + 1
+            else
+                markError("web_title_requests", titleReqId, string.format("Title %s failed on login: %s", titleAction, tostring(titleErr)))
+                errors = errors + 1
+            end
+        until not titleLoginQuery:NextRow()
+    end
+
     if processed > 0 then
         player:SaveToDB()
         PrintInfo(string.format("[%s] Login delivery for %d: %d items/spells delivered, %d failed",
@@ -1298,6 +2205,11 @@ local function initialize()
     CharDBExecute(CREATE_SPELL_TABLE_SQL)
     CharDBExecute(CREATE_AURA_TABLE_SQL)
     CharDBExecute(CREATE_TELEPORT_TABLE_SQL)
+    CharDBExecute(CREATE_LEVEL_TABLE_SQL)
+    CharDBExecute(CREATE_SKILL_TABLE_SQL)
+    CharDBExecute(CREATE_REPUTATION_TABLE_SQL)
+    CharDBExecute(CREATE_QUEST_TABLE_SQL)
+    CharDBExecute(CREATE_TITLE_TABLE_SQL)
     PrintInfo(string.format("[%s] Ensured all queue tables exist", SCRIPT_NAME))
 
     -- Check if items_json column exists and add it if not

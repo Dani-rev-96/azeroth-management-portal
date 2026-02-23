@@ -17,6 +17,8 @@ import AdminLinkAccountsTab from '~/components/admin/AdminLinkAccountsTab.vue'
 import AdminGMForm, { type GMFormData, type RealmOption } from '~/components/admin/AdminGMForm.vue'
 import AdminMailForm, { type MailFormData } from '~/components/admin/AdminMailForm.vue'
 import AdminFilesTab, { type FileInfo } from '~/components/admin/AdminFilesTab.vue'
+import AdminBackupTab from '~/components/admin/AdminBackupTab.vue'
+import AdminDressingRoomTab from '~/components/admin/AdminDressingRoomTab.vue'
 import { useAuthStore } from '~/stores/auth'
 import { ref, computed, watchEffect } from 'vue'
 
@@ -32,6 +34,8 @@ const tabs = [
   { id: 'link-accounts', label: 'Link Accounts', icon: '🔧' },
   { id: 'gms', label: 'GM Management', icon: '🛡️' },
   { id: 'files', label: 'File Management', icon: '📁' },
+  { id: 'backup', label: 'Backup & Restore', icon: '💾' },
+  { id: 'dressingroom', label: 'Dressing Room', icon: '👗' },
 ]
 
 // URL-synced tab state
@@ -339,6 +343,16 @@ async function handleFileDelete(filename: string) {
           @upload="handleFileUpload"
           @delete="handleFileDelete"
         />
+      </UiTabPanel>
+
+      <!-- Backup & Restore Tab -->
+      <UiTabPanel id="backup" :active="activeTab === 'backup'">
+        <AdminBackupTab :realms="realmsList" />
+      </UiTabPanel>
+
+      <!-- Dressing Room Tab -->
+      <UiTabPanel id="dressingroom" :active="activeTab === 'dressingroom'">
+        <AdminDressingRoomTab :realms="realmsList" />
       </UiTabPanel>
     </div>
   </div>

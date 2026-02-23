@@ -127,6 +127,7 @@
             pkgs.coreutils
             pkgs.busybox
             pkgs.sqlite-interactive
+            pkgs.mariadb
             prod-package
           ];
           config = {
@@ -149,6 +150,7 @@
             pkgs.busybox
             pkgs.cacert
             pkgs.nodejs
+            pkgs.mariadb
             src-root
             start-dev
           ];

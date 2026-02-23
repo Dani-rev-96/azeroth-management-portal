@@ -69,7 +69,7 @@ docs/                → Detailed documentation (API, Auth, Config, Deploy, Dev,
 | `server/utils/auth.ts`         | Auth utilities: `getAuthenticatedUser()`, `requireGM()`, session management    |
 | `server/utils/dbc-db.ts`       | DBC SQLite databases (items, spells, talents) — read-only server assets        |
 | `server/utils/srp6.ts`         | SRP-6a password verification/creation (AzerothCore compatible)                 |
-| `data/eluna/web_worker.lua`    | Eluna bridge script — processes all queue tables in-game (v2.6)                |
+| `data/eluna/web_worker.lua`    | Eluna bridge script — processes all queue tables in-game (v2.8)                |
 | `shared/utils/perks/index.ts`  | Perk registry barrel — re-exports types, groups, per-group arrays, helpers     |
 | `shared/utils/config/index.ts` | Type-only re-exports for client/server shared config types                     |
 
@@ -98,15 +98,15 @@ Pages are **thin orchestrators** — they call store actions and delegate render
 
 Organized by feature domain. All use `<script setup lang="ts">` exclusively.
 
-| Directory               | Prefix            | Components                                                                                                                                                                                                         |
-| ----------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `components/ui/`        | `Ui`              | UiBadge, UiButton, UiCard, UiDataTable, UiEmptyState, UiFormGroup, UiInput, UiLoadingState, UiMessage, UiModal, UiPageHeader, UiProgressBar, UiSectionHeader, UiSelect, UiStatCard, UiTabPanel, UiTabs, UiTextarea |
-| `components/account/`   | `Account`/Feature | AccountHeader, AccountSecurityInfo, AccountStatistics, CharacterActionModal, CharacterList, DangerZone, PasswordChangeForm                                                                                         |
-| `components/admin/`     | `Admin`           | AdminAccountsTab, AdminFilesTab, AdminGMForm, AdminLinkAccountsTab, AdminMailForm, AdminMappingsTab                                                                                                                |
-| `components/character/` | `Character`       | CharacterEquipmentSlot, CharacterTalentTree, **CharacterPerks**, **CharacterPerkCard**                                                                                                                             |
-| `components/community/` | Feature           | DirectoryFilters, DistributionChart, OnlinePlayerCard, OnlinePlayersGrid, PlayerDirectoryBrowser, PvPStatistics, RealmFilter, StatsOverview, TopPlayersLeaderboard                                                 |
-| `components/shop/`      | `Shop`            | ShopCategoryTabs, ShopCharacterSelect, ShopDeliveryToggle, ShopItemCard, ShopItemsGrid, ShopNotification, ShopPagination, ShopSearchControls, ShopSelectedCharacterBar                                             |
-| `components/` (root)    | —                 | CreateAccountForm, LinkAccountForm                                                                                                                                                                                 |
+| Directory               | Prefix            | Components                                                                                                                                                                                                                                              |
+| ----------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `components/ui/`        | `Ui`              | UiBadge, UiButton, UiCard, UiDataTable, UiEmptyState, UiFormGroup, UiInput, UiLoadingState, UiMessage, UiModal, UiPageHeader, UiProgressBar, UiSectionHeader, UiSelect, UiStatCard, UiTabPanel, UiTabs, UiTextarea                                      |
+| `components/account/`   | `Account`/Feature | AccountHeader, AccountSecurityInfo, AccountStatistics, CharacterActionModal, CharacterList, DangerZone, PasswordChangeForm                                                                                                                              |
+| `components/admin/`     | `Admin`           | AdminAccountsTab, AdminBackupTab, AdminDressingRoomTab, AdminDressingRoomReputation, AdminDressingRoomQuests, AdminDressingRoomAchievements, AdminDressingRoomTitles, AdminFilesTab, AdminGMForm, AdminLinkAccountsTab, AdminMailForm, AdminMappingsTab |
+| `components/character/` | `Character`       | CharacterEquipmentSlot, CharacterTalentTree, **CharacterPerks**, **CharacterPerkCard**                                                                                                                                                                  |
+| `components/community/` | Feature           | DirectoryFilters, DistributionChart, OnlinePlayerCard, OnlinePlayersGrid, PlayerDirectoryBrowser, PvPStatistics, RealmFilter, StatsOverview, TopPlayersLeaderboard                                                                                      |
+| `components/shop/`      | `Shop`            | ShopCategoryTabs, ShopCharacterSelect, ShopDeliveryToggle, ShopItemCard, ShopItemsGrid, ShopNotification, ShopPagination, ShopSearchControls, ShopSelectedCharacterBar                                                                                  |
+| `components/` (root)    | —                 | CreateAccountForm, LinkAccountForm                                                                                                                                                                                                                      |
 
 #### Stores (`app/stores/`)
 
@@ -148,17 +148,17 @@ All use **Composition API** pattern: `defineStore('name', () => { ... })`.
 
 File-based routing with HTTP verb suffixes: `.get.ts`, `.post.ts`, `.delete.ts`. Dynamic params via `[paramName]` directories. **No PUT/PATCH** — mutations use POST.
 
-| Group           | Files                                                                                                                                                                                                                     | Auth                                                   |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `auth/`         | `config.get`, `login.post`, `logout.post`, `me.get`                                                                                                                                                                       | Public (config), Direct-mode (login/logout), Any (me)  |
-| `accounts/`     | `create.post`, `map.post`, `password.post`, `detail/[accountId].get`, `map/[externalId]/[wowAccountId].delete`, `user/[externalId].get`, `user/mapping/[wowAccountId].get`                                                | Authenticated                                          |
-| `characters/`   | `action.post`, `activate-perk.post`, `perk-config.get`, `perk-status.get`, `[guid]/[realmId].get`, `talent-tree/[classId].get`                                                                                            | Authenticated (action, perks), Public (detail, talent) |
-| `admin/`        | `accounts.get`, `account-mappings.get`, `account-mappings.post`, `account-mappings/[id].delete`, `export.post`, `files/upload.post`, `files/[filename].delete`, `gm/set-level.post`, `items/search.get`, `mail/send.post` | GM required (`requireGM()`)                            |
-| `community/`    | `online.get`, `stats.get`, `top-players.get`, `pvp-stats.get`, `players.get`, `zones.get`                                                                                                                                 | Public                                                 |
-| `shop/`         | `config.get`, `items.get`, `purchase.post`                                                                                                                                                                                | Varies                                                 |
-| `downloads/`    | `list.get`, `[filename].get`                                                                                                                                                                                              | Public                                                 |
-| `stats/`        | `overview.get`                                                                                                                                                                                                            | Public                                                 |
-| `realms.get.ts` | Realm list (also K8s health endpoint)                                                                                                                                                                                     | Public                                                 |
+| Group           | Files                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Auth                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `auth/`         | `config.get`, `login.post`, `logout.post`, `me.get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Public (config), Direct-mode (login/logout), Any (me)  |
+| `accounts/`     | `create.post`, `map.post`, `password.post`, `detail/[accountId].get`, `map/[externalId]/[wowAccountId].delete`, `user/[externalId].get`, `user/mapping/[wowAccountId].get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Authenticated                                          |
+| `characters/`   | `action.post`, `activate-perk.post`, `perk-config.get`, `perk-status.get`, `[guid]/[realmId].get`, `talent-tree/[classId].get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Authenticated (action, perks), Public (detail, talent) |
+| `admin/`        | `accounts.get`, `account-mappings.get`, `account-mappings.post`, `account-mappings/[id].delete`, `backup/list.get`, `backup/create.post`, `backup/restore.post`, `dressingroom/characters.get`, `dressingroom/character/[guid]/[realmId].get`, `dressingroom/reputations/[guid]/[realmId].get`, `dressingroom/modify-money.post`, `dressingroom/add-item.post`, `dressingroom/teach-spell.post`, `dressingroom/set-profession.post`, `dressingroom/set-level.post`, `dressingroom/set-reputation.post`, `dressingroom/quest-search.get`, `dressingroom/complete-quest.post`, `dressingroom/add-achievement.post`, `dressingroom/set-title.post`, `export.post`, `files/upload.post`, `files/[filename].delete`, `gm/set-level.post`, `items/search.get`, `mail/send.post` | GM required (`requireGM()`)                            |
+| `community/`    | `online.get`, `stats.get`, `top-players.get`, `pvp-stats.get`, `players.get`, `zones.get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Public                                                 |
+| `shop/`         | `config.get`, `items.get`, `purchase.post`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Varies                                                 |
+| `downloads/`    | `list.get`, `[filename].get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Public                                                 |
+| `stats/`        | `overview.get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Public                                                 |
+| `realms.get.ts` | Realm list (also K8s health endpoint)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Public                                                 |
 
 **API handler pattern**:
 
@@ -381,18 +381,96 @@ Examples:
 - API routes accept `?realm=` query param for filtering
 - Community service aggregates stats across all realms
 
+### Database Backup & Restore (Admin)
+
+GM-only feature for creating and restoring MySQL database dumps. Uses `mysqldump` and `mysql` CLI tools.
+
+#### API Routes
+
+| Route                            | Purpose                                               |
+| -------------------------------- | ----------------------------------------------------- |
+| `GET /api/admin/backup/list`     | List databases with sizes for backup UI               |
+| `POST /api/admin/backup/create`  | Create mysqldump and return as downloadable .sql file |
+| `POST /api/admin/backup/restore` | Restore from uploaded .sql file via `mysql` CLI       |
+
+#### Key Details
+
+- Uses `execFile('mysqldump', ...)` and `execFile('mysql', ...)` — requires MySQL client tools on the server
+- Password passed via `MYSQL_PWD` env var (not command line)
+- Auth and characters databases can be backed up independently
+- Characters backup is per-realm (requires `realmId`)
+- Restore requires explicit confirmation checkbox in UI
+- Backup files are streamed directly to the browser (no server-side storage)
+
+#### UI Component
+
+`AdminBackupTab.vue` — Two sections: backup (select databases → download) and restore (upload SQL → apply).
+
+### Dressing Room (Admin)
+
+GM-only character editing tool for restoring or modifying characters. Accessible via the admin panel "Dressing Room" tab.
+
+#### API Routes
+
+| Route                                                      | Purpose                                                  |
+| ---------------------------------------------------------- | -------------------------------------------------------- |
+| `GET /api/admin/dressingroom/characters`                   | Search characters by name/GUID across realms             |
+| `GET /api/admin/dressingroom/character/[guid]/[realmId]`   | Get full character details (items, professions, spells)  |
+| `POST /api/admin/dressingroom/modify-money`                | Set character money (in copper)                          |
+| `POST /api/admin/dressingroom/set-level`                   | Set character level (1-80)                               |
+| `POST /api/admin/dressingroom/add-item`                    | Add items via Eluna bag queue or mail                    |
+| `POST /api/admin/dressingroom/teach-spell`                 | Teach spells (Eluna queue or direct DB insert)           |
+| `POST /api/admin/dressingroom/set-profession`              | Set/update/remove profession skill levels                |
+| `GET /api/admin/dressingroom/reputations/[guid]/[realmId]` | Get all character reputations with faction names         |
+| `POST /api/admin/dressingroom/set-reputation`              | Set reputation standing for a faction (Eluna queue)      |
+| `GET /api/admin/dressingroom/quest-search`                 | Search quests by name/ID from world DB                   |
+| `POST /api/admin/dressingroom/complete-quest`              | Mark quests as completed (Eluna queue)                   |
+| `POST /api/admin/dressingroom/add-achievement`             | Grant achievements (direct DB only, no Eluna API)        |
+| `POST /api/admin/dressingroom/set-title`                   | Add/remove/set active title (Eluna queue for add/remove) |
+
+#### Key Details
+
+- Item delivery uses Eluna `web_bag_requests` if enabled, falls back to `web_item_requests` (mail)
+- Spell teaching uses Eluna `web_spell_requests` if enabled, falls back to direct `character_spell` insert
+- Profession skills are managed via `character_skills` table (direct DB update)
+- Money, level, and professions are routed through Eluna queue tables when Eluna is enabled (safe for online players)
+- Reputations, quests, and titles also use Eluna queue tables when enabled
+- Achievements have **no Eluna API** — always direct DB insert; online players must relog
+- Title bitmask: `characters.knownTitles` is space-separated uint32 array, each bit = title ID
+- Quest completion uses `character_queststatus_rewarded` table; Eluna `player:CompleteQuest()` handles rewards
+- Reputation standing range: -42000 (Hated) to 42999 (Exalted max)
+- When Eluna is disabled, direct DB writes are used (only safe for offline characters)
+- Supported professions: Blacksmithing, Leatherworking, Alchemy, Herbalism, Mining, Tailoring, Engineering, Enchanting, Skinning, Jewelcrafting, Inscription, First Aid, Cooking, Fishing, Riding
+
+#### UI Components
+
+`AdminDressingRoomTab.vue` — Two-phase: search character → edit character. Main editor has a two-column grid plus an extended grid with 4 sub-components:
+
+- **Left column**: Level, Money, Professions (with current values display)
+- **Right column**: Add Items (search + queue), Teach Spells (by ID), Current Equipment display
+- **Extended grid** (below, 2-column):
+  - `AdminDressingRoomReputation.vue` — Faction list, per-faction standing selector, bulk set-all, known-only filter
+  - `AdminDressingRoomQuests.vue` — Quest search by name/ID, completion status, batch complete
+  - `AdminDressingRoomAchievements.vue` — Achievement ID input (comma/space separated), grant button, relog warning
+  - `AdminDressingRoomTitles.vue` — Title list with known/unknown filter, add/remove toggle, active title selector, grant-all, custom ID input
+
 ### Eluna Integration
 
-The web portal queues requests in MySQL tables; the Eluna Lua script (`data/eluna/web_worker.lua` v2.6) polls and processes them in-game every 1 second:
+The web portal queues requests in MySQL tables; the Eluna Lua script (`data/eluna/web_worker.lua` v2.8) polls and processes them in-game every 1 second:
 
-| Queue Table             | Purpose                | Status Flow                                      |
-| ----------------------- | ---------------------- | ------------------------------------------------ |
-| `web_money_requests`    | Add/deduct gold        | `pending` → `done`/`error`                       |
-| `web_item_requests`     | Mail items to players  | `pending` → `done`/`error`                       |
-| `web_bag_requests`      | Direct-to-bag delivery | `pending` → `waiting` (offline) → `done`/`error` |
-| `web_spell_requests`    | Teach spells           | `pending` → `waiting` (offline) → `done`/`error` |
-| `web_aura_requests`     | Apply buffs/debuffs    | `pending` → `waiting` (offline) → `done`/`error` |
-| `web_teleport_requests` | Teleport to coords     | `pending` → `waiting` (offline) → `done`/`error` |
+| Queue Table               | Purpose                | Status Flow                                      |
+| ------------------------- | ---------------------- | ------------------------------------------------ |
+| `web_money_requests`      | Add/deduct gold        | `pending` → `done`/`error`                       |
+| `web_item_requests`       | Mail items to players  | `pending` → `done`/`error`                       |
+| `web_bag_requests`        | Direct-to-bag delivery | `pending` → `waiting` (offline) → `done`/`error` |
+| `web_spell_requests`      | Teach spells           | `pending` → `waiting` (offline) → `done`/`error` |
+| `web_aura_requests`       | Apply buffs/debuffs    | `pending` → `waiting` (offline) → `done`/`error` |
+| `web_teleport_requests`   | Teleport to coords     | `pending` → `waiting` (offline) → `done`/`error` |
+| `web_level_requests`      | Set character level    | `pending` → `waiting` (offline) → `done`/`error` |
+| `web_skill_requests`      | Set profession skills  | `pending` → `waiting` (offline) → `done`/`error` |
+| `web_reputation_requests` | Set faction reputation | `pending` → `waiting` (offline) → `done`/`error` |
+| `web_quest_requests`      | Complete quests        | `pending` → `waiting` (offline) → `done`/`error` |
+| `web_title_requests`      | Add/remove titles      | `pending` → `waiting` (offline) → `done`/`error` |
 
 Feature flags: `NUXT_ELUNA_ENABLED`, `NUXT_ELUNA_SHOP_ENABLED`, `NUXT_ELUNA_GM_MAIL_ENABLED`.
 

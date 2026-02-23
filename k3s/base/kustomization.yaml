@@ -7,7 +7,7 @@ namespace: wow
 
 resources:
   # Basis-Konfiguration
-  - basics/namespace.yaml
+  # - basics/namespace.yaml
   - basics/certificate.yaml
 
   # PostgreSQL
