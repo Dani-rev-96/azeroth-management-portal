@@ -23,7 +23,7 @@
     Format: [{"entry":12345,"count":1},{"entry":67890,"count":2}]
 
     Author: AzerothCore Nix Flake Project
-    Version: 2.10
+    Version: 2.11
 ]]
 
 local SCRIPT_NAME = "web_worker"
@@ -244,6 +244,31 @@ CREATE TABLE IF NOT EXISTS web_title_requests (
     KEY idx_char (character_guid)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 ]]
+
+-- Cache table for absolute reputation values (populated by Eluna, read by portal)
+-- character_reputation.standing stores base-relative offsets; this table stores
+-- the real absolute standing as returned by Player:GetReputation()
+local CREATE_REPUTATION_CACHE_TABLE_SQL = [[
+CREATE TABLE IF NOT EXISTS web_reputation_cache (
+    character_guid INT UNSIGNED NOT NULL,
+    faction_id INT UNSIGNED NOT NULL,
+    standing INT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (character_guid, faction_id),
+    KEY idx_char (character_guid)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+]]
+
+-- All known faction IDs to cache on login/reputation change
+local CACHE_FACTION_IDS = {
+    21, 47, 54, 68, 69, 72, 76, 81, 87, 270, 349, 369, 470,
+    509, 510, 529, 530, 576, 577, 609, 729, 730, 749, 809,
+    889, 890, 910, 911, 930, 932, 933, 934, 935, 941, 942,
+    946, 947, 967, 970, 978, 989, 990, 1011, 1012, 1015,
+    1031, 1037, 1038, 1050, 1052, 1064, 1067, 1068, 1073,
+    1077, 1085, 1090, 1091, 1094, 1098, 1104, 1105, 1106,
+    1119, 1124, 1126, 1156,
+}
 
 --------------------------------------------------------------------------------
 -- SQL Queries
@@ -1360,92 +1385,156 @@ local function processSkillRow(row)
 end
 
 --------------------------------------------------------------------------------
--- Reputation Request Processing
+-- Reputation Request Processing (Batched)
 --------------------------------------------------------------------------------
 
---- Process a single reputation request row
---- Sets faction standing via player:SetReputation() if online,
---- or direct DB update if offline
----@param row userdata Query row
----@return boolean success
-local function processReputationRow(row)
-    local id = tonumber(row:GetUInt32(0))
-    local guid = tonumber(row:GetUInt32(1))
-    local factionId = tonumber(row:GetUInt32(2))
-    local standing = tonumber(row:GetInt32(3)) or 0
-    local reason = row:GetString(4)
-
-    if not id or id == 0 then
-        PrintError(string.format("[%s] Reputation: Invalid request id", SCRIPT_NAME))
-        return false
-    end
-
-    if not guid or guid == 0 then
-        markError("web_reputation_requests", id, "invalid character_guid")
-        return false
-    end
-
-    if not factionId or factionId == 0 then
-        markError("web_reputation_requests", id, "invalid faction_id")
-        return false
-    end
-
-    -- Try online player first
-    local player = GetPlayerByGUID(guid)
-    if player then
-        local ok, err = pcall(function()
-            player:SetReputation(factionId, standing)
-        end)
-
-        if not ok then
-            markError("web_reputation_requests", id, string.format("SetReputation failed: %s", tostring(err)))
-            return false
-        end
-
-        player:SaveToDB()
-
-        if reason and reason ~= "" then
-            player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s", reason))
-        end
-
-        PrintInfo(string.format("[%s] Reputation: Processed %d for online player %d (faction %d: %d)",
-            SCRIPT_NAME, id, guid, factionId, standing))
-        markDone("web_reputation_requests", id)
-        return true
-    else
-        -- Player offline - direct DB update
-        local query = CharDBQuery(string.format(
-            "SELECT guid FROM characters WHERE guid = %d", guid
-        ))
-
-        if not query then
-            markError("web_reputation_requests", id, "character not found")
-            return false
-        end
-
-        -- Check if reputation row exists
-        local repQuery = CharDBQuery(string.format(
-            "SELECT faction FROM character_reputation WHERE guid = %d AND faction = %d",
-            guid, factionId
-        ))
-
-        if repQuery then
+--- Cache all known faction reputations for an online player into web_reputation_cache.
+--- Uses Player:GetReputation() which returns the absolute standing (base + offset).
+---@param player userdata Online player object
+---@param guid number Character GUID
+local function cachePlayerReputations(player, guid)
+    for _, fid in ipairs(CACHE_FACTION_IDS) do
+        local ok, rep = pcall(function() return player:GetReputation(fid) end)
+        if ok and rep then
             CharDBExecute(string.format(
-                "UPDATE character_reputation SET standing = %d WHERE guid = %d AND faction = %d",
-                standing, guid, factionId
+                "INSERT INTO web_reputation_cache (character_guid, faction_id, standing) VALUES (%d, %d, %d) ON DUPLICATE KEY UPDATE standing = %d, updated_at = NOW()",
+                guid, fid, rep, rep
             ))
+        end
+    end
+end
+
+--- Process all pending reputation requests.
+--- Groups by character and applies in two passes for online players to
+--- override reputation spillover effects. Caches absolute standings afterward.
+---@param repQuery userdata DB query result
+---@return number processed, number errors, number waiting
+local function processReputationBatch(repQuery)
+    local processed = 0
+    local errors = 0
+    local waiting = 0
+
+    -- Read all rows into a table, grouped by character guid
+    local byChar = {}   -- guid -> { {id, factionId, standing, reason}, ... }
+    local allIds = {}    -- to track order
+
+    repeat
+        local id = tonumber(repQuery:GetUInt32(0))
+        local guid = tonumber(repQuery:GetUInt32(1))
+        local factionId = tonumber(repQuery:GetUInt32(2))
+        local standing = tonumber(repQuery:GetInt32(3)) or 0
+        local reason = repQuery:GetString(4)
+
+        if not id or id == 0 then
+            PrintError(string.format("[%s] Reputation: Invalid request id", SCRIPT_NAME))
+            errors = errors + 1
+        elseif not guid or guid == 0 then
+            markError("web_reputation_requests", id, "invalid character_guid")
+            errors = errors + 1
+        elseif not factionId or factionId == 0 then
+            markError("web_reputation_requests", id, "invalid faction_id")
+            errors = errors + 1
         else
-            CharDBExecute(string.format(
-                "INSERT INTO character_reputation (guid, faction, standing, flags) VALUES (%d, %d, %d, 1)",
-                guid, factionId, standing
-            ))
+            if not byChar[guid] then
+                byChar[guid] = {}
+                table.insert(allIds, guid)
+            end
+            table.insert(byChar[guid], {
+                id = id, factionId = factionId, standing = standing, reason = reason
+            })
         end
+    until not repQuery:NextRow()
 
-        PrintInfo(string.format("[%s] Reputation: Processed %d for offline player %d (faction %d: %d)",
-            SCRIPT_NAME, id, guid, factionId, standing))
-        markDone("web_reputation_requests", id)
-        return true
+    -- Process each character's reputation changes
+    for _, guid in ipairs(allIds) do
+        local rows = byChar[guid]
+        local player = GetPlayerByGUID(guid)
+
+        if player then
+            -- Online: two-pass application to override spillover
+            -- Pass 1: apply all changes (may trigger spillover to allied factions)
+            for _, r in ipairs(rows) do
+                local ok, err = pcall(function()
+                    player:SetReputation(r.factionId, r.standing)
+                end)
+                if not ok then
+                    markError("web_reputation_requests", r.id, string.format("SetReputation failed: %s", tostring(err)))
+                    errors = errors + 1
+                    r.failed = true
+                end
+            end
+
+            -- Pass 2: re-apply to override any spillover effects from pass 1
+            for _, r in ipairs(rows) do
+                if not r.failed then
+                    pcall(function()
+                        player:SetReputation(r.factionId, r.standing)
+                    end)
+                end
+            end
+
+            -- Mark all successful ones as done, send notifications
+            for _, r in ipairs(rows) do
+                if not r.failed then
+                    if r.reason and r.reason ~= "" then
+                        player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s", r.reason))
+                    end
+                    PrintInfo(string.format("[%s] Reputation: Processed %d for online player %d (faction %d: %d)",
+                        SCRIPT_NAME, r.id, guid, r.factionId, r.standing))
+                    markDone("web_reputation_requests", r.id)
+                    processed = processed + 1
+                end
+            end
+
+            -- Cache absolute standings and save once
+            cachePlayerReputations(player, guid)
+            player:SaveToDB()
+        else
+            -- Offline: direct DB update (no spillover, but values are stored as-is)
+            local charCheck = CharDBQuery(string.format(
+                "SELECT guid FROM characters WHERE guid = %d", guid
+            ))
+
+            if not charCheck then
+                for _, r in ipairs(rows) do
+                    markError("web_reputation_requests", r.id, "character not found")
+                    errors = errors + 1
+                end
+            else
+                for _, r in ipairs(rows) do
+                    local repQuery2 = CharDBQuery(string.format(
+                        "SELECT faction FROM character_reputation WHERE guid = %d AND faction = %d",
+                        guid, r.factionId
+                    ))
+
+                    if repQuery2 then
+                        CharDBExecute(string.format(
+                            "UPDATE character_reputation SET standing = %d WHERE guid = %d AND faction = %d",
+                            r.standing, guid, r.factionId
+                        ))
+                    else
+                        CharDBExecute(string.format(
+                            "INSERT INTO character_reputation (guid, faction, standing, flags) VALUES (%d, %d, %d, 1)",
+                            guid, r.factionId, r.standing
+                        ))
+                    end
+
+                    -- Also cache the intended value for display purposes
+                    CharDBExecute(string.format(
+                        "INSERT INTO web_reputation_cache (character_guid, faction_id, standing) VALUES (%d, %d, %d) ON DUPLICATE KEY UPDATE standing = %d, updated_at = NOW()",
+                        guid, r.factionId, r.standing, r.standing
+                    ))
+
+                    PrintInfo(string.format("[%s] Reputation: Processed %d for offline player %d (faction %d: %d)",
+                        SCRIPT_NAME, r.id, guid, r.factionId, r.standing))
+                    markDone("web_reputation_requests", r.id)
+                    processed = processed + 1
+                end
+            end
+        end
     end
+
+    return processed, errors, waiting
 end
 
 --------------------------------------------------------------------------------
@@ -1818,20 +1907,13 @@ local function pollAllQueues(eventId, delay, repeats)
         until not skillQuery:NextRow()
     end
 
-    -- Process reputation requests
+    -- Process reputation requests (batched per character for spillover handling)
     local repQuery = CharDBQuery(SELECT_PENDING_REPUTATION_SQL)
     if repQuery then
-        repeat
-            local ok, result = pcall(processReputationRow, repQuery)
-            if not ok then
-                totalErrors = totalErrors + 1
-                PrintError(string.format("[%s] Reputation error: %s", SCRIPT_NAME, tostring(result)))
-            elseif result then
-                totalProcessed = totalProcessed + 1
-            else
-                totalWaiting = totalWaiting + 1
-            end
-        until not repQuery:NextRow()
+        local repProcessed, repErrors, repWaiting = processReputationBatch(repQuery)
+        totalProcessed = totalProcessed + repProcessed
+        totalErrors = totalErrors + repErrors
+        totalWaiting = totalWaiting + repWaiting
     end
 
     -- Process quest requests
@@ -2120,27 +2202,51 @@ local function onPlayerLogin(event, player)
     if repLoginQuery then
         PrintInfo(string.format("[%s] Processing waiting reputation requests for player %d on login", SCRIPT_NAME, guid))
 
+        -- Collect all into a table for two-pass application
+        local repRows = {}
         repeat
-            local repReqId = tonumber(repLoginQuery:GetUInt32(0))
-            local repFactionId = tonumber(repLoginQuery:GetUInt32(1))
-            local repStanding = tonumber(repLoginQuery:GetInt32(2)) or 0
-            local repReason = repLoginQuery:GetString(3)
-
-            local repOk, repErr = pcall(function()
-                player:SetReputation(repFactionId, repStanding)
-            end)
-
-            if repOk then
-                if repReason and repReason ~= "" then
-                    player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s", repReason))
-                end
-                markDone("web_reputation_requests", repReqId)
-                processed = processed + 1
-            else
-                markError("web_reputation_requests", repReqId, string.format("SetReputation failed on login: %s", tostring(repErr)))
-                errors = errors + 1
-            end
+            table.insert(repRows, {
+                id = tonumber(repLoginQuery:GetUInt32(0)),
+                factionId = tonumber(repLoginQuery:GetUInt32(1)),
+                standing = tonumber(repLoginQuery:GetInt32(2)) or 0,
+                reason = repLoginQuery:GetString(3),
+            })
         until not repLoginQuery:NextRow()
+
+        -- Pass 1: apply all (may trigger spillover)
+        for _, r in ipairs(repRows) do
+            local repOk, repErr = pcall(function()
+                player:SetReputation(r.factionId, r.standing)
+            end)
+            if not repOk then
+                markError("web_reputation_requests", r.id, string.format("SetReputation failed on login: %s", tostring(repErr)))
+                errors = errors + 1
+                r.failed = true
+            end
+        end
+
+        -- Pass 2: re-apply to override spillover
+        for _, r in ipairs(repRows) do
+            if not r.failed then
+                pcall(function()
+                    player:SetReputation(r.factionId, r.standing)
+                end)
+            end
+        end
+
+        -- Mark done and notify
+        for _, r in ipairs(repRows) do
+            if not r.failed then
+                if r.reason and r.reason ~= "" then
+                    player:SendBroadcastMessage(string.format("|cff00ff00[GM]|r %s", r.reason))
+                end
+                markDone("web_reputation_requests", r.id)
+                processed = processed + 1
+            end
+        end
+
+        -- Cache absolute standings
+        cachePlayerReputations(player, guid)
     end
 
     -- Check for waiting quest requests for this player
@@ -2226,6 +2332,9 @@ local function onPlayerLogin(event, player)
         PrintInfo(string.format("[%s] Login delivery for %d: %d items/spells delivered, %d failed",
             SCRIPT_NAME, guid, processed, errors))
     end
+
+    -- Always cache reputations on login so the portal has accurate absolute standings
+    pcall(cachePlayerReputations, player, guid)
 end
 
 --------------------------------------------------------------------------------
@@ -2247,6 +2356,7 @@ local function initialize()
     CharDBExecute(CREATE_REPUTATION_TABLE_SQL)
     CharDBExecute(CREATE_QUEST_TABLE_SQL)
     CharDBExecute(CREATE_TITLE_TABLE_SQL)
+    CharDBExecute(CREATE_REPUTATION_CACHE_TABLE_SQL)
     PrintInfo(string.format("[%s] Ensured all queue tables exist", SCRIPT_NAME))
 
     -- Check if items_json column exists and add it if not

@@ -86,25 +86,56 @@ export default defineEventHandler(async (event) => {
 
     if (ownAccountOnly) verifyCharacterOwnership(userId, (chars as any[])[0].account)
 
-    // Get all reputations
-    const [reps] = await charPool.query(
-      'SELECT faction, standing, flags FROM character_reputation WHERE guid = ? ORDER BY faction',
-      [guid]
-    )
+    // Try reading from the reputation cache first (absolute standings from Eluna)
+    // character_reputation.standing stores base-relative offsets, but
+    // web_reputation_cache.standing stores actual absolute values from Player:GetReputation()
+    let reputations: any[] = []
+    let fromCache = false
 
-    const reputations = (reps as any[]).map((r: any) => ({
-      factionId: r.faction,
-      factionName: FACTION_NAMES[r.faction] || `Faction #${r.faction}`,
-      standing: r.standing,
-      standingName: getStandingName(r.standing),
-      flags: r.flags,
-      known: FACTION_NAMES[r.faction] !== undefined,
-    }))
+    try {
+      const [cacheRows] = await charPool.query(
+        'SELECT faction_id, standing FROM web_reputation_cache WHERE character_guid = ? ORDER BY faction_id',
+        [guid]
+      )
+      const cacheData = cacheRows as any[]
+
+      if (cacheData.length > 0) {
+        fromCache = true
+        reputations = cacheData.map((r: any) => ({
+          factionId: r.faction_id,
+          factionName: FACTION_NAMES[r.faction_id] || `Faction #${r.faction_id}`,
+          standing: r.standing,
+          standingName: getStandingName(r.standing),
+          flags: 0,
+          known: FACTION_NAMES[r.faction_id] !== undefined,
+        }))
+      }
+    } catch {
+      // Cache table may not exist (Eluna not running yet) - fall through to direct read
+    }
+
+    // Fall back to character_reputation if no cache available
+    if (!fromCache) {
+      const [reps] = await charPool.query(
+        'SELECT faction, standing, flags FROM character_reputation WHERE guid = ? ORDER BY faction',
+        [guid]
+      )
+
+      reputations = (reps as any[]).map((r: any) => ({
+        factionId: r.faction,
+        factionName: FACTION_NAMES[r.faction] || `Faction #${r.faction}`,
+        standing: r.standing,
+        standingName: getStandingName(r.standing),
+        flags: r.flags,
+        known: FACTION_NAMES[r.faction] !== undefined,
+      }))
+    }
 
     return {
       characterName: (chars as any[])[0].name,
       reputations,
       standingLevels: STANDING_LEVELS,
+      fromCache,
     }
   } catch (error: any) {
     if (error?.statusCode) throw error

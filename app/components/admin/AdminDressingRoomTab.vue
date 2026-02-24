@@ -15,6 +15,7 @@ import AdminDressingRoomReputation from '~/components/admin/AdminDressingRoomRep
 import AdminDressingRoomQuests from '~/components/admin/AdminDressingRoomQuests.vue'
 import AdminDressingRoomAchievements from '~/components/admin/AdminDressingRoomAchievements.vue'
 import AdminDressingRoomTitles from '~/components/admin/AdminDressingRoomTitles.vue'
+import AdminDressingRoomSkills from '~/components/admin/AdminDressingRoomSkills.vue'
 import { getClassName, getClassColor, getClassIcon, getRaceName, getRaceIcon } from '~/utils/wow'
 
 export interface RealmOption {
@@ -856,6 +857,12 @@ onUnmounted(() => {
             :known-titles="characterDetail.character?.knownTitles || ''"
             :chosen-title="characterDetail.character?.chosenTitle || 0"
             @refresh="refreshCharacter"
+          />
+          <AdminDressingRoomSkills
+            :guid="selectedCharacter.guid"
+            :realm-id="selectedCharacter.realmId"
+            :character-name="selectedCharacter.name"
+            :character-level="characterDetail.character?.level || 80"
           />
         </div>
       </template>
