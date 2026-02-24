@@ -2,6 +2,7 @@
 /**
  * AdminBackupTab - Database backup and restore interface
  * Allows GM to create mysqldump backups & restore from SQL files
+ * Also supports portal SQLite database backup & restore
  */
 import UiButton from '~/components/ui/UiButton.vue'
 import UiMessage from '~/components/ui/UiMessage.vue'
@@ -18,22 +19,31 @@ export interface DatabaseInfo {
   sizeBytes?: number
 }
 
+export interface PortalDbInfo {
+  key: string
+  name: string
+  path: string
+  sizeBytes: number
+  exists: boolean
+}
+
 export interface Props {
   realms: Array<{ id: number | string; name: string }>
 }
 
 defineProps<Props>()
 
-// State
+// ─── MySQL Backup State ─────────────────────────────────────────────────────────
+
 const databases = ref<DatabaseInfo[]>([])
 const loadingDatabases = ref(false)
+/** Set of unique keys: 'auth' or 'characters-<realmId>' */
 const selectedBackupDbs = ref<Set<string>>(new Set())
-const backupRealmId = ref('')
 const creatingBackup = ref(false)
 const backupError = ref('')
 const backupSuccess = ref('')
 
-// Restore state
+// MySQL Restore state
 const restoreDatabase = ref<'auth' | 'characters'>('auth')
 const restoreRealmId = ref('')
 const restoreFile = ref<File | null>(null)
@@ -42,10 +52,28 @@ const restoreError = ref('')
 const restoreSuccess = ref('')
 const restoreConfirm = ref(false)
 
-// Load databases on mount
+// ─── Portal (SQLite) Backup State ───────────────────────────────────────────────
+
+const portalDatabases = ref<PortalDbInfo[]>([])
+const loadingPortalDbs = ref(false)
+const portalBackupLoading = ref<Record<string, boolean>>({})
+const portalBackupError = ref('')
+const portalBackupSuccess = ref('')
+
+const portalRestoreDb = ref('')
+const portalRestoreFile = ref<File | null>(null)
+const portalRestoring = ref(false)
+const portalRestoreError = ref('')
+const portalRestoreSuccess = ref('')
+const portalRestoreConfirm = ref(false)
+
+// ─── Lifecycle ──────────────────────────────────────────────────────────────────
+
 onMounted(async () => {
-  await loadDatabases()
+  await Promise.all([loadDatabases(), loadPortalDatabases()])
 })
+
+// ─── MySQL Backup Logic ─────────────────────────────────────────────────────────
 
 async function loadDatabases() {
   loadingDatabases.value = true
@@ -59,22 +87,22 @@ async function loadDatabases() {
   }
 }
 
-function toggleBackupDb(db: string) {
-  if (selectedBackupDbs.value.has(db)) {
-    selectedBackupDbs.value.delete(db)
+/** Unique key per database entry (auth is unique, characters are per-realm) */
+function dbKey(db: DatabaseInfo): string {
+  return db.type === 'auth' ? 'auth' : `characters-${db.realmId}`
+}
+
+function toggleBackupDb(key: string) {
+  if (selectedBackupDbs.value.has(key)) {
+    selectedBackupDbs.value.delete(key)
   } else {
-    selectedBackupDbs.value.add(db)
+    selectedBackupDbs.value.add(key)
   }
   // Trigger reactivity
   selectedBackupDbs.value = new Set(selectedBackupDbs.value)
 }
 
-const needsRealmForBackup = computed(() => selectedBackupDbs.value.has('characters'))
-const canCreateBackup = computed(() => {
-  if (selectedBackupDbs.value.size === 0) return false
-  if (needsRealmForBackup.value && !backupRealmId.value) return false
-  return true
-})
+const canCreateBackup = computed(() => selectedBackupDbs.value.size > 0)
 
 async function createBackup() {
   if (!canCreateBackup.value) return
@@ -84,13 +112,23 @@ async function createBackup() {
   backupSuccess.value = ''
 
   try {
-    const dbs = Array.from(selectedBackupDbs.value)
+    // Derive which database types and which realmId from the selected keys
+    const selected = Array.from(selectedBackupDbs.value)
+    const dbs: ('auth' | 'characters')[] = []
+    let realmId: string | undefined
+
+    for (const key of selected) {
+      if (key === 'auth') {
+        dbs.push('auth')
+      } else if (key.startsWith('characters-')) {
+        dbs.push('characters')
+        realmId = key.replace('characters-', '')
+      }
+    }
+
     const response = await $fetch('/api/admin/backup/create', {
       method: 'POST',
-      body: {
-        databases: dbs,
-        realmId: needsRealmForBackup.value ? backupRealmId.value : undefined,
-      },
+      body: { databases: dbs, realmId },
       responseType: 'blob',
     })
 
@@ -136,6 +174,15 @@ const canRestore = computed(() => {
   return restoreConfirm.value
 })
 
+const realmOptions = computed(() =>
+  databases.value
+    .filter((db: DatabaseInfo) => db.type === 'characters' && db.realmId)
+    .map((db: DatabaseInfo) => ({
+      value: db.realmId!,
+      label: `${db.realmName} (${db.realmId})`,
+    }))
+)
+
 async function handleRestore() {
   if (!canRestore.value || !restoreFile.value) return
 
@@ -172,6 +219,123 @@ async function handleRestore() {
   }
 }
 
+// ─── Portal (SQLite) Backup Logic ───────────────────────────────────────────────
+
+async function loadPortalDatabases() {
+  loadingPortalDbs.value = true
+  try {
+    const data = await $fetch<{ databases: PortalDbInfo[] }>('/api/admin/backup/portal-list')
+    portalDatabases.value = data.databases || []
+    // Default restore target to first DB
+    if (portalDatabases.value.length > 0 && !portalRestoreDb.value) {
+      portalRestoreDb.value = portalDatabases.value[0]!.key
+    }
+  } catch (error) {
+    console.error('Failed to load portal databases:', error)
+  } finally {
+    loadingPortalDbs.value = false
+  }
+}
+
+async function downloadPortalBackup(db: PortalDbInfo) {
+  portalBackupLoading.value = { ...portalBackupLoading.value, [db.key]: true }
+  portalBackupError.value = ''
+  portalBackupSuccess.value = ''
+
+  try {
+    const response = await $fetch('/api/admin/backup/portal-create', {
+      method: 'POST',
+      body: { database: db.key },
+      responseType: 'blob',
+    })
+
+    const blob = response as unknown as Blob
+    const url = URL.createObjectURL(blob)
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const filename = `portal-${db.key}-${timestamp}.db`
+
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+
+    portalBackupSuccess.value = `Downloaded: ${filename}`
+  } catch (error: any) {
+    portalBackupError.value = error.data?.statusMessage || error.message || 'Failed to download backup'
+  } finally {
+    portalBackupLoading.value = { ...portalBackupLoading.value, [db.key]: false }
+  }
+}
+
+function handlePortalFileSelect(event: Event) {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (file) {
+    if (!file.name.endsWith('.db')) {
+      portalRestoreError.value = 'Only .db (SQLite) files are accepted'
+      portalRestoreFile.value = null
+      return
+    }
+    portalRestoreFile.value = file
+    portalRestoreError.value = ''
+  }
+}
+
+const portalRestoreOptions = computed(() =>
+  portalDatabases.value.map(db => ({
+    value: db.key,
+    label: db.name,
+  }))
+)
+
+const canPortalRestore = computed(() => {
+  if (!portalRestoreFile.value) return false
+  if (!portalRestoreDb.value) return false
+  return portalRestoreConfirm.value
+})
+
+async function handlePortalRestore() {
+  if (!canPortalRestore.value || !portalRestoreFile.value) return
+
+  portalRestoring.value = true
+  portalRestoreError.value = ''
+  portalRestoreSuccess.value = ''
+
+  try {
+    const arrayBuffer = await portalRestoreFile.value.arrayBuffer()
+    const base64 = btoa(
+      new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+    )
+
+    const response = await $fetch<{ message: string }>('/api/admin/backup/portal-restore', {
+      method: 'POST',
+      body: {
+        database: portalRestoreDb.value,
+        data: base64,
+      },
+    })
+
+    portalRestoreSuccess.value = response.message
+    portalRestoreFile.value = null
+    portalRestoreConfirm.value = false
+
+    // Reset file input
+    const fileInput = document.getElementById('portal-restore-file') as HTMLInputElement
+    if (fileInput) fileInput.value = ''
+
+    await loadPortalDatabases()
+  } catch (error: any) {
+    portalRestoreError.value = error.data?.statusMessage || error.message || 'Failed to restore backup'
+  } finally {
+    portalRestoring.value = false
+  }
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────────
+
 function formatBytes(bytes: number): string {
   if (!bytes || bytes === 0) return 'Unknown'
   const k = 1024
@@ -179,37 +343,29 @@ function formatBytes(bytes: number): string {
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`
 }
-
-const realmOptions = computed(() =>
-  databases.value
-    .filter((db: DatabaseInfo) => db.type === 'characters' && db.realmId)
-    .map((db: DatabaseInfo) => ({
-      value: db.realmId!,
-      label: `${db.realmName} (${db.realmId})`,
-    }))
-)
 </script>
 
 <template>
   <div class="backup-tab">
-    <!-- Backup Section -->
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <!-- MySQL Backup Section                                                  -->
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
     <UiSectionHeader title="Create Backup" subtitle="Download a MySQL dump of auth and/or character databases" />
 
     <UiLoadingState v-if="loadingDatabases" message="Loading database info..." />
 
     <template v-else>
-      <!-- Database Selection -->
       <div class="backup-section">
         <h4 class="section-label">Select Databases</h4>
         <div class="database-grid">
           <div
             v-for="db in databases"
-            :key="`${db.type}-${db.realmId || 'auth'}`"
+            :key="dbKey(db)"
             :class="[
               'database-card',
-              { 'database-card--selected': selectedBackupDbs.has(db.type) }
+              { 'database-card--selected': selectedBackupDbs.has(dbKey(db)) }
             ]"
-            @click="toggleBackupDb(db.type)"
+            @click="toggleBackupDb(dbKey(db))"
           >
             <div class="database-card__icon">
               {{ db.type === 'auth' ? '🔐' : '⚔️' }}
@@ -222,18 +378,9 @@ const realmOptions = computed(() =>
               </span>
             </div>
             <div class="database-card__check">
-              {{ selectedBackupDbs.has(db.type) ? '✓' : '' }}
+              {{ selectedBackupDbs.has(dbKey(db)) ? '✓' : '' }}
             </div>
           </div>
-        </div>
-
-        <!-- Realm selector for characters -->
-        <div v-if="needsRealmForBackup && realmOptions.length > 1" class="realm-select">
-          <UiSelect
-            v-model="backupRealmId"
-            :options="realmOptions"
-            placeholder="Select realm for character backup"
-          />
         </div>
 
         <div class="backup-actions">
@@ -255,7 +402,7 @@ const realmOptions = computed(() =>
       </div>
     </template>
 
-    <!-- Restore Section -->
+    <!-- MySQL Restore Section -->
     <UiSectionHeader
       title="Restore Backup"
       subtitle="Upload a .sql file to restore a database. This is a destructive operation!"
@@ -333,6 +480,121 @@ const realmOptions = computed(() =>
         </UiMessage>
       </div>
     </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <!-- Portal (SQLite) Backup Section                                        -->
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <UiSectionHeader
+      title="Portal Data Backup"
+      subtitle="Download and restore the portal's internal SQLite databases (mappings, settings, config)"
+    />
+
+    <UiLoadingState v-if="loadingPortalDbs" message="Loading portal databases..." />
+
+    <template v-else-if="portalDatabases.length > 0">
+      <div class="backup-section">
+        <h4 class="section-label">Portal Databases</h4>
+        <div class="database-grid">
+          <div
+            v-for="db in portalDatabases"
+            :key="db.key"
+            class="database-card"
+          >
+            <div class="database-card__icon">🗄️</div>
+            <div class="database-card__info">
+              <span class="database-card__name">{{ db.name }}</span>
+              <span class="database-card__meta">
+                {{ db.exists ? formatBytes(db.sizeBytes) : 'Not created yet' }}
+              </span>
+            </div>
+            <div class="database-card__action">
+              <UiButton
+                size="sm"
+                :loading="portalBackupLoading[db.key]"
+                :disabled="!db.exists"
+                @click="downloadPortalBackup(db)"
+              >
+                💾 Download
+              </UiButton>
+            </div>
+          </div>
+        </div>
+
+        <UiMessage v-if="portalBackupError" variant="error" dismissible @dismiss="portalBackupError = ''">
+          {{ portalBackupError }}
+        </UiMessage>
+        <UiMessage v-if="portalBackupSuccess" variant="success" dismissible @dismiss="portalBackupSuccess = ''">
+          {{ portalBackupSuccess }}
+        </UiMessage>
+      </div>
+
+      <!-- Portal Restore -->
+      <UiSectionHeader
+        title="Restore Portal Database"
+        subtitle="Upload a .db file to replace a portal database. This is destructive!"
+      />
+
+      <div class="restore-section">
+        <div class="restore-form">
+          <div class="form-row">
+            <div class="form-field">
+              <label class="form-label" for="portal-restore-db">Target Database</label>
+              <UiSelect
+                id="portal-restore-db"
+                v-model="portalRestoreDb"
+                :options="portalRestoreOptions"
+                placeholder="Select database"
+              />
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="portal-restore-file">SQLite File (.db)</label>
+            <input
+              id="portal-restore-file"
+              type="file"
+              accept=".db"
+              class="file-input"
+              @change="handlePortalFileSelect"
+            />
+            <span v-if="portalRestoreFile" class="file-info">
+              {{ portalRestoreFile.name }} ({{ formatBytes(portalRestoreFile.size) }})
+            </span>
+          </div>
+
+          <div class="danger-confirm">
+            <label class="confirm-label">
+              <input
+                v-model="portalRestoreConfirm"
+                type="checkbox"
+                class="confirm-checkbox"
+              />
+              <span class="confirm-text">
+                ⚠️ I understand this will <strong>overwrite</strong> the existing portal database. This cannot be undone.
+              </span>
+            </label>
+          </div>
+
+          <div class="restore-actions">
+            <UiButton
+              variant="danger"
+              :loading="portalRestoring"
+              :disabled="!canPortalRestore"
+              @click="handlePortalRestore"
+            >
+              ⚠️ Restore Portal Database
+            </UiButton>
+          </div>
+
+          <UiMessage v-if="portalRestoreError" variant="error" dismissible @dismiss="portalRestoreError = ''">
+            {{ portalRestoreError }}
+          </UiMessage>
+          <UiMessage v-if="portalRestoreSuccess" variant="success" dismissible @dismiss="portalRestoreSuccess = ''">
+            {{ portalRestoreSuccess }}
+          </UiMessage>
+        </div>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -425,11 +687,10 @@ const realmOptions = computed(() =>
     width: 24px;
     text-align: center;
   }
-}
 
-.realm-select {
-  margin-bottom: $spacing-4;
-  max-width: 400px;
+  &__action {
+    flex-shrink: 0;
+  }
 }
 
 .backup-actions,
