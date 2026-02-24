@@ -29,7 +29,10 @@
     "preview": "nuxt preview",
     "generate": "nuxt generate",
     "postinstall": "nuxt prepare",
-    "import-dbc": "node scripts/import-dbc-to-sqlite.js"
+    "import-dbc": "node scripts/import-dbc-to-sqlite.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@azerothcore/ac-nodejs-srp6": "^1.0.8",
@@ -58,10 +61,15 @@
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@nuxt/test-utils": "^4.0.0",
+    "@pinia/testing": "^1.0.3",
     "@primevue/nuxt-module": "^4.5.4",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.0.10",
+    "@vue/test-utils": "^2.4.6",
+    "happy-dom": "^20.7.0",
     "node-gyp": "^12.1.0",
-    "sass": "^1.97.3"
+    "sass": "^1.97.3",
+    "vitest": "^4.0.18"
   }
 }

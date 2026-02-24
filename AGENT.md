@@ -42,6 +42,63 @@ A full-stack management portal for AzerothCore WoW 3.3.5a private servers. Nuxt 
 | `npm run build:production` | Production build (`NODE_ENV=production`)               |
 | `npm run preview`          | Preview production build                               |
 | `npm run import-dbc`       | Import DBC JSON → SQLite databases in `server/assets/` |
+| `npm run test`             | Run all unit tests once (vitest)                       |
+| `npm run test:watch`       | Run tests in watch mode                                |
+| `npm run test:coverage`    | Run tests with v8 coverage report                      |
+
+## Testing
+
+**Framework**: Vitest 4.x with `globals: true` (no need to import `describe`/`it`/`expect` in test files, though explicit imports work too).
+
+**Config**: `vitest.config.ts` — defines path aliases matching Nuxt resolution (`~` → `app/`, `~~` → root, `#shared` → `shared/`, `#server` → `server/`).
+
+### Test Structure
+
+```
+tests/
+  setup.ts              → Global test setup (Vue auto-import stubs, Nuxt composable mocks)
+  globals.d.ts          → TypeScript declarations for test globals ($fetch, useRouter, etc.)
+  unit/
+    app/
+      utils/            → Frontend utility tests (format, wow, item-tooltip)
+      stores/           → Pinia store tests (auth, accounts, characters, community, shop)
+      components/ui/    → UI component tests (Badge, Button, Card, EmptyState, FormGroup,
+                          Input, LoadingState, Message, Modal, PageHeader, ProgressBar,
+                          Select, StatCard, TabPanel, Tabs)
+    shared/utils/perks/ → Perk registry tests (all groups, helpers, data integrity)
+    server/utils/       → Server utility tests (api-errors, auth, config, dressingroom,
+                          enchantments, realm-query, srp6, user-settings)
+    server/services/    → Server service tests (community, realm, soap)
+```
+
+### Dependencies
+
+| Package              | Purpose                                       |
+| -------------------- | --------------------------------------------- |
+| `vitest`             | Test runner with Vite-native transforms       |
+| `@vue/test-utils`    | Vue component mounting for DOM assertions     |
+| `@pinia/testing`     | `createTestingPinia()` for store isolation    |
+| `happy-dom`          | Lightweight DOM implementation for components |
+| `@vitejs/plugin-vue` | SFC compilation in test environment           |
+
+### Conventions
+
+| Convention              | Detail                                                                                                |
+| ----------------------- | ----------------------------------------------------------------------------------------------------- |
+| File naming             | `<module>.test.ts` mirroring source path under `tests/unit/`                                          |
+| Import style            | Relative paths from test file to source (e.g., `../../../../app/utils/format`)                        |
+| Server module isolation | Server modules with heavy deps (MySQL, SQLite, Nuxt auto-imports) are tested via recreated pure logic |
+| Global mocks            | `createError` is mocked globally in `api-errors.test.ts` since Nuxt auto-imports it                   |
+| Env var tests           | Use `process.env` manipulation with `beforeEach`/`afterEach` cleanup in `config.test.ts`              |
+| Timer tests             | `vi.useFakeTimers()` / `vi.useRealTimers()` for debounce/async timing tests                           |
+| Store tests             | Use `setActivePinia(createPinia())` in `beforeEach`; mock `$fetch` for API calls                      |
+| Component tests         | Use `mount()` from `@vue/test-utils`; stub `Teleport` for modal tests                                 |
+| Auto-import stubs       | `tests/setup.ts` provides Vue globals (ref, computed, etc.) and Nuxt composable stubs                 |
+| Cross-store deps        | Use `vi.stubGlobal()` + dynamic `await import()` for stores that call other stores (e.g., characters) |
+
+### Coverage Targets
+
+Coverage is configured for: `app/utils/**`, `app/stores/**`, `app/components/**`, `shared/utils/**`, `server/utils/**`, `server/services/**`.
 
 ## Architecture
 
