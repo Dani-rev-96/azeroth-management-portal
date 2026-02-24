@@ -20,6 +20,7 @@ import AdminFilesTab, { type FileInfo } from '~/components/admin/AdminFilesTab.v
 import AdminBackupTab from '~/components/admin/AdminBackupTab.vue'
 import AdminDressingRoomTab from '~/components/admin/AdminDressingRoomTab.vue'
 import AdminFeatureGrantsTab from '~/components/admin/AdminFeatureGrantsTab.vue'
+import AdminPortalConfigTab from '~/components/admin/AdminPortalConfigTab.vue'
 import { useAuthStore } from '~/stores/auth'
 import { ref, computed, watchEffect, watch } from 'vue'
 
@@ -42,6 +43,7 @@ const FEATURE_TAB_MAP: Record<string, string[]> = {
   'admin.backup': ['backup'],
   'admin.dressingroom': ['dressingroom'],
   'admin.export': ['mappings'],
+  'admin.portal-config': ['portal-config'],
 }
 
 // Tab configuration
@@ -54,6 +56,7 @@ const allTabs = [
   { id: 'backup', label: 'Backup & Restore', icon: '💾' },
   { id: 'dressingroom', label: 'Dressing Room', icon: '👗' },
   { id: 'feature-grants', label: 'Feature Grants', icon: '🔓' },
+  { id: 'portal-config', label: 'Portal Config', icon: '⚙️' },
 ]
 
 const tabs = computed(() => {
@@ -413,6 +416,11 @@ async function handleFileDelete(filename: string) {
       <!-- Feature Grants Tab -->
       <UiTabPanel v-if="canAccessTab('feature-grants')" id="feature-grants" :active="activeTab === 'feature-grants'">
         <AdminFeatureGrantsTab />
+      </UiTabPanel>
+
+      <!-- Portal Config Tab -->
+      <UiTabPanel v-if="canAccessTab('portal-config')" id="portal-config" :active="activeTab === 'portal-config'">
+        <AdminPortalConfigTab />
       </UiTabPanel>
     </div>
   </div>

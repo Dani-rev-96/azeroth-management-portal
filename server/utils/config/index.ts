@@ -22,6 +22,18 @@ import {
   type DirectusPerkGroup,
   type DirectusPerk,
 } from '#server/utils/directus'
+import {
+  isSelfManagedEnabled,
+  getConfigBackend,
+  getSelfManagedSettings,
+  getSelfManagedPerkGroups,
+  getSelfManagedPerks,
+  getSelfManagedShopCategories,
+  toAppPerkGroupMeta as smToAppPerkGroupMeta,
+  toAppPerkDefinition as smToAppPerkDefinition,
+} from '#server/utils/portal-config-db'
+
+export { getConfigBackend } from '#server/utils/portal-config-db'
 
 export interface RealmSoapConfig {
   enabled: boolean
@@ -328,51 +340,90 @@ export const getPerkConfig = () => {
 }
 
 // ═══════════════════════════════════════════════════════════
-// Directus-aware async variants
-// These try Directus first, falling back to env/hardcoded.
+// Config-backend-aware async variants
+// Resolution order: self-managed SQLite → Directus → env/hardcoded.
 // Use these in API routes instead of the sync versions above.
 // ═══════════════════════════════════════════════════════════
 
 /**
- * Async shop config — tries Directus, falls back to env/hardcoded.
+ * Async shop config — tries self-managed, then Directus, falls back to env/hardcoded.
  */
 export async function getShopConfigAsync() {
-  if (!isDirectusEnabled()) return getShopConfig()
-
-  const [settings, categories] = await Promise.all([
-    getDirectusSettings(),
-    getDirectusShopCategories(),
-  ])
-
-  if (!settings) return getShopConfig()
-
-  const fallback = getShopConfig()
-  return {
-    enabled: settings.shop_enabled,
-    priceMarkupPercent: settings.shop_markup_percent,
-    deliveryMethod: settings.shop_delivery_method as 'mail' | 'bag' | 'both',
-    mailSubject: settings.shop_mail_subject,
-    mailBody: settings.shop_mail_body,
-    categories: (categories && categories.length > 0
-      ? categories.map(c => c.slug)
-      : fallback.categories) as readonly string[],
+  // 1. Self-managed SQLite
+  if (isSelfManagedEnabled()) {
+    const settings = getSelfManagedSettings()
+    const categories = getSelfManagedShopCategories()
+    if (settings) {
+      const fallback = getShopConfig()
+      return {
+        enabled: settings.shop_enabled === 1,
+        priceMarkupPercent: settings.shop_markup_percent,
+        deliveryMethod: settings.shop_delivery_method as 'mail' | 'bag' | 'both',
+        mailSubject: settings.shop_mail_subject,
+        mailBody: settings.shop_mail_body,
+        categories: (categories && categories.length > 0
+          ? categories.map(c => c.slug)
+          : fallback.categories) as readonly string[],
+      }
+    }
   }
+
+  // 2. Directus
+  if (isDirectusEnabled()) {
+    const [settings, categories] = await Promise.all([
+      getDirectusSettings(),
+      getDirectusShopCategories(),
+    ])
+
+    if (settings) {
+      const fallback = getShopConfig()
+      return {
+        enabled: settings.shop_enabled,
+        priceMarkupPercent: settings.shop_markup_percent,
+        deliveryMethod: settings.shop_delivery_method as 'mail' | 'bag' | 'both',
+        mailSubject: settings.shop_mail_subject,
+        mailBody: settings.shop_mail_body,
+        categories: (categories && categories.length > 0
+          ? categories.map(c => c.slug)
+          : fallback.categories) as readonly string[],
+      }
+    }
+  }
+
+  // 3. Env/hardcoded fallback
+  return getShopConfig()
 }
 
 /**
- * Async Eluna config — tries Directus, falls back to env/hardcoded.
+ * Async Eluna config — tries self-managed, then Directus, falls back to env/hardcoded.
  */
 export async function getElunaConfigAsync() {
-  if (!isDirectusEnabled()) return getElunaConfig()
-
-  const settings = await getDirectusSettings()
-  if (!settings) return getElunaConfig()
-
-  return {
-    enabled: settings.eluna_enabled,
-    shopEnabled: settings.eluna_shop_enabled,
-    gmMailEnabled: settings.eluna_gm_mail_enabled,
+  // 1. Self-managed SQLite
+  if (isSelfManagedEnabled()) {
+    const settings = getSelfManagedSettings()
+    if (settings) {
+      return {
+        enabled: settings.eluna_enabled === 1,
+        shopEnabled: settings.eluna_shop_enabled === 1,
+        gmMailEnabled: settings.eluna_gm_mail_enabled === 1,
+      }
+    }
   }
+
+  // 2. Directus
+  if (isDirectusEnabled()) {
+    const settings = await getDirectusSettings()
+    if (settings) {
+      return {
+        enabled: settings.eluna_enabled,
+        shopEnabled: settings.eluna_shop_enabled,
+        gmMailEnabled: settings.eluna_gm_mail_enabled,
+      }
+    }
+  }
+
+  // 3. Env/hardcoded fallback
+  return getElunaConfig()
 }
 
 /**
@@ -392,73 +443,130 @@ export async function isElunaGmMailEnabledAsync(): Promise<boolean> {
 }
 
 /**
- * Async perk config — tries Directus for perk definitions and group toggles,
- * falls back to env + hardcoded PERK_REGISTRY.
+ * Async perk config — tries self-managed, then Directus for perk definitions
+ * and group toggles, falls back to env + hardcoded PERK_REGISTRY.
  *
- * When Directus is active, perk definitions (dice, threshold, limit, level)
- * come from Directus rows — env var overrides are NOT applied on top.
- * This means Directus is the single source of truth for perk tuning.
+ * When self-managed or Directus is active, perk definitions (dice, threshold,
+ * limit, level) come from those stores — env var overrides are NOT applied on top.
  */
 export async function getPerkConfigAsync() {
-  if (!isDirectusEnabled()) return getPerkConfig()
+  // 1. Self-managed SQLite
+  if (isSelfManagedEnabled()) {
+    const settings = getSelfManagedSettings()
+    const smGroups = getSelfManagedPerkGroups()
+    const smPerks = getSelfManagedPerks()
 
-  const [settings, dGroups, dPerks] = await Promise.all([
-    getDirectusSettings(),
-    getDirectusPerkGroups(),
-    getDirectusPerks(),
-  ])
+    if (smGroups && smPerks) {
+      const groups = {} as Record<PerkGroup, PerkGroupConfig>
+      for (const g of smGroups) {
+        groups[g.id as PerkGroup] = { enabled: g.enabled === 1 }
+      }
 
-  // Fall back if any critical data is missing
-  if (!dGroups || !dPerks) return getPerkConfig()
+      const perks = {} as Record<string, ResolvedPerkConfig>
+      for (const p of smPerks) {
+        perks[p.id] = {
+          diceSides: p.dice_sides,
+          rollThreshold: p.roll_threshold,
+          dailyLimit: p.daily_limit,
+          requiredLevel: p.required_level,
+        }
+      }
 
-  // Build group enabled map from Directus
-  const groups = {} as Record<PerkGroup, PerkGroupConfig>
-  for (const dg of dGroups) {
-    groups[dg.id as PerkGroup] = { enabled: dg.enabled }
-  }
-
-  // Build per-perk resolved config from Directus (no env override layer)
-  const perks = {} as Record<string, ResolvedPerkConfig>
-  for (const dp of dPerks) {
-    perks[dp.id] = {
-      diceSides: dp.dice_sides,
-      rollThreshold: dp.roll_threshold,
-      dailyLimit: dp.daily_limit,
-      requiredLevel: dp.required_level,
+      return {
+        groups,
+        perks,
+        failDebuffSpellId: settings?.perk_fail_debuff_spell_id ?? parseInt(process.env.NUXT_PERK_FAIL_DEBUFF_SPELL_ID || '11196', 10),
+        failDebuffDurationMs: settings?.perk_fail_debuff_duration_ms ?? parseInt(process.env.NUXT_PERK_FAIL_DEBUFF_DURATION_MS || '600000', 10),
+        critFailDebuffSpellId: settings?.perk_critfail_debuff_spell_id ?? parseInt(process.env.NUXT_PERK_CRITFAIL_DEBUFF_SPELL_ID || '15007', 10),
+        critFailDebuffDurationMs: settings?.perk_critfail_debuff_duration_ms ?? parseInt(process.env.NUXT_PERK_CRITFAIL_DEBUFF_DURATION_MS || '600000', 10),
+      }
     }
   }
 
-  return {
-    groups,
-    perks,
-    failDebuffSpellId: settings?.perk_fail_debuff_spell_id ?? parseInt(process.env.NUXT_PERK_FAIL_DEBUFF_SPELL_ID || '11196', 10),
-    failDebuffDurationMs: settings?.perk_fail_debuff_duration_ms ?? parseInt(process.env.NUXT_PERK_FAIL_DEBUFF_DURATION_MS || '600000', 10),
-    critFailDebuffSpellId: settings?.perk_critfail_debuff_spell_id ?? parseInt(process.env.NUXT_PERK_CRITFAIL_DEBUFF_SPELL_ID || '15007', 10),
-    critFailDebuffDurationMs: settings?.perk_critfail_debuff_duration_ms ?? parseInt(process.env.NUXT_PERK_CRITFAIL_DEBUFF_DURATION_MS || '600000', 10),
+  // 2. Directus
+  if (isDirectusEnabled()) {
+    const [settings, dGroups, dPerks] = await Promise.all([
+      getDirectusSettings(),
+      getDirectusPerkGroups(),
+      getDirectusPerks(),
+    ])
+
+    if (dGroups && dPerks) {
+      const groups = {} as Record<PerkGroup, PerkGroupConfig>
+      for (const dg of dGroups) {
+        groups[dg.id as PerkGroup] = { enabled: dg.enabled }
+      }
+
+      const perks = {} as Record<string, ResolvedPerkConfig>
+      for (const dp of dPerks) {
+        perks[dp.id] = {
+          diceSides: dp.dice_sides,
+          rollThreshold: dp.roll_threshold,
+          dailyLimit: dp.daily_limit,
+          requiredLevel: dp.required_level,
+        }
+      }
+
+      return {
+        groups,
+        perks,
+        failDebuffSpellId: settings?.perk_fail_debuff_spell_id ?? parseInt(process.env.NUXT_PERK_FAIL_DEBUFF_SPELL_ID || '11196', 10),
+        failDebuffDurationMs: settings?.perk_fail_debuff_duration_ms ?? parseInt(process.env.NUXT_PERK_FAIL_DEBUFF_DURATION_MS || '600000', 10),
+        critFailDebuffSpellId: settings?.perk_critfail_debuff_spell_id ?? parseInt(process.env.NUXT_PERK_CRITFAIL_DEBUFF_SPELL_ID || '15007', 10),
+        critFailDebuffDurationMs: settings?.perk_critfail_debuff_duration_ms ?? parseInt(process.env.NUXT_PERK_CRITFAIL_DEBUFF_DURATION_MS || '600000', 10),
+      }
+    }
   }
+
+  // 3. Env/hardcoded fallback
+  return getPerkConfig()
 }
 
 /**
- * Get the full perk registry — tries Directus, falls back to hardcoded.
+ * Get the full perk registry — tries self-managed, then Directus, falls back to hardcoded.
  * Returns PerkDefinition[] for use in perk-config and activate-perk routes.
  */
 export async function getPerkRegistryAsync(): Promise<PerkDefinition[]> {
-  if (!isDirectusEnabled()) return PERK_REGISTRY
+  // 1. Self-managed SQLite
+  if (isSelfManagedEnabled()) {
+    const smPerks = getSelfManagedPerks()
+    if (smPerks && smPerks.length > 0) {
+      return smPerks.map(smToAppPerkDefinition)
+    }
+  }
 
-  const dPerks = await getDirectusPerks()
-  if (!dPerks || dPerks.length === 0) return PERK_REGISTRY
+  // 2. Directus
+  if (isDirectusEnabled()) {
+    const dPerks = await getDirectusPerks()
+    if (dPerks && dPerks.length > 0) {
+      return dPerks.map(toAppPerkDefinition)
+    }
+  }
 
-  return dPerks.map(toAppPerkDefinition)
+  // 3. Hardcoded fallback
+  return PERK_REGISTRY
 }
 
 /**
- * Get perk group metadata — tries Directus, falls back to hardcoded.
+ * Get perk group metadata — tries self-managed, then Directus, falls back to hardcoded.
  */
 export async function getPerkGroupsAsync() {
-  if (!isDirectusEnabled()) return PERK_GROUPS
+  // 1. Self-managed SQLite
+  if (isSelfManagedEnabled()) {
+    const smGroups = getSelfManagedPerkGroups()
+    if (smGroups && smGroups.length > 0) {
+      return smGroups.map(smToAppPerkGroupMeta)
+    }
+  }
 
-  const dGroups = await getDirectusPerkGroups()
-  if (!dGroups || dGroups.length === 0) return PERK_GROUPS
+  // 2. Directus
+  if (isDirectusEnabled()) {
+    const dGroups = await getDirectusPerkGroups()
+    if (dGroups && dGroups.length > 0) {
+      return dGroups.map(toAppPerkGroupMeta)
+    }
+  }
 
-  return dGroups.map(toAppPerkGroupMeta)
+  // 3. Hardcoded fallback
+  return PERK_GROUPS
 }

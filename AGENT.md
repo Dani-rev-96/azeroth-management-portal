@@ -8,16 +8,17 @@
 > - [ ] **Check `shared/utils/perks/`** if the task involves perks, buffs, scrolls, teleports, or the dice/gacha system. The registry is split across multiple files by group — don't look for a monolithic `perks.ts`.
 > - [ ] **Check `server/utils/config/index.ts`** if the task involves environment variables, feature flags, or perk config resolution.
 > - [ ] **Check `server/utils/directus.ts`** if the task involves Directus CMS integration, remote config fetching, or the async config variants.
+> - [ ] **Check `server/utils/portal-config-db.ts`** if the task involves the self-managed SQLite config backend, portal settings, or the merge/sync strategy.
 > - [ ] **Check `data/eluna/web_worker.lua`** if the task involves in-game delivery (items, spells, auras, teleports, bag delivery). This is the Lua bridge that processes queue tables.
 > - [ ] **Run `get_errors`** after every edit to catch issues immediately.
 > - [ ] **Update this file** if you add new files, directories, patterns, conventions, API routes, perk groups, delivery types, or config options. Keep it concise — tables and lists, not prose.
-> - [ ] **Dual maintenance**: When changing perks, shop categories, perk groups, or portal settings, update BOTH the code (TypeScript) AND the Directus schema/import data in `data/directus/`.
+> - [ ] **Triple maintenance**: When changing perks, shop categories, perk groups, or portal settings, update the code (TypeScript), the Directus schema/import data in `data/directus/`, AND the self-managed sync defaults in `portal-config-db.ts` sync functions.
 >
 > **Common pitfalls:**
 >
 > - The perk registry is in `shared/utils/perks/` (a directory with barrel index), NOT a single file.
 > - `getPerkConfig()` in `server/utils/config/index.ts` returns `{ groups, perks, failDebuff*, critFailDebuff* }` — it resolves per-perk env overrides.
-> - API routes use `*Async()` config functions (e.g., `getShopConfigAsync()`) that try Directus first, then fall back to env vars. Don't import the old sync functions in API routes.
+> - API routes use `*Async()` config functions (e.g., `getShopConfigAsync()`) that resolve in order: self-managed SQLite → Directus → env vars. Don't import the old sync functions in API routes.
 > - Scroll delivery uses `'bag-item'` (direct to bags via `web_bag_requests`), NOT `'item'` (mail).
 > - Buff/scroll perks use `rankGroup` for deduplication — the UI shows only the highest applicable rank per character level.
 > - All queue tables are auto-created by `web_worker.lua` on startup.
@@ -113,24 +114,25 @@ docs/                → Detailed documentation (API, Auth, Config, Deploy, Dev,
 
 ### Key Files
 
-| File                            | Purpose                                                                                       |
-| ------------------------------- | --------------------------------------------------------------------------------------------- |
-| `nuxt.config.ts`                | Nuxt config: modules, runtime config defaults, Vite/SCSS settings                             |
-| `app/app.vue`                   | Root Vue component                                                                            |
-| `app/layouts/default.vue`       | Main layout (nav, footer, mobile menu)                                                        |
-| `app/types/index.ts`            | All shared TypeScript types                                                                   |
-| `server/utils/config/index.ts`  | Central server config — reads `process.env` at runtime (K8s-safe), perk config                |
-| `server/utils/directus.ts`      | Directus CMS client — types, fetch helper, 60s cache, converters, public API                  |
-| `server/utils/db.ts`            | SQLite (better-sqlite3) for account_mappings — WAL mode, CRUD interface                       |
-| `server/utils/mysql.ts`         | MySQL connection pools (mysql2/promise) — cached in Map                                       |
-| `server/utils/auth.ts`          | Auth utilities: `getAuthenticatedUser()`, `getAuthenticatedFeatureUser()`, session management |
-| `server/utils/user-settings.ts` | SQLite for feature grants — WAL mode, ADMIN_FEATURES registry, FeatureGrantDB CRUD            |
-| `server/utils/dbc-db.ts`        | DBC SQLite databases (items, spells, talents) — read-only server assets                       |
-| `server/utils/srp6.ts`          | SRP-6a password verification/creation (AzerothCore compatible)                                |
-| `server/utils/dressingroom.ts`  | Dressing room helpers — character ownership verification for own-account-only grants          |
-| `data/eluna/web_worker.lua`     | Eluna bridge script — processes all queue tables in-game (v2.9)                               |
-| `shared/utils/perks/index.ts`   | Perk registry barrel — re-exports types, groups, per-group arrays, helpers                    |
-| `shared/utils/config/index.ts`  | Type-only re-exports for client/server shared config types                                    |
+| File                               | Purpose                                                                                                 |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `nuxt.config.ts`                   | Nuxt config: modules, runtime config defaults, Vite/SCSS settings                                       |
+| `app/app.vue`                      | Root Vue component                                                                                      |
+| `app/layouts/default.vue`          | Main layout (nav, footer, mobile menu)                                                                  |
+| `app/types/index.ts`               | All shared TypeScript types                                                                             |
+| `server/utils/config/index.ts`     | Central server config — reads `process.env` at runtime (K8s-safe), perk config                          |
+| `server/utils/directus.ts`         | Directus CMS client — types, fetch helper, 60s cache, converters, public API                            |
+| `server/utils/db.ts`               | SQLite (better-sqlite3) for account_mappings — WAL mode, CRUD interface                                 |
+| `server/utils/mysql.ts`            | MySQL connection pools (mysql2/promise) — cached in Map                                                 |
+| `server/utils/auth.ts`             | Auth utilities: `getAuthenticatedUser()`, `getAuthenticatedFeatureUser()`, session management           |
+| `server/utils/user-settings.ts`    | SQLite for feature grants — WAL mode, ADMIN_FEATURES registry, FeatureGrantDB CRUD                      |
+| `server/utils/portal-config-db.ts` | SQLite for self-managed portal config — WAL mode, CRUD for settings/perks/groups/categories, merge/sync |
+| `server/utils/dbc-db.ts`           | DBC SQLite databases (items, spells, talents) — read-only server assets                                 |
+| `server/utils/srp6.ts`             | SRP-6a password verification/creation (AzerothCore compatible)                                          |
+| `server/utils/dressingroom.ts`     | Dressing room helpers — character ownership verification for own-account-only grants                    |
+| `data/eluna/web_worker.lua`        | Eluna bridge script — processes all queue tables in-game (v2.9)                                         |
+| `shared/utils/perks/index.ts`      | Perk registry barrel — re-exports types, groups, per-group arrays, helpers                              |
+| `shared/utils/config/index.ts`     | Type-only re-exports for client/server shared config types                                              |
 
 ## Directory Structure
 
@@ -157,15 +159,15 @@ Pages are **thin orchestrators** — they call store actions and delegate render
 
 Organized by feature domain. All use `<script setup lang="ts">` exclusively.
 
-| Directory               | Prefix            | Components                                                                                                                                                                                                                                              |
-| ----------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `components/ui/`        | `Ui`              | UiBadge, UiButton, UiCard, UiDataTable, UiEmptyState, UiFormGroup, UiInput, UiLoadingState, UiMessage, UiModal, UiPageHeader, UiProgressBar, UiSectionHeader, UiSelect, UiStatCard, UiTabPanel, UiTabs, UiTextarea                                      |
-| `components/account/`   | `Account`/Feature | AccountHeader, AccountSecurityInfo, AccountStatistics, CharacterActionModal, CharacterList, DangerZone, PasswordChangeForm                                                                                                                              |
-| `components/admin/`     | `Admin`           | AdminAccountsTab, AdminBackupTab, AdminDressingRoomTab, AdminDressingRoomReputation, AdminDressingRoomQuests, AdminDressingRoomAchievements, AdminDressingRoomTitles, AdminFilesTab, AdminGMForm, AdminLinkAccountsTab, AdminMailForm, AdminMappingsTab |
-| `components/character/` | `Character`       | CharacterEquipmentSlot, CharacterTalentTree, **CharacterPerks**, **CharacterPerkCard**                                                                                                                                                                  |
-| `components/community/` | Feature           | DirectoryFilters, DistributionChart, OnlinePlayerCard, OnlinePlayersGrid, PlayerDirectoryBrowser, PvPStatistics, RealmFilter, StatsOverview, TopPlayersLeaderboard                                                                                      |
-| `components/shop/`      | `Shop`            | ShopCategoryTabs, ShopCharacterSelect, ShopDeliveryToggle, ShopItemCard, ShopItemsGrid, ShopNotification, ShopPagination, ShopSearchControls, ShopSelectedCharacterBar                                                                                  |
-| `components/` (root)    | —                 | CreateAccountForm, LinkAccountForm                                                                                                                                                                                                                      |
+| Directory               | Prefix            | Components                                                                                                                                                                                                                                                                        |
+| ----------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `components/ui/`        | `Ui`              | UiBadge, UiButton, UiCard, UiDataTable, UiEmptyState, UiFormGroup, UiInput, UiLoadingState, UiMessage, UiModal, UiPageHeader, UiProgressBar, UiSectionHeader, UiSelect, UiStatCard, UiTabPanel, UiTabs, UiTextarea                                                                |
+| `components/account/`   | `Account`/Feature | AccountHeader, AccountSecurityInfo, AccountStatistics, CharacterActionModal, CharacterList, DangerZone, PasswordChangeForm                                                                                                                                                        |
+| `components/admin/`     | `Admin`           | AdminAccountsTab, AdminBackupTab, AdminDressingRoomTab, AdminDressingRoomReputation, AdminDressingRoomQuests, AdminDressingRoomAchievements, AdminDressingRoomTitles, AdminFilesTab, AdminGMForm, AdminLinkAccountsTab, AdminMailForm, AdminMappingsTab, **AdminPortalConfigTab** |
+| `components/character/` | `Character`       | CharacterEquipmentSlot, CharacterTalentTree, **CharacterPerks**, **CharacterPerkCard**                                                                                                                                                                                            |
+| `components/community/` | Feature           | DirectoryFilters, DistributionChart, OnlinePlayerCard, OnlinePlayersGrid, PlayerDirectoryBrowser, PvPStatistics, RealmFilter, StatsOverview, TopPlayersLeaderboard                                                                                                                |
+| `components/shop/`      | `Shop`            | ShopCategoryTabs, ShopCharacterSelect, ShopDeliveryToggle, ShopItemCard, ShopItemsGrid, ShopNotification, ShopPagination, ShopSearchControls, ShopSelectedCharacterBar                                                                                                            |
+| `components/` (root)    | —                 | CreateAccountForm, LinkAccountForm                                                                                                                                                                                                                                                |
 
 #### Stores (`app/stores/`)
 
@@ -207,17 +209,17 @@ All use **Composition API** pattern: `defineStore('name', () => { ... })`.
 
 File-based routing with HTTP verb suffixes: `.get.ts`, `.post.ts`, `.delete.ts`. Dynamic params via `[paramName]` directories. **No PUT/PATCH** — mutations use POST.
 
-| Group           | Files                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Auth                                                   |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `auth/`         | `config.get`, `login.post`, `logout.post`, `me.get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Public (config), Direct-mode (login/logout), Any (me)  |
-| `accounts/`     | `create.post`, `map.post`, `password.post`, `detail/[accountId].get`, `map/[externalId]/[wowAccountId].delete`, `user/[externalId].get`, `user/mapping/[wowAccountId].get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Authenticated                                          |
-| `characters/`   | `action.post`, `activate-perk.post`, `perk-config.get`, `perk-status.get`, `[guid]/[realmId].get`, `talent-tree/[classId].get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Authenticated (action, perks), Public (detail, talent) |
-| `admin/`        | `accounts.get`, `account-mappings.get`, `account-mappings.post`, `account-mappings/[id].delete`, `backup/list.get`, `backup/create.post`, `backup/restore.post`, `dressingroom/characters.get`, `dressingroom/character/[guid]/[realmId].get`, `dressingroom/reputations/[guid]/[realmId].get`, `dressingroom/modify-money.post`, `dressingroom/add-item.post`, `dressingroom/teach-spell.post`, `dressingroom/spell-search.get`, `dressingroom/set-profession.post`, `dressingroom/set-level.post`, `dressingroom/set-reputation.post`, `dressingroom/quest-search.get`, `dressingroom/complete-quest.post`, `dressingroom/add-achievement.post`, `dressingroom/set-title.post`, `export.post`, `files/upload.post`, `files/[filename].delete`, `gm/set-level.post`, `items/search.get`, `mail/send.post` | GM or feature grant (`getAuthenticatedFeatureUser()`)  |
-| `community/`    | `online.get`, `stats.get`, `top-players.get`, `pvp-stats.get`, `players.get`, `zones.get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Public                                                 |
-| `shop/`         | `config.get`, `items.get`, `purchase.post`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Varies                                                 |
-| `downloads/`    | `list.get`, `[filename].get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Public                                                 |
-| `stats/`        | `overview.get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Public                                                 |
-| `realms.get.ts` | Realm list (also K8s health endpoint)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Public                                                 |
+| Group           | Files                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Auth                                                   |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `auth/`         | `config.get`, `login.post`, `logout.post`, `me.get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Public (config), Direct-mode (login/logout), Any (me)  |
+| `accounts/`     | `create.post`, `map.post`, `password.post`, `detail/[accountId].get`, `map/[externalId]/[wowAccountId].delete`, `user/[externalId].get`, `user/mapping/[wowAccountId].get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Authenticated                                          |
+| `characters/`   | `action.post`, `activate-perk.post`, `perk-config.get`, `perk-status.get`, `[guid]/[realmId].get`, `talent-tree/[classId].get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Authenticated (action, perks), Public (detail, talent) |
+| `admin/`        | `accounts.get`, `account-mappings.get`, `account-mappings.post`, `account-mappings/[id].delete`, `backup/list.get`, `backup/create.post`, `backup/restore.post`, `dressingroom/characters.get`, `dressingroom/character/[guid]/[realmId].get`, `dressingroom/reputations/[guid]/[realmId].get`, `dressingroom/modify-money.post`, `dressingroom/add-item.post`, `dressingroom/teach-spell.post`, `dressingroom/spell-search.get`, `dressingroom/set-profession.post`, `dressingroom/set-level.post`, `dressingroom/set-reputation.post`, `dressingroom/quest-search.get`, `dressingroom/complete-quest.post`, `dressingroom/add-achievement.post`, `dressingroom/set-title.post`, `export.post`, `files/upload.post`, `files/[filename].delete`, `gm/set-level.post`, `items/search.get`, `mail/send.post`, `portal-config/backend.get`, `portal-config/settings.get`, `portal-config/settings.post`, `portal-config/perk-groups.get`, `portal-config/perk-groups.post`, `portal-config/perk-groups/[id].delete`, `portal-config/perks.get`, `portal-config/perks.post`, `portal-config/perks/[id].delete`, `portal-config/shop-categories.get`, `portal-config/shop-categories.post`, `portal-config/shop-categories/[slug].delete`, `portal-config/sync.post` | GM or feature grant (`getAuthenticatedFeatureUser()`)  |
+| `community/`    | `online.get`, `stats.get`, `top-players.get`, `pvp-stats.get`, `players.get`, `zones.get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Public                                                 |
+| `shop/`         | `config.get`, `items.get`, `purchase.post`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Varies                                                 |
+| `downloads/`    | `list.get`, `[filename].get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Public                                                 |
+| `stats/`        | `overview.get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Public                                                 |
+| `realms.get.ts` | Realm list (also K8s health endpoint)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Public                                                 |
 
 **API handler pattern**:
 
@@ -389,7 +391,7 @@ NUXT_DIRECTUS_TOKEN=your-static-token    # Directus static API token (admin or r
 
 #### Async Config Functions (`server/utils/config/index.ts`)
 
-All API routes use the `*Async()` variants which try Directus first, then fall back to sync env-based functions:
+All API routes use the `*Async()` variants which resolve in order: self-managed SQLite → Directus → sync env-based functions:
 
 | Async Function                | Sync Fallback            | Used By                                                                 |
 | ----------------------------- | ------------------------ | ----------------------------------------------------------------------- |
@@ -408,12 +410,13 @@ All API routes use the `*Async()` variants which try Directus first, then fall b
 3. **Create API token**: In Directus Admin → Settings → Access Tokens → create a static token
 4. **Configure env**: Set `NUXT_DIRECTUS_ENABLED=true`, `NUXT_DIRECTUS_URL`, `NUXT_DIRECTUS_TOKEN`
 
-#### Dual Maintenance Convention
+#### Triple Maintenance Convention
 
-When making changes that affect configurable data, update **both**:
+When making changes that affect configurable data, update **all three**:
 
 1. **TypeScript code**: Env vars, perk definitions in `shared/utils/perks/`, shop config
 2. **Directus artifacts**: Schema in `data/directus/schema.json`, import data (re-run `node scripts/generate-directus-data.cjs`)
+3. **Self-managed defaults**: Sync functions in `portal-config-db.ts` (the sync route reads from hardcoded TypeScript, so updating #1 typically covers this)
 
 Examples:
 
@@ -421,15 +424,95 @@ Examples:
 - **Adding a shop category**: Update `getShopConfig()` → re-run generator
 - **Adding a new config field to portal_settings**: Add to `DirectusPortalSettings` type in `directus.ts` → update schema.json → update converter functions
 
+### Self-Managed Config Backend (Optional)
+
+An alternative to Directus that stores all portal configuration in a local SQLite database (`portal-config.db`). No external CMS needed — data is managed entirely through the admin panel.
+
+#### Architecture
+
+```
+API Route → *Async() config function → getConfigBackend()?
+                                         ├── 'self-managed' → SQLite portal-config.db (synchronous reads)
+                                         ├── 'directus'     → directusFetch() → cache (60s TTL)
+                                         └── 'env'          → sync env-based function
+```
+
+#### Environment Variables
+
+```bash
+NUXT_CONFIG_BACKEND=env              # Config backend: env|directus|self-managed (default: auto-detect)
+PORTAL_CONFIG_DB_PATH=data/portal-config.db  # SQLite database path (default: data/portal-config.db)
+```
+
+`NUXT_CONFIG_BACKEND` auto-detection: if unset, checks `NUXT_DIRECTUS_ENABLED=true` → `directus`, else `env`. Set to `self-managed` explicitly to use the SQLite backend.
+
+#### SQLite Schema (4 tables)
+
+| Table             | Type        | Key Columns                                                       |
+| ----------------- | ----------- | ----------------------------------------------------------------- |
+| `portal_settings` | Singleton   | `id=1`, shop config, Eluna flags, perk debuff defaults            |
+| `perk_groups`     | List (5+)   | `id` (text PK), label, icon, description, enabled, sort           |
+| `perks`           | List (114+) | `id` (text PK), all PerkDefinition fields, FK → `perk_groups(id)` |
+| `shop_categories` | List (10+)  | `slug` (text PK), sort                                            |
+
+All tables include: `modified_by_user INTEGER DEFAULT 0`, `updated_at TEXT`.
+
+#### Merge Strategy
+
+The sync/merge system protects user-customized data when updating from hardcoded defaults:
+
+- **`modified_by_user = 0`** (default): Row was auto-populated or synced from defaults → safe to overwrite
+- **`modified_by_user = 1`**: Row was manually edited via admin panel → NEVER overwritten by sync
+- **New items** in defaults: INSERT with `modified_by_user = 0`
+- **Existing unmodified** items (flag=0): UPDATE with latest default values
+- **Existing modified** items (flag=1): SKIP entirely
+- **User-added** items not in defaults: KEEP (not deleted)
+
+All admin POST routes set `modified_by_user = 1` on save.
+
+#### API Routes (`server/api/admin/portal-config/`)
+
+| Route                           | Purpose                                                                |
+| ------------------------------- | ---------------------------------------------------------------------- |
+| `GET backend`                   | Returns current config backend mode + DB status (counts, initialized)  |
+| `GET/POST settings`             | Portal settings CRUD (singleton)                                       |
+| `GET/POST perk-groups`          | Perk group CRUD                                                        |
+| `DELETE perk-groups/[id]`       | Delete perk group (checks FK references first)                         |
+| `GET/POST perks`                | Perk CRUD (supports `?group=` filter)                                  |
+| `DELETE perks/[id]`             | Delete perk                                                            |
+| `GET/POST shop-categories`      | Shop category CRUD                                                     |
+| `DELETE shop-categories/[slug]` | Delete shop category                                                   |
+| `POST sync`                     | Merge hardcoded defaults into DB (optional `collections` array filter) |
+
+All routes require `getAuthenticatedFeatureUser(event, 'admin.portal-config')`.
+
+#### Key Files
+
+| File                                            | Purpose                                                                     |
+| ----------------------------------------------- | --------------------------------------------------------------------------- |
+| `server/utils/portal-config-db.ts`              | Core SQLite utility: schema, CRUD objects, converters, sync/merge functions |
+| `server/api/admin/portal-config/*.ts`           | 12 API route files for admin CRUD + sync                                    |
+| `app/components/admin/AdminPortalConfigTab.vue` | Admin UI: 5 sections (overview, settings, groups, perks, categories)        |
+
+#### UI Component
+
+`AdminPortalConfigTab.vue` — Five-section admin tab:
+
+- **Overview**: Backend mode badge, DB stats, Sync from Defaults button with merge report
+- **Portal Settings**: Shop config, Eluna toggles, debuff defaults
+- **Perk Groups**: Card grid with create/edit/delete
+- **Perks**: Table with group filter + search, full perk form with collapsible sections
+- **Shop Categories**: Compact card grid with slug/sort editing
+
 ### Databases
 
 | Database           | Engine | Purpose                                            | Access Pattern                                                                     |
-| ------------------ | ------ | -------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| ------------------ | ------ | -------------------------------------------------- | ---------------------------------------------------------------------------------- | --- | ------------------ | ------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | `acore_auth`       | MySQL  | Shared auth DB (accounts, bans, GM access)         | `getAuthPool()` — single pool                                                      |
 | `acore_characters` | MySQL  | Per-realm character data + Eluna queue tables      | `getCharactersPool(realmId)` — per-realm pool                                      |
 | `acore_world`      | MySQL  | Per-realm game data (items, spells, templates)     | `getWorldPool(realmId)` — per-realm pool                                           |
 | `mappings.db`      | SQLite | External auth → WoW account links                  | `server/utils/db.ts` — single instance                                             |
-| `user-settings.db` | SQLite | Feature grants (time-limited admin access)         | `server/utils/user-settings.ts` — single instance, `USER_SETTINGS_DB_PATH` env var |
+| `user-settings.db` | SQLite | Feature grants (time-limited admin access)         | `server/utils/user-settings.ts` — single instance, `USER_SETTINGS_DB_PATH` env var | \n  | `portal-config.db` | SQLite | Self-managed portal config (settings, perks, groups, shop categories) | `server/utils/portal-config-db.ts` — single instance, `PORTAL_CONFIG_DB_PATH` env var |
 | DBC databases      | SQLite | Read-only game data cache (items, spells, talents) | `server/utils/dbc-db.ts` — server assets                                           |
 
 ### Multi-Realm Support
@@ -527,7 +610,7 @@ Time-limited admin feature access system. GMs can grant non-GM users temporary a
 #### Feature ID Registry (`ADMIN_FEATURES` in `server/utils/user-settings.ts`)
 
 | Feature ID            | Label            | Gated Tabs/Routes                                      |
-| --------------------- | ---------------- | ------------------------------------------------------ |
+| --------------------- | ---------------- | ------------------------------------------------------ | --- | --------------------- | ------------- | ----------------------------------------------- |
 | `admin.accounts`      | All Accounts     | accounts tab, `accounts.get`                           |
 | `admin.mappings`      | Account Mappings | mappings tab, `account-mappings.*`                     |
 | `admin.link-accounts` | Link Accounts    | link-accounts tab                                      |
@@ -536,7 +619,7 @@ Time-limited admin feature access system. GMs can grant non-GM users temporary a
 | `admin.files`         | File Management  | files tab, `files/upload`, `files/delete`              |
 | `admin.backup`        | Backup & Restore | backup tab, `backup/*`                                 |
 | `admin.dressingroom`  | Dressing Room    | dressingroom tab, all `dressingroom/*`, `items/search` |
-| `admin.export`        | Data Export      | `export.post`                                          |
+| `admin.export`        | Data Export      | `export.post`                                          | \n  | `admin.portal-config` | Portal Config | portal-config tab, all `portal-config/*` routes |
 
 #### API Routes
 
@@ -722,6 +805,13 @@ NUXT_ELUNA_GM_MAIL_ENABLED=true
 NUXT_DIRECTUS_ENABLED=false              # Enable Directus as config backend
 NUXT_DIRECTUS_URL=http://localhost:8055   # Directus instance URL
 NUXT_DIRECTUS_TOKEN=your-static-token     # Directus static API token
+```
+
+### Config Backend
+
+```bash
+NUXT_CONFIG_BACKEND=env                  # Config backend mode: env|directus|self-managed (default: auto-detect)
+PORTAL_CONFIG_DB_PATH=data/portal-config.db  # Self-managed SQLite DB path (default: data/portal-config.db)
 ```
 
 ### Perk Configuration

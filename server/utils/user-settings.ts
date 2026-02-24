@@ -23,6 +23,7 @@ export const ADMIN_FEATURES = {
   'admin.backup': { label: 'Backup & Restore', description: 'Create database backups and restore from files', icon: '💾' },
   'admin.dressingroom': { label: 'Dressing Room', description: 'Edit character items, stats, professions, reputations, quests, achievements, titles', icon: '👗' },
   'admin.export': { label: 'Data Export', description: 'Export admin data as CSV/JSON', icon: '📤' },
+  'admin.portal-config': { label: 'Portal Config', description: 'Manage portal settings, perks, shop categories via self-managed database', icon: '⚙️' },
 } as const
 
 export type AdminFeatureId = keyof typeof ADMIN_FEATURES
