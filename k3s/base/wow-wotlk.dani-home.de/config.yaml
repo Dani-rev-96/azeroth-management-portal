@@ -45,3 +45,4 @@ data:
   NUXT_PUBLIC_SHOP_MARKUP_PERCENT: "20"
   NUXT_PUBLIC_AUTH_MODE: "oauth-proxy"
   NUXT_PUBLIC_DEBUG_MODE: "false"
+  NUXT_CONFIG_BACKEND: "self-managed"
