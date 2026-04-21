@@ -17,6 +17,7 @@ import UiSelect from '~/components/ui/UiSelect.vue'
 import UiLoadingState from '~/components/ui/UiLoadingState.vue'
 import UiEmptyState from '~/components/ui/UiEmptyState.vue'
 import UiBadge from '~/components/ui/UiBadge.vue'
+import UiSlideOver from '~/components/ui/UiSlideOver.vue'
 import { ref, computed, onMounted, watch } from 'vue'
 
 // ─── Types ────────────────────────────────────────────────
@@ -165,6 +166,28 @@ const savingPerk = ref(false)
 const deletingPerk = ref<string | null>(null)
 const perkSearch = ref('')
 const perkForm = ref(getEmptyPerkForm())
+const showAdvanced = ref(false)
+
+// Which form sections/fields are relevant for the selected delivery_type.
+// Values are never wiped on type change — hiding is purely visual so the user
+// can toggle types without losing work.
+const perkFieldVisibility = computed(() => {
+  const dt = perkForm.value.delivery_type
+  const isMail = dt === 'item' || dt === 'bag-item'
+  const isAura = dt === 'aura'
+  const isTeleport = dt === 'teleport'
+  return {
+    auraSection: isAura,
+    mailSection: isMail,
+    teleportSection: isTeleport,
+    // Debuff overrides: aura uses durations only (spell id comes from global),
+    // teleport only has a fail debuff, spell/item/bag-item support all four.
+    debuffFailSpell: !isAura,
+    debuffFailDuration: true,
+    debuffCritfailSpell: !isAura && !isTeleport,
+    debuffCritfailDuration: !isTeleport,
+  }
+})
 
 function getEmptyPerkForm() {
   return {
@@ -416,6 +439,7 @@ function openPerkForm(perk?: Perk) {
       sort: perks.value.length + 1,
     }
   }
+  showAdvanced.value = false
   showPerkForm.value = true
 }
 
@@ -859,11 +883,15 @@ onMounted(() => loadAll())
           </table>
         </div>
 
-        <!-- Perk Form Modal -->
-        <div v-if="showPerkForm" class="form-panel form-panel--wide">
-          <h3 class="form-panel__title">{{ editingPerk ? 'Edit' : 'Create' }} Perk</h3>
-          <div class="form-grid form-grid--3col">
-            <!-- Basic -->
+        <!-- Perk Form Slide-Over -->
+        <UiSlideOver
+          :open="showPerkForm"
+          :title="editingPerk ? `Edit Perk — ${editingPerk.name}` : 'Create Perk'"
+          @close="closePerkForm"
+        >
+          <div class="perk-form-grid">
+            <!-- Basics -->
+            <h4 class="perk-form-grid__heading">Basics</h4>
             <div class="form-field">
               <label class="form-label">ID</label>
               <UiInput v-model="perkForm.id" :disabled="!!editingPerk" placeholder="e.g. buff-motw-r1" />
@@ -903,8 +931,8 @@ onMounted(() => loadAll())
               <UiInput v-model="perkForm.success_message" />
             </div>
 
-            <!-- Dice / Limits -->
-            <h4 class="form-grid__heading">Dice & Limits</h4>
+            <!-- Dice & Limits -->
+            <h4 class="perk-form-grid__heading">Dice &amp; Limits</h4>
             <div class="form-field">
               <label class="form-label">Dice Sides</label>
               <UiInput v-model.number="perkForm.dice_sides" type="number" />
@@ -921,14 +949,6 @@ onMounted(() => loadAll())
               <label class="form-label">Required Level</label>
               <UiInput v-model.number="perkForm.required_level" type="number" />
             </div>
-            <div class="form-field">
-              <label class="form-label">Sort</label>
-              <UiInput v-model.number="perkForm.sort" type="number" />
-            </div>
-            <div class="form-field">
-              <label class="form-label">Accent Color</label>
-              <UiInput v-model="perkForm.accent" placeholder="blue, green, purple..." />
-            </div>
             <div class="form-field form-field--checkbox">
               <label class="checkbox-label"><input v-model="perkForm.requires_online" type="checkbox" /> Requires Online</label>
             </div>
@@ -936,81 +956,108 @@ onMounted(() => loadAll())
               <label class="checkbox-label"><input v-model="perkForm.one_time" type="checkbox" /> One-Time Only</label>
             </div>
 
-            <!-- Optional fields -->
-            <h4 class="form-grid__heading">Optional Fields</h4>
-            <div class="form-field">
-              <label class="form-label">Env Prefix</label>
-              <UiInput v-model="perkForm.env_prefix" placeholder="BUFF_MOTW_R1" />
-            </div>
-            <div class="form-field">
-              <label class="form-label">Rank Group</label>
-              <UiInput v-model="perkForm.rank_group" placeholder="Group for rank dedup" />
-            </div>
-            <div class="form-field">
-              <label class="form-label">Aura Duration (ms)</label>
-              <UiInput v-model.number="perkForm.aura_duration_ms" type="number" />
-            </div>
-            <div class="form-field">
-              <label class="form-label">Item Count</label>
-              <UiInput v-model.number="perkForm.item_count" type="number" />
-            </div>
-            <div class="form-field form-field--full">
-              <label class="form-label">Mail Subject</label>
-              <UiInput v-model="perkForm.mail_subject" />
-            </div>
-            <div class="form-field form-field--full">
-              <label class="form-label">Mail Body</label>
-              <UiInput v-model="perkForm.mail_body" />
+            <!-- Aura (delivery_type === 'aura') -->
+            <template v-if="perkFieldVisibility.auraSection">
+              <h4 class="perk-form-grid__heading">Aura</h4>
+              <div class="form-field">
+                <label class="form-label">Aura Duration (ms, 0 = permanent)</label>
+                <UiInput v-model.number="perkForm.aura_duration_ms" type="number" />
+              </div>
+            </template>
+
+            <!-- Mail (delivery_type === 'item' | 'bag-item') -->
+            <template v-if="perkFieldVisibility.mailSection">
+              <h4 class="perk-form-grid__heading">Mail Delivery</h4>
+              <div class="form-field">
+                <label class="form-label">Item Count</label>
+                <UiInput v-model.number="perkForm.item_count" type="number" />
+              </div>
+              <div class="form-field form-field--full">
+                <label class="form-label">Mail Subject</label>
+                <UiInput v-model="perkForm.mail_subject" />
+              </div>
+              <div class="form-field form-field--full">
+                <label class="form-label">Mail Body</label>
+                <UiInput v-model="perkForm.mail_body" />
+              </div>
+            </template>
+
+            <!-- Teleport (delivery_type === 'teleport') -->
+            <template v-if="perkFieldVisibility.teleportSection">
+              <h4 class="perk-form-grid__heading">Teleport Coordinates</h4>
+              <div class="form-field">
+                <label class="form-label">Map ID</label>
+                <UiInput v-model.number="perkForm.teleport_map_id" type="number" />
+              </div>
+              <div class="form-field">
+                <label class="form-label">X</label>
+                <UiInput v-model.number="perkForm.teleport_x" type="number" :step="0.01" />
+              </div>
+              <div class="form-field">
+                <label class="form-label">Y</label>
+                <UiInput v-model.number="perkForm.teleport_y" type="number" :step="0.01" />
+              </div>
+              <div class="form-field">
+                <label class="form-label">Z</label>
+                <UiInput v-model.number="perkForm.teleport_z" type="number" :step="0.01" />
+              </div>
+              <div class="form-field">
+                <label class="form-label">Orientation</label>
+                <UiInput v-model.number="perkForm.teleport_o" type="number" :step="0.01" />
+              </div>
+            </template>
+
+            <!-- Advanced toggle -->
+            <div class="perk-form-grid__advanced-toggle">
+              <button type="button" class="advanced-toggle" @click="showAdvanced = !showAdvanced">
+                {{ showAdvanced ? '▾ Hide advanced fields' : '▸ Show advanced fields' }}
+              </button>
             </div>
 
-            <!-- Debuff overrides -->
-            <h4 class="form-grid__heading">Per-Perk Debuff Overrides</h4>
-            <div class="form-field">
-              <label class="form-label">Fail Debuff Spell ID</label>
-              <UiInput v-model.number="perkForm.fail_debuff_spell_id" type="number" />
-            </div>
-            <div class="form-field">
-              <label class="form-label">Fail Debuff Duration (ms)</label>
-              <UiInput v-model.number="perkForm.fail_debuff_duration_ms" type="number" />
-            </div>
-            <div class="form-field">
-              <label class="form-label">Crit-Fail Spell ID</label>
-              <UiInput v-model.number="perkForm.critfail_debuff_spell_id" type="number" />
-            </div>
-            <div class="form-field">
-              <label class="form-label">Crit-Fail Duration (ms)</label>
-              <UiInput v-model.number="perkForm.critfail_debuff_duration_ms" type="number" />
-            </div>
+            <template v-if="showAdvanced">
+              <h4 class="perk-form-grid__heading">Advanced</h4>
+              <div class="form-field">
+                <label class="form-label">Sort</label>
+                <UiInput v-model.number="perkForm.sort" type="number" />
+              </div>
+              <div class="form-field">
+                <label class="form-label">Accent Color</label>
+                <UiInput v-model="perkForm.accent" placeholder="blue, green, purple..." />
+              </div>
+              <div class="form-field">
+                <label class="form-label">Env Prefix</label>
+                <UiInput v-model="perkForm.env_prefix" placeholder="BUFF_MOTW_R1" />
+              </div>
+              <div class="form-field">
+                <label class="form-label">Rank Group</label>
+                <UiInput v-model="perkForm.rank_group" placeholder="Group for rank dedup" />
+              </div>
 
-            <!-- Teleport -->
-            <h4 class="form-grid__heading">Teleport Coordinates</h4>
-            <div class="form-field">
-              <label class="form-label">Map ID</label>
-              <UiInput v-model.number="perkForm.teleport_map_id" type="number" />
-            </div>
-            <div class="form-field">
-              <label class="form-label">X</label>
-              <UiInput v-model.number="perkForm.teleport_x" type="number" :step="0.01" />
-            </div>
-            <div class="form-field">
-              <label class="form-label">Y</label>
-              <UiInput v-model.number="perkForm.teleport_y" type="number" :step="0.01" />
-            </div>
-            <div class="form-field">
-              <label class="form-label">Z</label>
-              <UiInput v-model.number="perkForm.teleport_z" type="number" :step="0.01" />
-            </div>
-            <div class="form-field">
-              <label class="form-label">Orientation</label>
-              <UiInput v-model.number="perkForm.teleport_o" type="number" :step="0.01" />
-            </div>
+              <h4 class="perk-form-grid__heading perk-form-grid__heading--sub">Per-Perk Debuff Overrides</h4>
+              <div v-if="perkFieldVisibility.debuffFailSpell" class="form-field">
+                <label class="form-label">Fail Debuff Spell ID</label>
+                <UiInput v-model.number="perkForm.fail_debuff_spell_id" type="number" />
+              </div>
+              <div v-if="perkFieldVisibility.debuffFailDuration" class="form-field">
+                <label class="form-label">Fail Debuff Duration (ms)</label>
+                <UiInput v-model.number="perkForm.fail_debuff_duration_ms" type="number" />
+              </div>
+              <div v-if="perkFieldVisibility.debuffCritfailSpell" class="form-field">
+                <label class="form-label">Crit-Fail Spell ID</label>
+                <UiInput v-model.number="perkForm.critfail_debuff_spell_id" type="number" />
+              </div>
+              <div v-if="perkFieldVisibility.debuffCritfailDuration" class="form-field">
+                <label class="form-label">Crit-Fail Duration (ms)</label>
+                <UiInput v-model.number="perkForm.critfail_debuff_duration_ms" type="number" />
+              </div>
+            </template>
           </div>
 
-          <div class="form-panel__actions">
+          <template #footer>
             <UiButton variant="ghost" size="sm" @click="closePerkForm">Cancel</UiButton>
             <UiButton variant="admin" size="sm" :loading="savingPerk" @click="savePerk">Save Perk</UiButton>
-          </div>
-        </div>
+          </template>
+        </UiSlideOver>
       </div>
 
       <!-- ═══════════ SHOP CATEGORIES ═══════════ -->
@@ -1385,5 +1432,62 @@ onMounted(() => loadAll())
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+// Perk form grid (inside slide-over)
+.perk-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: $spacing-4;
+
+  &__heading {
+    grid-column: 1 / -1;
+    font-size: $font-size-sm;
+    font-weight: $font-weight-semibold;
+    color: $orange-light;
+    margin: $spacing-2 0 0;
+    padding-top: $spacing-3;
+    border-top: 1px solid $border-primary;
+
+    &:first-child {
+      border-top: none;
+      padding-top: 0;
+      margin-top: 0;
+    }
+
+    &--sub {
+      color: $text-secondary;
+      font-size: $font-size-xs;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+  }
+
+  &__advanced-toggle {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: flex-start;
+    margin-top: $spacing-2;
+  }
+
+  @media (max-width: 600px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.advanced-toggle {
+  background: none;
+  border: 1px dashed $border-primary;
+  color: $text-secondary;
+  font-size: $font-size-sm;
+  padding: $spacing-2 $spacing-3;
+  border-radius: $radius-md;
+  cursor: pointer;
+  transition: all $transition-base;
+
+  &:hover {
+    border-color: $orange-primary;
+    color: $orange-light;
+  }
 }
 </style>

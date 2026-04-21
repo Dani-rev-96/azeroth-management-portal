@@ -27,6 +27,11 @@ resources:
   - wow-wotlk.dani-home.de/deployment.yaml
   - wow-wotlk.dani-home.de/service.yaml
 
+  # DB Tunnel SSH Bastion
+  - db-tunnel/custom-init.yaml
+  - db-tunnel/deployment.yaml
+  - db-tunnel/service.yaml
+
   # Ingress
   - ingress/ingress.yaml
 

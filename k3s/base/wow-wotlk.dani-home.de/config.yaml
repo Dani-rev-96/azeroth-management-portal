@@ -46,3 +46,11 @@ data:
   NUXT_PUBLIC_AUTH_MODE: "oauth-proxy"
   NUXT_PUBLIC_DEBUG_MODE: "false"
   NUXT_CONFIG_BACKEND: "self-managed"
+  # DB tunnel — public SSH bastion address handed to users for DBeaver.
+  NUXT_DB_TUNNEL_SSH_HOST: "wow-wotlk.dani-home.de"
+  NUXT_DB_TUNNEL_SSH_PORT: "2222"
+  NUXT_DB_TUNNEL_SSH_USERNAME: "tunnel"
+  # Optional: expose Directus Postgres as a tunnel target.
+  NUXT_DB_TUNNEL_POSTGRES_HOST: "postgresql"
+  NUXT_DB_TUNNEL_POSTGRES_PORT: "5432"
+  NUXT_DB_TUNNEL_POSTGRES_DB: "directus"

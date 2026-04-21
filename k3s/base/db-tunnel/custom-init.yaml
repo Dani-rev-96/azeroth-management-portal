@@ -1,0 +1,24 @@
+# Custom init script for the LSIO openssh-server container.
+#
+# The base image ships sshd with `AllowTcpForwarding no`, which makes this
+# bastion useless (users get "administratively prohibited" on every -L). We
+# flip that to `yes` on every boot, before sshd starts. Per-key `permitopen`
+# restrictions in authorized_keys keep forwarding scoped to the known DB
+# services.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-tunnel-custom-init
+  namespace: wow
+data:
+  10-enable-tcp-forwarding: |
+    #!/usr/bin/with-contenv bash
+    set -e
+    CONF=/config/sshd/sshd_config
+    if [ -f "$CONF" ]; then
+      sed -i 's/^AllowTcpForwarding .*/AllowTcpForwarding yes/' "$CONF"
+      grep -q '^AllowTcpForwarding ' "$CONF" || echo 'AllowTcpForwarding yes' >> "$CONF"
+      echo "[db-tunnel custom-init] AllowTcpForwarding enabled in $CONF"
+    else
+      echo "[db-tunnel custom-init] WARNING: $CONF not present yet" >&2
+    fi

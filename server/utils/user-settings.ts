@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import { join, dirname } from 'path'
-import { existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, statSync } from 'fs'
 
 const DB_PATH = process.env.USER_SETTINGS_DB_PATH || join(process.cwd(), 'data', 'user-settings.db')
 
@@ -24,6 +24,7 @@ export const ADMIN_FEATURES = {
   'admin.dressingroom': { label: 'Dressing Room', description: 'Edit character items, stats, professions, reputations, quests, achievements, titles', icon: '👗' },
   'admin.export': { label: 'Data Export', description: 'Export admin data as CSV/JSON', icon: '📤' },
   'admin.portal-config': { label: 'Portal Config', description: 'Manage portal settings, perks, shop categories via self-managed database', icon: '⚙️' },
+  'admin.db-tunnel': { label: 'Database Tunnel', description: 'Retrieve SSH + DB connection info for external DB tools (e.g. DBeaver)', icon: '🔌' },
 } as const
 
 export type AdminFeatureId = keyof typeof ADMIN_FEATURES
@@ -37,11 +38,79 @@ export function getUserSettingsDatabase() {
       mkdirSync(dataDir, { recursive: true })
     }
 
+    // ─── Pre-open diagnostics ───
+    try {
+      const exists = existsSync(DB_PATH)
+      const size = exists ? statSync(DB_PATH).size : 0
+      console.log(
+        `[UserSettings] Opening DB path=${DB_PATH} cwd=${process.cwd()} exists=${exists} size=${size}`
+      )
+      if (!exists) {
+        console.error(
+          `[UserSettings] ⚠️  WARNING: DB file does not exist at ${DB_PATH}. ` +
+          `A NEW empty database will be created here — any existing feature grants will appear to be missing. ` +
+          `Check that USER_SETTINGS_DB_PATH points into a mounted persistent volume.`
+        )
+      }
+    } catch (err) {
+      console.warn('[UserSettings] Pre-open stat failed:', err)
+    }
+
     db = new Database(DB_PATH)
+
+    // ─── Integrity check ───
+    try {
+      const integrity = db.pragma('integrity_check') as Array<{ integrity_check: string }>
+      const quick = db.pragma('quick_check') as Array<{ quick_check: string }>
+      const integrityResult = integrity?.[0]?.integrity_check ?? 'unknown'
+      const quickResult = quick?.[0]?.quick_check ?? 'unknown'
+      if (integrityResult !== 'ok' || quickResult !== 'ok') {
+        console.error(
+          `[UserSettings] ERROR integrity_check=${integrityResult} quick_check=${quickResult} — database may be corrupt`
+        )
+      } else {
+        console.log('[UserSettings] integrity_check=ok quick_check=ok')
+      }
+    } catch (err) {
+      console.error('[UserSettings] Integrity check threw:', err)
+    }
+
     db.pragma('journal_mode = WAL')
     db.pragma('foreign_keys = ON')
 
+    try {
+      const journalMode = db.pragma('journal_mode', { simple: true })
+      const foreignKeys = db.pragma('foreign_keys', { simple: true })
+      const userVersion = db.pragma('user_version', { simple: true })
+      console.log(
+        `[UserSettings] pragmas journal_mode=${journalMode} foreign_keys=${foreignKeys} user_version=${userVersion}`
+      )
+    } catch (err) {
+      console.warn('[UserSettings] Pragma read failed:', err)
+    }
+
     initUserSettingsSchema()
+
+    try {
+      const tables = (db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+        .all() as Array<{ name: string }>).map(r => r.name)
+      console.log(`[UserSettings] tables=[${tables.join(',')}]`)
+
+      const grants = (db.prepare('SELECT COUNT(*) AS n FROM feature_grants').get() as { n: number }).n
+      const users = (db
+        .prepare('SELECT COUNT(DISTINCT user_id) AS n FROM feature_grants')
+        .get() as { n: number }).n
+      const active = (db
+        .prepare("SELECT COUNT(*) AS n FROM feature_grants WHERE datetime(start_time) <= datetime('now') AND datetime(end_time) > datetime('now')")
+        .get() as { n: number }).n
+      console.log(
+        `[UserSettings] rows feature_grants=${grants} distinct_users=${users} active_now=${active}`
+      )
+    } catch (err) {
+      console.warn('[UserSettings] Row-count diagnostics failed:', err)
+    }
+
     startPeriodicCheckpoint()
     registerShutdownHandlers()
   }
@@ -121,7 +190,9 @@ export const FeatureGrantDB = {
         AND datetime(end_time) > datetime('now')
       LIMIT 1
     `)
-    return stmt.get(userId, featureId) !== undefined
+    const result = stmt.get(userId, featureId) !== undefined
+    console.log(`[UserSettings] hasActiveGrant userId=${userId} featureId=${featureId} → ${result}`)
+    return result
   },
 
   /**
@@ -139,7 +210,11 @@ export const FeatureGrantDB = {
       ORDER BY end_time DESC
       LIMIT 1
     `)
-    return stmt.get(userId, featureId) as DBFeatureGrant | undefined
+    const row = stmt.get(userId, featureId) as DBFeatureGrant | undefined
+    console.log(
+      `[UserSettings] getActiveGrant userId=${userId} featureId=${featureId} found=${!!row}${row ? ` end_time=${row.end_time}` : ''}`
+    )
+    return row
   },
 
   /**
@@ -155,7 +230,11 @@ export const FeatureGrantDB = {
         AND datetime(end_time) > datetime('now')
     `)
     const rows = stmt.all(userId) as Array<{ feature_id: string }>
-    return new Set(rows.map(r => r.feature_id))
+    const set = new Set(rows.map(r => r.feature_id))
+    console.log(
+      `[UserSettings] getActiveFeatures userId=${userId} size=${set.size} features=[${[...set].join(',')}]`
+    )
+    return set
   },
 
   /**

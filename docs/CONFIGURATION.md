@@ -272,6 +272,26 @@ These are additional runtime configuration options:
 
 > **⚠️ Security Note:** The `NUXT_CACHE_API_TOKEN` controls access to the `nuxt-multi-cache` management API (cache inspection and invalidation). The default value `change-me-in-production` is **not safe for production**. Always set a strong, unique token in production deployments.
 
+## Database Tunnel
+
+The `admin.db-tunnel` feature lets granted users create an SSH tunnel to an in-cluster database and paste the resulting connection info into a local client such as DBeaver. In v1 the credentials are static and shared across all grantees — the feature grant itself is the access control.
+
+| Variable                              | Description                                                               | Default      |
+| ------------------------------------- | ------------------------------------------------------------------------- | ------------ |
+| `NUXT_DB_TUNNEL_SSH_HOST`             | Public hostname of the SSH bastion (handed to users).                     | _(required)_ |
+| `NUXT_DB_TUNNEL_SSH_PORT`             | Public port of the SSH bastion.                                           | `2222`       |
+| `NUXT_DB_TUNNEL_SSH_USERNAME`         | Shared SSH username.                                                      | `tunnel`     |
+| `NUXT_DB_TUNNEL_SSH_PRIVATE_KEY_FILE` | Path to a mounted file containing the private key (preferred in k8s).     | —            |
+| `NUXT_DB_TUNNEL_SSH_PRIVATE_KEY`      | Inline private key (PEM). Use only when a file mount is not possible.     | —            |
+| `NUXT_DB_TUNNEL_SSH_FINGERPRINT`      | Optional host-key fingerprint displayed in the UI so users can verify it. | —            |
+| `NUXT_DB_TUNNEL_POSTGRES_HOST`        | Postgres service host (enables a Postgres/Directus target).               | `postgresql` |
+| `NUXT_DB_TUNNEL_POSTGRES_PORT`        | Postgres port.                                                            | `5432`       |
+| `NUXT_DB_TUNNEL_POSTGRES_DB`          | Postgres database name.                                                   | `directus`   |
+| `NUXT_DB_TUNNEL_POSTGRES_USER`        | Postgres user. Falls back to `POSTGRES_USER`.                             | —            |
+| `NUXT_DB_TUNNEL_POSTGRES_PASSWORD`    | Postgres password. Falls back to `POSTGRES_PASSWORD`.                     | —            |
+
+The tunnel is considered **enabled** only when both `NUXT_DB_TUNNEL_SSH_HOST` and a private key (file or inline) are provided. When disabled, the UI shows a "not configured" message. See [k3s/README.md](../k3s/README.md) for the bastion deployment and key rotation procedure.
+
 ## Eluna Features Configuration
 
 Some features require the Eluna Lua engine to be installed on your AzerothCore game server. These features use queue tables that are processed by an Eluna worker script running on the game server.

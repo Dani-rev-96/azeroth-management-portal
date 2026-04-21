@@ -21,6 +21,7 @@ import AdminBackupTab from '~/components/admin/AdminBackupTab.vue'
 import AdminDressingRoomTab from '~/components/admin/AdminDressingRoomTab.vue'
 import AdminFeatureGrantsTab from '~/components/admin/AdminFeatureGrantsTab.vue'
 import AdminPortalConfigTab from '~/components/admin/AdminPortalConfigTab.vue'
+import AdminDatabaseTunnelTab from '~/components/admin/AdminDatabaseTunnelTab.vue'
 import { useAuthStore } from '~/stores/auth'
 import { ref, computed, watchEffect, watch } from 'vue'
 
@@ -44,6 +45,7 @@ const FEATURE_TAB_MAP: Record<string, string[]> = {
   'admin.dressingroom': ['dressingroom'],
   'admin.export': ['mappings'],
   'admin.portal-config': ['portal-config'],
+  'admin.db-tunnel': ['db-tunnel'],
 }
 
 // Tab configuration
@@ -57,6 +59,7 @@ const allTabs = [
   { id: 'dressingroom', label: 'Dressing Room', icon: '👗' },
   { id: 'feature-grants', label: 'Feature Grants', icon: '🔓' },
   { id: 'portal-config', label: 'Portal Config', icon: '⚙️' },
+  { id: 'db-tunnel', label: 'Database Tunnel', icon: '🔌' },
 ]
 
 const tabs = computed(() => {
@@ -421,6 +424,11 @@ async function handleFileDelete(filename: string) {
       <!-- Portal Config Tab -->
       <UiTabPanel v-if="canAccessTab('portal-config')" id="portal-config" :active="activeTab === 'portal-config'">
         <AdminPortalConfigTab />
+      </UiTabPanel>
+
+      <!-- Database Tunnel Tab -->
+      <UiTabPanel v-if="canAccessTab('db-tunnel')" id="db-tunnel" :active="activeTab === 'db-tunnel'">
+        <AdminDatabaseTunnelTab />
       </UiTabPanel>
     </div>
   </div>

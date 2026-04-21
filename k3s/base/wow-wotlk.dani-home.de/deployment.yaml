@@ -18,13 +18,17 @@ spec:
         - name: docker-home
       containers:
         - name: wow-frontend
-          image: docker-hosted.dani-home.de/azeroth-management-portal:1.16.0
+          image: docker-hosted.dani-home.de/azeroth-management-portal:1.16.4
           imagePullPolicy: IfNotPresent
           env:
             - name: NITRO_PORT
               value: "80"
             - name: DB_PATH
               value: "/data/sqlite/mappings.db"
+            - name: PORTAL_CONFIG_DB_PATH
+              value: "/data/sqlite/portal-config.db"
+            - name: USER_SETTINGS_DB_PATH
+              value: "/data/sqlite/user-settings.db"
             - name: NUXT_PUBLIC_PUBLIC_PATH
               value: "/data/public"
             - name: NUXT_PUBLIC_DIRECTUS_URL
@@ -71,6 +75,20 @@ spec:
                 secretKeyRef:
                   name: acore-secrets
                   key: acore-user-password
+            # DB tunnel: private key is mounted as a file below, path passed via env.
+            - name: NUXT_DB_TUNNEL_SSH_PRIVATE_KEY_FILE
+              value: "/secrets/db-tunnel/private_key"
+            # DB tunnel: Postgres credentials reused from the Directus DB secret.
+            - name: NUXT_DB_TUNNEL_POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-secrets
+                  key: POSTGRES_USER
+            - name: NUXT_DB_TUNNEL_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-secrets
+                  key: POSTGRES_PASSWORD
           envFrom:
             - configMapRef:
                 name: wow-frontend-env
@@ -88,6 +106,9 @@ spec:
               mountPath: /data/sqlite
             - name: wow-frontend-data
               mountPath: /data/public
+            - name: db-tunnel-client-key
+              mountPath: /secrets/db-tunnel
+              readOnly: true
       volumes:
         - name: wow-frontend-sqllite-data
           persistentVolumeClaim:
@@ -95,3 +116,10 @@ spec:
         - name: wow-frontend-data
           persistentVolumeClaim:
             claimName: wow-frontend-data
+        - name: db-tunnel-client-key
+          secret:
+            secretName: db-tunnel-ssh-client-key
+            items:
+              - key: private_key
+                path: private_key
+                mode: 0400

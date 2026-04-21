@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import { join, dirname } from 'path'
-import { existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, statSync } from 'fs'
 import type { RealmId } from '~/types'
 
 const DB_PATH = process.env.DB_PATH || join(process.cwd(), 'data', 'mappings.db')
@@ -24,7 +24,30 @@ export function getDatabase() {
       mkdirSync(dataDir, { recursive: true })
     }
 
+    // ─── Pre-open diagnostics ───
+    try {
+      const exists = existsSync(DB_PATH)
+      const size = exists ? statSync(DB_PATH).size : 0
+      console.log(`[MappingsDB] Opening DB path=${DB_PATH} cwd=${process.cwd()} exists=${exists} size=${size}`)
+    } catch (err) {
+      console.warn('[MappingsDB] Pre-open stat failed:', err)
+    }
+
     db = new Database(DB_PATH)
+
+    // ─── Integrity check ───
+    try {
+      const integrity = db.pragma('integrity_check') as Array<{ integrity_check: string }>
+      const integrityResult = integrity?.[0]?.integrity_check ?? 'unknown'
+      if (integrityResult !== 'ok') {
+        console.error(`[MappingsDB] ERROR integrity_check=${integrityResult} — database may be corrupt`)
+      } else {
+        console.log('[MappingsDB] integrity_check=ok')
+      }
+    } catch (err) {
+      console.error('[MappingsDB] Integrity check threw:', err)
+    }
+
     db.pragma('journal_mode = WAL') // Write-Ahead Logging for better concurrency
     db.pragma('foreign_keys = ON')
 

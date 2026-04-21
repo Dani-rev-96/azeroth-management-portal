@@ -9,6 +9,7 @@
  *   import { getRealms, getRealmConfig, getAuthDbConfig } from '#server/utils/config'
  */
 
+import { readFileSync } from 'node:fs'
 import type { RealmConfig } from '~/types'
 import { PERK_REGISTRY, PERK_GROUPS, type PerkGroup, type PerkDefinition } from '#shared/utils/perks'
 import {
@@ -163,6 +164,146 @@ export const useServerDatabaseConfig = async () => {
     realms: getRealms(),
     authDb: getAuthDbConfig(),
     getRealmConfig,
+  }
+}
+
+/**
+ * DB tunnel target — in-cluster database reachable through the SSH bastion.
+ * Host/port are the Kubernetes service values (e.g. `postgresql:5432`);
+ * the user forwards them to localhost through their SSH tunnel.
+ */
+export interface DbTunnelTarget {
+  id: string
+  label: string
+  type: 'postgres' | 'mysql'
+  host: string
+  port: number
+  database: string
+  username: string
+  password: string
+}
+
+export interface DbTunnelSshConfig {
+  /** Public hostname of the SSH bastion (what the user types in DBeaver) */
+  host: string
+  /** Public port of the SSH bastion */
+  port: number
+  /** Shared SSH username */
+  username: string
+  /** OpenSSH-format private key (PEM text) the user pastes into DBeaver */
+  privateKey: string
+  /** Optional host-key fingerprint to display so users can verify */
+  hostFingerprint?: string
+}
+
+export interface DbTunnelConfig {
+  enabled: boolean
+  ssh: DbTunnelSshConfig
+  targets: DbTunnelTarget[]
+}
+
+/**
+ * Assemble the static DB-tunnel configuration from environment variables.
+ *
+ * SSH bastion config is read from `NUXT_DB_TUNNEL_SSH_*`. The private key
+ * can be provided either inline via `NUXT_DB_TUNNEL_SSH_PRIVATE_KEY` or via
+ * a mounted file referenced by `NUXT_DB_TUNNEL_SSH_PRIVATE_KEY_FILE`
+ * (preferred for k8s — mount the secret as a file).
+ *
+ * Targets are derived from the already-configured auth + realm DBs plus
+ * an optional Postgres/Directus target. No new credentials are introduced
+ * in v1 — the bastion forwards to the same services the app already uses.
+ */
+export const getDbTunnelConfig = (): DbTunnelConfig => {
+  const sshHost = process.env.NUXT_DB_TUNNEL_SSH_HOST || ''
+  const sshPort = parseInt(process.env.NUXT_DB_TUNNEL_SSH_PORT || '2222', 10)
+  const sshUser = process.env.NUXT_DB_TUNNEL_SSH_USERNAME || 'tunnel'
+
+  let privateKey = process.env.NUXT_DB_TUNNEL_SSH_PRIVATE_KEY || ''
+  const privateKeyFile = process.env.NUXT_DB_TUNNEL_SSH_PRIVATE_KEY_FILE
+  let keySource = privateKey ? 'inline-env' : 'none'
+  if (!privateKey && privateKeyFile) {
+    try {
+      privateKey = readFileSync(privateKeyFile, 'utf8').trim()
+      keySource = `file:${privateKeyFile}`
+    } catch (err) {
+      console.warn(`[DbTunnel] Failed to read private key from ${privateKeyFile}:`, err)
+      keySource = `file-error:${privateKeyFile}`
+    }
+  }
+
+  const enabled = Boolean(sshHost && privateKey)
+  console.log(
+    `[DbTunnel] enabled=${enabled} host=${sshHost || '(unset)'} port=${sshPort} user=${sshUser} keySource=${keySource} keyLen=${privateKey.length}`
+  )
+
+  // Targets: auth + each realm's characters DB + optional Postgres (Directus)
+  const targets: DbTunnelTarget[] = []
+
+  const authDb = getAuthDbConfig()
+  if (authDb.host) {
+    targets.push({
+      id: 'auth',
+      label: 'Auth (acore_auth)',
+      type: 'mysql',
+      host: authDb.host,
+      port: authDb.port,
+      database: authDb.database,
+      username: authDb.user,
+      password: authDb.password,
+    })
+  }
+
+  for (const realm of Object.values(getRealms())) {
+    targets.push({
+      id: `realm-${realm.id}`,
+      label: `Realm ${realm.id} — ${realm.name} (characters)`,
+      type: 'mysql',
+      host: realm.dbHost,
+      port: realm.dbPort,
+      database: `acore_characters`,
+      username: realm.dbUser,
+      password: realm.dbPassword,
+    })
+    targets.push({
+      id: `realm-${realm.id}-world`,
+      label: `Realm ${realm.id} — ${realm.name} (world)`,
+      type: 'mysql',
+      host: realm.dbHost,
+      port: realm.dbPort,
+      database: `acore_world`,
+      username: realm.dbUser,
+      password: realm.dbPassword,
+    })
+  }
+
+  const pgHost = process.env.NUXT_DB_TUNNEL_POSTGRES_HOST || 'postgresql'
+  const pgUser = process.env.NUXT_DB_TUNNEL_POSTGRES_USER || process.env.POSTGRES_USER
+  const pgPassword = process.env.NUXT_DB_TUNNEL_POSTGRES_PASSWORD || process.env.POSTGRES_PASSWORD
+  const pgDatabase = process.env.NUXT_DB_TUNNEL_POSTGRES_DB || process.env.POSTGRES_DB || 'directus'
+  if (pgUser && pgPassword) {
+    targets.push({
+      id: 'postgres-directus',
+      label: 'Directus (PostgreSQL)',
+      type: 'postgres',
+      host: pgHost,
+      port: parseInt(process.env.NUXT_DB_TUNNEL_POSTGRES_PORT || '5432', 10),
+      database: pgDatabase,
+      username: pgUser,
+      password: pgPassword,
+    })
+  }
+
+  return {
+    enabled,
+    ssh: {
+      host: sshHost,
+      port: sshPort,
+      username: sshUser,
+      privateKey,
+      hostFingerprint: process.env.NUXT_DB_TUNNEL_SSH_FINGERPRINT || undefined,
+    },
+    targets,
   }
 }
 
@@ -355,7 +496,7 @@ export async function getShopConfigAsync() {
     const categories = getSelfManagedShopCategories()
     if (settings) {
       const fallback = getShopConfig()
-      return {
+      const result = {
         enabled: settings.shop_enabled === 1,
         priceMarkupPercent: settings.shop_markup_percent,
         deliveryMethod: settings.shop_delivery_method as 'mail' | 'bag' | 'both',
@@ -365,7 +506,10 @@ export async function getShopConfigAsync() {
           ? categories.map(c => c.slug)
           : fallback.categories) as readonly string[],
       }
+      console.log(`[Config] getShopConfigAsync backend=self-managed enabled=${result.enabled} categories=${result.categories.length}`)
+      return result
     }
+    console.log('[Config] getShopConfigAsync backend=self-managed → settings null, falling through')
   }
 
   // 2. Directus
@@ -377,7 +521,7 @@ export async function getShopConfigAsync() {
 
     if (settings) {
       const fallback = getShopConfig()
-      return {
+      const result = {
         enabled: settings.shop_enabled,
         priceMarkupPercent: settings.shop_markup_percent,
         deliveryMethod: settings.shop_delivery_method as 'mail' | 'bag' | 'both',
@@ -387,10 +531,13 @@ export async function getShopConfigAsync() {
           ? categories.map(c => c.slug)
           : fallback.categories) as readonly string[],
       }
+      console.log(`[Config] getShopConfigAsync backend=directus enabled=${result.enabled} categories=${result.categories.length}`)
+      return result
     }
   }
 
   // 3. Env/hardcoded fallback
+  console.log('[Config] getShopConfigAsync backend=fallback (env/hardcoded)')
   return getShopConfig()
 }
 
@@ -402,27 +549,33 @@ export async function getElunaConfigAsync() {
   if (isSelfManagedEnabled()) {
     const settings = getSelfManagedSettings()
     if (settings) {
-      return {
+      const result = {
         enabled: settings.eluna_enabled === 1,
         shopEnabled: settings.eluna_shop_enabled === 1,
         gmMailEnabled: settings.eluna_gm_mail_enabled === 1,
       }
+      console.log(`[Config] getElunaConfigAsync backend=self-managed enabled=${result.enabled} shop=${result.shopEnabled} gmMail=${result.gmMailEnabled}`)
+      return result
     }
+    console.log('[Config] getElunaConfigAsync backend=self-managed → settings null, falling through')
   }
 
   // 2. Directus
   if (isDirectusEnabled()) {
     const settings = await getDirectusSettings()
     if (settings) {
-      return {
+      const result = {
         enabled: settings.eluna_enabled,
         shopEnabled: settings.eluna_shop_enabled,
         gmMailEnabled: settings.eluna_gm_mail_enabled,
       }
+      console.log(`[Config] getElunaConfigAsync backend=directus enabled=${result.enabled} shop=${result.shopEnabled} gmMail=${result.gmMailEnabled}`)
+      return result
     }
   }
 
   // 3. Env/hardcoded fallback
+  console.log('[Config] getElunaConfigAsync backend=fallback (env/hardcoded)')
   return getElunaConfig()
 }
 
@@ -472,6 +625,7 @@ export async function getPerkConfigAsync() {
         }
       }
 
+      console.log(`[Config] getPerkConfigAsync backend=self-managed groups=${smGroups.length} perks=${smPerks.length}`)
       return {
         groups,
         perks,
@@ -481,6 +635,7 @@ export async function getPerkConfigAsync() {
         critFailDebuffDurationMs: settings?.perk_critfail_debuff_duration_ms ?? parseInt(process.env.NUXT_PERK_CRITFAIL_DEBUFF_DURATION_MS || '600000', 10),
       }
     }
+    console.log(`[Config] getPerkConfigAsync backend=self-managed → groups=${smGroups ? smGroups.length : 'null'} perks=${smPerks ? smPerks.length : 'null'}, falling through`)
   }
 
   // 2. Directus
@@ -507,6 +662,7 @@ export async function getPerkConfigAsync() {
         }
       }
 
+      console.log(`[Config] getPerkConfigAsync backend=directus groups=${dGroups.length} perks=${dPerks.length}`)
       return {
         groups,
         perks,
@@ -519,6 +675,7 @@ export async function getPerkConfigAsync() {
   }
 
   // 3. Env/hardcoded fallback
+  console.log('[Config] getPerkConfigAsync backend=fallback (env/hardcoded)')
   return getPerkConfig()
 }
 
@@ -531,19 +688,23 @@ export async function getPerkRegistryAsync(): Promise<PerkDefinition[]> {
   if (isSelfManagedEnabled()) {
     const smPerks = getSelfManagedPerks()
     if (smPerks && smPerks.length > 0) {
+      console.log(`[Config] getPerkRegistryAsync backend=self-managed perks=${smPerks.length}`)
       return smPerks.map(smToAppPerkDefinition)
     }
+    console.log(`[Config] getPerkRegistryAsync backend=self-managed → ${smPerks ? 'empty' : 'null'}, falling through`)
   }
 
   // 2. Directus
   if (isDirectusEnabled()) {
     const dPerks = await getDirectusPerks()
     if (dPerks && dPerks.length > 0) {
+      console.log(`[Config] getPerkRegistryAsync backend=directus perks=${dPerks.length}`)
       return dPerks.map(toAppPerkDefinition)
     }
   }
 
   // 3. Hardcoded fallback
+  console.log(`[Config] getPerkRegistryAsync backend=fallback perks=${PERK_REGISTRY.length}`)
   return PERK_REGISTRY
 }
 
@@ -555,18 +716,22 @@ export async function getPerkGroupsAsync() {
   if (isSelfManagedEnabled()) {
     const smGroups = getSelfManagedPerkGroups()
     if (smGroups && smGroups.length > 0) {
+      console.log(`[Config] getPerkGroupsAsync backend=self-managed groups=${smGroups.length}`)
       return smGroups.map(smToAppPerkGroupMeta)
     }
+    console.log(`[Config] getPerkGroupsAsync backend=self-managed → ${smGroups ? 'empty' : 'null'}, falling through`)
   }
 
   // 2. Directus
   if (isDirectusEnabled()) {
     const dGroups = await getDirectusPerkGroups()
     if (dGroups && dGroups.length > 0) {
+      console.log(`[Config] getPerkGroupsAsync backend=directus groups=${dGroups.length}`)
       return dGroups.map(toAppPerkGroupMeta)
     }
   }
 
   // 3. Hardcoded fallback
+  console.log(`[Config] getPerkGroupsAsync backend=fallback groups=${PERK_GROUPS.length}`)
   return PERK_GROUPS
 }

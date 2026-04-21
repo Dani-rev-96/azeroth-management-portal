@@ -4,5 +4,55 @@
     "github.copilot.chat.alternateGptPrompt.enabled": true,
     "github.copilot.chat.anthropic.tools.websearch.enabled": true,
     "github.copilot.chat.anthropic.useMessagesApi": true,
-    "github.copilot.chat.codesearch.enabled": true
+    "github.copilot.chat.codesearch.enabled": true,
+		    "chat.tools.terminal.autoApprove": {
+        "docker compose": true,
+        "kubectl kustomize": true,
+        "nix": true,
+        "\\curl": true,
+        "\\grep": true,
+        "\\head": true,
+        "\\pip": true,
+        "\\echo": true,
+        "\\python3": true,
+        "\\./scripts/update-venv-hash.sh": true,
+        "\\tail": true,
+        "./scripts/update-venv-hash.sh": true
+    },
+    "chat.tools.urls.autoApprove": {
+        "https://code.visualstudio.com": {
+            "approveRequest": true,
+            "approveResponse": true
+        },
+        "https://github.com/microsoft/vscode/wiki/*": {
+            "approveRequest": true,
+            "approveResponse": true
+        },
+        "https://raw.githubusercontent.com/open-webui": {
+            "approveRequest": true,
+            "approveResponse": true
+        },
+        "https://*.githubusercontent.com": {
+            "approveRequest": true,
+            "approveResponse": true
+        },
+        "https://raw.githubusercontent.com/open-webui/open-webui/main/docker-compose.yaml": {
+            "approveRequest": true,
+            "approveResponse": true
+        },
+        "https://github.com": {
+            "approveRequest": true,
+            "approveResponse": true
+        },
+        "https://raw.githubusercontent.com": {
+            "approveRequest": true,
+            "approveResponse": true
+        },
+        "https://docs.openwebui.com": {
+            "approveRequest": true,
+            "approveResponse": true
+        },
+        "https://packages.ubuntu.com": true,
+        "https://rocm.nightlies.amd.com": true
+    }
 }

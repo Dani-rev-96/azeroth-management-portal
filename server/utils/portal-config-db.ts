@@ -22,7 +22,7 @@
 
 import Database from 'better-sqlite3'
 import { join, dirname } from 'path'
-import { existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, statSync } from 'fs'
 import type { PerkDefinition, PerkGroupMeta } from '#shared/utils/perks'
 
 // ─── Types ────────────────────────────────────────────────
@@ -130,11 +130,81 @@ export function getPortalConfigDatabase(): Database.Database {
       mkdirSync(dataDir, { recursive: true })
     }
 
+    // ─── Pre-open diagnostics ───
+    try {
+      const exists = existsSync(DB_PATH)
+      const size = exists ? statSync(DB_PATH).size : 0
+      console.log(
+        `[PortalConfigDB] Opening DB path=${DB_PATH} cwd=${process.cwd()} exists=${exists} size=${size} NUXT_CONFIG_BACKEND=${process.env.NUXT_CONFIG_BACKEND || '(unset)'}`
+      )
+      if (!exists && process.env.NUXT_CONFIG_BACKEND === 'self-managed') {
+        console.error(
+          `[PortalConfigDB] ⚠️  WARNING: DB file does not exist at ${DB_PATH} but NUXT_CONFIG_BACKEND=self-managed. ` +
+          `A NEW empty database will be created here — any existing data will appear to be missing. ` +
+          `Check that PORTAL_CONFIG_DB_PATH points into a mounted persistent volume.`
+        )
+      }
+    } catch (err) {
+      console.warn('[PortalConfigDB] Pre-open stat failed:', err)
+    }
+
     db = new Database(DB_PATH)
+
+    // ─── Integrity check before any writes ───
+    try {
+      const integrity = db.pragma('integrity_check') as Array<{ integrity_check: string }>
+      const quick = db.pragma('quick_check') as Array<{ quick_check: string }>
+      const integrityResult = integrity?.[0]?.integrity_check ?? 'unknown'
+      const quickResult = quick?.[0]?.quick_check ?? 'unknown'
+      if (integrityResult !== 'ok' || quickResult !== 'ok') {
+        console.error(
+          `[PortalConfigDB] ERROR integrity_check=${integrityResult} quick_check=${quickResult} — database may be corrupt`
+        )
+      } else {
+        console.log(`[PortalConfigDB] integrity_check=ok quick_check=ok`)
+      }
+    } catch (err) {
+      console.error('[PortalConfigDB] Integrity check threw:', err)
+    }
+
     db.pragma('journal_mode = WAL')
     db.pragma('foreign_keys = ON')
 
+    // ─── Post-pragma diagnostics ───
+    try {
+      const journalMode = db.pragma('journal_mode', { simple: true })
+      const foreignKeys = db.pragma('foreign_keys', { simple: true })
+      const userVersion = db.pragma('user_version', { simple: true })
+      console.log(
+        `[PortalConfigDB] pragmas journal_mode=${journalMode} foreign_keys=${foreignKeys} user_version=${userVersion}`
+      )
+    } catch (err) {
+      console.warn('[PortalConfigDB] Pragma read failed:', err)
+    }
+
     initPortalConfigSchema()
+
+    // ─── Post-schema diagnostics ───
+    try {
+      const tables = (db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+        .all() as Array<{ name: string }>).map(r => r.name)
+      console.log(`[PortalConfigDB] tables=[${tables.join(',')}]`)
+
+      const countOf = (t: string): number | string => {
+        try {
+          return ((db!.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n)
+        } catch (err) {
+          return `err(${(err as Error).message})`
+        }
+      }
+      console.log(
+        `[PortalConfigDB] rows portal_settings=${countOf('portal_settings')} perk_groups=${countOf('perk_groups')} perks=${countOf('perks')} shop_categories=${countOf('shop_categories')}`
+      )
+    } catch (err) {
+      console.warn('[PortalConfigDB] Row-count diagnostics failed:', err)
+    }
+
     startPeriodicCheckpoint()
     registerShutdownHandlers()
   }
@@ -653,8 +723,13 @@ export function syncShopCategoriesFromDefaults(defaults: Array<{ slug: string; s
  * Returns null if self-managed is not enabled or DB is empty.
  */
 export function getSelfManagedSettings(): PortalSettings | null {
-  if (!isSelfManagedEnabled()) return null
-  return PortalSettingsDB.get()
+  if (!isSelfManagedEnabled()) {
+    console.log('[PortalConfigDB] getSelfManagedSettings backend=off (NUXT_CONFIG_BACKEND!=self-managed) → null')
+    return null
+  }
+  const row = PortalSettingsDB.get()
+  console.log(`[PortalConfigDB] getSelfManagedSettings backend=self-managed found=${!!row}`)
+  return row
 }
 
 /**
@@ -662,8 +737,12 @@ export function getSelfManagedSettings(): PortalSettings | null {
  * Returns null if self-managed is not enabled or DB is empty.
  */
 export function getSelfManagedPerkGroups(): PortalPerkGroup[] | null {
-  if (!isSelfManagedEnabled()) return null
+  if (!isSelfManagedEnabled()) {
+    console.log('[PortalConfigDB] getSelfManagedPerkGroups backend=off → null')
+    return null
+  }
   const groups = PerkGroupsDB.findAll()
+  console.log(`[PortalConfigDB] getSelfManagedPerkGroups backend=self-managed rows=${groups.length}${groups.length === 0 ? ' (empty → null)' : ''}`)
   return groups.length > 0 ? groups : null
 }
 
@@ -672,8 +751,12 @@ export function getSelfManagedPerkGroups(): PortalPerkGroup[] | null {
  * Returns null if self-managed is not enabled or DB is empty.
  */
 export function getSelfManagedPerks(): PortalPerk[] | null {
-  if (!isSelfManagedEnabled()) return null
+  if (!isSelfManagedEnabled()) {
+    console.log('[PortalConfigDB] getSelfManagedPerks backend=off → null')
+    return null
+  }
   const perks = PerksDB.findAll()
+  console.log(`[PortalConfigDB] getSelfManagedPerks backend=self-managed rows=${perks.length}${perks.length === 0 ? ' (empty → null)' : ''}`)
   return perks.length > 0 ? perks : null
 }
 
@@ -682,8 +765,12 @@ export function getSelfManagedPerks(): PortalPerk[] | null {
  * Returns null if self-managed is not enabled or DB is empty.
  */
 export function getSelfManagedShopCategories(): PortalShopCategory[] | null {
-  if (!isSelfManagedEnabled()) return null
+  if (!isSelfManagedEnabled()) {
+    console.log('[PortalConfigDB] getSelfManagedShopCategories backend=off → null')
+    return null
+  }
   const categories = ShopCategoriesDB.findAll()
+  console.log(`[PortalConfigDB] getSelfManagedShopCategories backend=self-managed rows=${categories.length}${categories.length === 0 ? ' (empty → null)' : ''}`)
   return categories.length > 0 ? categories : null
 }
 
