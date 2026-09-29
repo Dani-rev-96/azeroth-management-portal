@@ -47,6 +47,21 @@ k3s/
     kubectl apply -f         Alle Base-Ressourcen
 ```
 
+## Image / Registry
+
+Das `wow-frontend`-Image kommt aus **GHCR** (öffentliches Package):
+`ghcr.io/dani-rev-96/azeroth-management-portal:<version>` — die Version ist die
+aus `package.json` und muss mit dem Tag im Deployment übereinstimmen.
+
+- `imagePullSecrets: docker-ghcr` — der Secret liegt bereits im Namespace `wow`
+  und wird von `wow-frontend-infra` verwaltet, hier also nicht anlegen.
+- Der **erste Push muss aus dem CI** kommen (`.github/workflows/build.yml`):
+  Ein GHCR-Package ist nur dann an das Repo gekoppelt, wenn ein Workflow es
+  anlegt — nur dann bekommt `GITHUB_TOKEN` Schreibrechte. Ein manuell angelegtes
+  Package ist nicht gekoppelt und antwortet mit 403 auf Blob-Uploads.
+- Der lokale Weg über podman (`nix run .#buildAndPush` → `docker-hosted.dani-home.de`)
+  bleibt unverändert; er nutzt den `packages.image`-Output, nicht `packages.ghcr`.
+
 ## Deployment
 
 ### Einmalig: Secrets erstellen

@@ -15,10 +15,10 @@ spec:
         app: wow-frontend
     spec:
       imagePullSecrets:
-        - name: docker-home
+        - name: docker-ghcr
       containers:
         - name: wow-frontend
-          image: docker-hosted.dani-home.de/azeroth-management-portal:1.16.4
+          image: ghcr.io/dani-rev-96/azeroth-management-portal:1.16.4
           imagePullPolicy: IfNotPresent
           env:
             - name: NITRO_PORT

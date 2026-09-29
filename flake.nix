@@ -3,12 +3,14 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    nix2container.url = "github:nlewo/nix2container";
   };
 
   outputs =
     {
       nixpkgs,
       flake-utils,
+      nix2container,
       ...
     }:
 
@@ -161,6 +163,67 @@
           };
         };
 
+        # ---- GHCR publishing (nix2container) -------------------------------
+        #
+        # Separate from prod-image: the dockerTools output stays the local podman
+        # path, this one is what CI pushes. nix2container's copyToRegistry runs
+        #   skopeo --insecure-policy copy nix:<storepath> docker://<name>:<tag>
+        # so the `name` below IS the push destination. Flat namespace on purpose —
+        # nested ghcr.io/owner/repo/image paths have package-permission problems.
+        n2c = nix2container.packages.${system}.nix2container;
+
+        ghcrRegistry = "ghcr.io/dani-rev-96";
+        ghcrSourceLabel = "https://github.com/Dani-rev-96/azeroth-management-portal";
+
+        # Runtime layer: the toolchain the prod image ships (same package set as
+        # prod-image's contents, plus nodejs/cacert which dockerTools pulled in
+        # through Cmd but nix2container only takes from layer closures).
+        ghcr-runtime-layer = n2c.buildLayer {
+          deps = [
+            pkgs.bashInteractive
+            pkgs.coreutils
+            pkgs.busybox
+            pkgs.cacert
+            pkgs.nodejs
+            pkgs.sqlite-interactive
+            pkgs.mariadb
+          ];
+          maxLayers = 10;
+          # Explicit for the digest-mismatch case (nix2container#127): keep the
+          # layer tar deterministic so the recorded digest matches what is pushed.
+          reproducible = true;
+        };
+
+        # App layer: the buildNpmPackage output, kept alone so a rebuild of the app
+        # is the only layer that has to be re-uploaded.
+        ghcr-app-layer = n2c.buildLayer {
+          deps = [ prod-package ];
+          layers = [ ghcr-runtime-layer ];
+          maxLayers = 1;
+          reproducible = true;
+        };
+
+        ghcr-image = n2c.buildImage {
+          name = "${ghcrRegistry}/${name}";
+          tag = version;
+          layers = [
+            ghcr-runtime-layer
+            ghcr-app-layer
+          ];
+          config = {
+            Env = [
+              "NODE_EXTRA_CA_CERTS=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+            ];
+            Cmd = [
+              "${pkgs.nodejs}/bin/node"
+              "${prod-package}/server/index.mjs"
+            ];
+            # Mandatory: ties the GHCR package to this repo, which is what gives
+            # the workflow's GITHUB_TOKEN write access on push.
+            Labels."org.opencontainers.image.source" = ghcrSourceLabel;
+          };
+        };
+
         docker_create_and_push = pkgs.writeShellScript "buildAndPush" ''
           ${pkgs.podman}/bin/podman load -i ${prod-image}
 
@@ -207,6 +270,7 @@
           default = prod-package;
           image = prod-image;
           dev-image = dev-image;
+          ghcr = ghcr-image;
         };
 
         apps = {

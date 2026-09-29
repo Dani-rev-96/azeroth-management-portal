@@ -1,0 +1,70 @@
+name: build
+
+# Builds the portal image with nix2container and pushes it to GHCR
+# (ghcr.io/dani-rev-96/azeroth-management-portal:<version from package.json>).
+#
+# The very first push must happen here: a GHCR package is only linked to the repo
+# when a workflow in that repo creates it, and GITHUB_TOKEN gets write access only
+# on a linked package. A package created by a manual/local push comes up unlinked
+# and answers 403 on blob uploads.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    # Docs and plan changes cannot affect the image; do not burn a build on them.
+    paths-ignore: ["docs/**", "*.md"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v30
+        with:
+          extra_nix_config: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+
+      # Split restore/save so a failing *step* does not throw away the store.
+      # The key covers every input the derivation reads, not just flake.lock.
+      - name: Restore Nix store
+        id: nix-cache
+        uses: nix-community/cache-nix-action/restore@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix', 'package-lock.json') }}
+          restore-prefixes-first-match: |
+            nix-${{ runner.os }}-
+          paths: /nix/store
+
+      - name: Login to GHCR
+        # GITHUB_TOKEN is sufficient here because the package is linked to this
+        # repo (see the note above). skopeo login only stores credentials — it
+        # never verifies them, so the failure only shows up on the push.
+        run: |
+          echo "$GITHUB_TOKEN" | nix shell nixpkgs#skopeo --command \
+            skopeo login "$REGISTRY" -u "$GITHUB_ACTOR" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY: ghcr.io
+
+      - name: Build and push
+        run: |
+          nix build -L .#ghcr
+          nix run .#ghcr.copyToRegistry
+
+      - name: Save Nix store
+        if: always() && steps.nix-cache.outputs.hit-primary-key != 'true'
+        uses: nix-community/cache-nix-action/save@v7
+        with:
+          # Must match the restore key exactly, or the save publishes under a key
+          # nothing ever looks for.
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix', 'package-lock.json') }}
+          paths: /nix/store
+          # Keep one entry inside the free per-repo cache allowance; this image's
+          # closure is small, so a single 6 G store is plenty.
+          gc-max-store-size-linux: 6G
