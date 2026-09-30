@@ -1,0 +1,24 @@
+# Backup CronJobs + script ConfigMap. Included from k3s/base/kustomization.yaml (namespace wow).
+# The scripts in scripts/ are the source of truth (scripts/backup/ at the repo root only links here,
+# because kustomize refuses to load files from outside this directory tree).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - pvc.yaml
+  - cronjob.yaml
+  - sqlite-cronjob.yaml
+
+configMapGenerator:
+  - name: wow-backup-scripts
+    files:
+      - scripts/mysql-backup.sh
+      - scripts/sqlite-backup.sh
+      - scripts/backup-retention.sh
+
+generatorOptions:
+  # Stable name: the CronJobs start fresh pods every run, so an in-place update is enough and
+  # `kubectl apply -k` does not leave one orphaned ConfigMap per script change behind.
+  disableNameSuffixHash: true
+  labels:
+    app.kubernetes.io/part-of: wow-backups

@@ -35,4 +35,7 @@ resources:
   # Ingress
   - ingress/ingress.yaml
 
+  # Backups: wow-backups PVC, mysql-backup + portal-sqlite-backup CronJobs, script ConfigMap
+  - backups
+
 # Hinweis: Secrets werden im Overlay hinzugefügt (verschlüsselt mit SOPS)

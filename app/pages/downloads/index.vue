@@ -41,9 +41,6 @@
               <span class="file-size">{{ formatFileSize(file.size) }}</span>
               <span class="file-date">{{ formatDate(file.modified) }}</span>
             </div>
-            <p v-if="getFileDescription(file.name)" class="file-description">
-              {{ getFileDescription(file.name) }}
-            </p>
           </div>
           <div class="file-actions">
             <a
@@ -62,6 +59,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import UiPageHeader from '~/components/ui/UiPageHeader.vue'
+import { formatFileSize } from '~/utils/wow'
 
 interface FileInfo {
   name: string
@@ -88,28 +86,8 @@ async function fetchFiles() {
   }
 }
 
-function formatFileSize(bytes: number): string {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let size = bytes
-  let unitIndex = 0
-
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024
-    unitIndex++
-  }
-
-  return `${size.toFixed(2)} ${units[unitIndex]}`
-}
-
 function formatDate(dateString: string): string {
   return new Date(dateString).toLocaleDateString()
-}
-
-function getFileDescription(filename: string): string {
-  const descriptions: Record<string, string> = {
-    'world-of-warcraft-3.3.5a-hd.7z': 'World of Warcraft 3.3.5a HD Client - Full game installation',
-  }
-  return descriptions[filename] || ''
 }
 
 onMounted(() => {
@@ -207,13 +185,6 @@ onMounted(() => {
 
 .file-size {
   font-weight: 600;
-}
-
-.file-description {
-  color: #94a3b8;
-  font-size: 0.95rem;
-  margin: 0.5rem 0 0 0;
-  line-height: 1.5;
 }
 
 .file-actions {

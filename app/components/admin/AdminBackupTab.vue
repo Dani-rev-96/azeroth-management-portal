@@ -1,14 +1,17 @@
 <script setup lang="ts">
 /**
  * AdminBackupTab - Database backup and restore interface
- * Allows GM to create mysqldump backups & restore from SQL files
- * Also supports portal SQLite database backup & restore
+ * - MySQL: one gzipped dump per database (Download button per card)
+ * - Portal SQLite databases: snapshot download
+ * - Restore (MySQL + portal) only when the server has BACKUP_RESTORE_ENABLED=true;
+ *   uploads are multipart with progress and need the typed database name as confirmation
  */
 import UiButton from '~/components/ui/UiButton.vue'
 import UiMessage from '~/components/ui/UiMessage.vue'
 import UiSelect from '~/components/ui/UiSelect.vue'
 import UiSectionHeader from '~/components/ui/UiSectionHeader.vue'
 import UiLoadingState from '~/components/ui/UiLoadingState.vue'
+import UiProgressBar from '~/components/ui/UiProgressBar.vue'
 
 export interface DatabaseInfo {
   type: 'auth' | 'characters'
@@ -37,9 +40,9 @@ defineProps<Props>()
 
 const databases = ref<DatabaseInfo[]>([])
 const loadingDatabases = ref(false)
-/** Set of unique keys: 'auth' or 'characters-<realmId>' */
-const selectedBackupDbs = ref<Set<string>>(new Set())
-const creatingBackup = ref(false)
+const restoreEnabled = ref(false)
+/** Loading flag per database card key ('auth' or 'characters-<realmId>') */
+const backupLoading = ref<Record<string, boolean>>({})
 const backupError = ref('')
 const backupSuccess = ref('')
 
@@ -48,14 +51,16 @@ const restoreDatabase = ref<'auth' | 'characters'>('auth')
 const restoreRealmId = ref('')
 const restoreFile = ref<File | null>(null)
 const restoring = ref(false)
+const restoreProgress = ref(0)
 const restoreError = ref('')
 const restoreSuccess = ref('')
-const restoreConfirm = ref(false)
+const restoreConfirmText = ref('')
 
 // ─── Portal (SQLite) Backup State ───────────────────────────────────────────────
 
 const portalDatabases = ref<PortalDbInfo[]>([])
 const loadingPortalDbs = ref(false)
+const portalRestoreEnabled = ref(false)
 const portalBackupLoading = ref<Record<string, boolean>>({})
 const portalBackupError = ref('')
 const portalBackupSuccess = ref('')
@@ -63,9 +68,10 @@ const portalBackupSuccess = ref('')
 const portalRestoreDb = ref('')
 const portalRestoreFile = ref<File | null>(null)
 const portalRestoring = ref(false)
+const portalRestoreProgress = ref(0)
 const portalRestoreError = ref('')
 const portalRestoreSuccess = ref('')
-const portalRestoreConfirm = ref(false)
+const portalRestoreConfirmText = ref('')
 
 // ─── Lifecycle ──────────────────────────────────────────────────────────────────
 
@@ -73,13 +79,93 @@ onMounted(async () => {
   await Promise.all([loadDatabases(), loadPortalDatabases()])
 })
 
+// ─── HTTP helpers ───────────────────────────────────────────────────────────────
+
+/** Error text from an h3 error body ({ statusMessage, message }) or the HTTP status. */
+function errorMessageFromBody(text: string, status: number, statusText: string): string {
+  try {
+    const data = JSON.parse(text) as { statusMessage?: string; message?: string }
+    if (data.statusMessage || data.message) return (data.statusMessage || data.message)!
+  } catch {
+    // not JSON
+  }
+  return text.trim().slice(0, 300) || `${status} ${statusText}`.trim()
+}
+
+function filenameFromContentDisposition(header: string | null): string | null {
+  if (!header) return null
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header)
+  if (encoded?.[1]) return decodeURIComponent(encoded[1])
+  const plain = /filename="?([^";]+)"?/i.exec(header)
+  return plain?.[1] ?? null
+}
+
+function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+/** POSTs JSON, saves the response as a file named by the server's Content-Disposition. */
+async function downloadFromPost(url: string, body: Record<string, unknown>, fallbackFilename: string) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    credentials: 'same-origin',
+  })
+  if (!response.ok) {
+    throw new Error(errorMessageFromBody(await response.text(), response.status, response.statusText))
+  }
+  const filename = filenameFromContentDisposition(response.headers.get('content-disposition')) || fallbackFilename
+  const blob = await response.blob()
+  saveBlob(blob, filename)
+  return { filename, size: blob.size }
+}
+
+/** multipart POST via XHR so upload progress (0..100) can be shown. */
+function uploadWithProgress<T>(url: string, form: FormData, onProgress: (percent: number) => void): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', url)
+    xhr.withCredentials = true
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100))
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText) as T)
+        } catch {
+          reject(new Error('Unexpected response from server'))
+        }
+      } else {
+        reject(new Error(errorMessageFromBody(xhr.responseText, xhr.status, xhr.statusText)))
+      }
+    }
+    xhr.onerror = () => reject(new Error('Network error during upload'))
+    xhr.send(form)
+  })
+}
+
+function errorText(error: unknown, fallback: string): string {
+  const e = error as { data?: { statusMessage?: string }; message?: string }
+  return e?.data?.statusMessage || e?.message || fallback
+}
+
 // ─── MySQL Backup Logic ─────────────────────────────────────────────────────────
 
 async function loadDatabases() {
   loadingDatabases.value = true
   try {
-    const data = await $fetch<{ databases: DatabaseInfo[] }>('/api/admin/backup/list')
+    const data = await $fetch<{ databases: DatabaseInfo[]; restoreEnabled?: boolean }>('/api/admin/backup/list')
     databases.value = data.databases || []
+    restoreEnabled.value = data.restoreEnabled === true
   } catch (error) {
     console.error('Failed to load databases:', error)
   } finally {
@@ -92,65 +178,23 @@ function dbKey(db: DatabaseInfo): string {
   return db.type === 'auth' ? 'auth' : `characters-${db.realmId}`
 }
 
-function toggleBackupDb(key: string) {
-  if (selectedBackupDbs.value.has(key)) {
-    selectedBackupDbs.value.delete(key)
-  } else {
-    selectedBackupDbs.value.add(key)
-  }
-  // Trigger reactivity
-  selectedBackupDbs.value = new Set(selectedBackupDbs.value)
-}
-
-const canCreateBackup = computed(() => selectedBackupDbs.value.size > 0)
-
-async function createBackup() {
-  if (!canCreateBackup.value) return
-
-  creatingBackup.value = true
+async function downloadBackup(db: DatabaseInfo) {
+  const key = dbKey(db)
+  backupLoading.value = { ...backupLoading.value, [key]: true }
   backupError.value = ''
   backupSuccess.value = ''
 
   try {
-    // Derive which database types and which realmId from the selected keys
-    const selected = Array.from(selectedBackupDbs.value)
-    const dbs: ('auth' | 'characters')[] = []
-    let realmId: string | undefined
-
-    for (const key of selected) {
-      if (key === 'auth') {
-        dbs.push('auth')
-      } else if (key.startsWith('characters-')) {
-        dbs.push('characters')
-        realmId = key.replace('characters-', '')
-      }
-    }
-
-    const response = await $fetch('/api/admin/backup/create', {
-      method: 'POST',
-      body: { databases: dbs, realmId },
-      responseType: 'blob',
-    })
-
-    // Trigger download
-    const blob = response as unknown as Blob
-    const url = URL.createObjectURL(blob)
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const filename = `backup-${timestamp}-${dbs.join('-')}.sql`
-
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-
-    backupSuccess.value = `Backup downloaded: ${filename}`
-  } catch (error: any) {
-    backupError.value = error.data?.statusMessage || error.message || 'Failed to create backup'
+    const { filename, size } = await downloadFromPost(
+      '/api/admin/backup/create',
+      { database: db.type, realmId: db.type === 'characters' ? db.realmId : undefined },
+      `${db.name}${db.realmId ? `-realm${db.realmId}` : ''}.sql.gz`
+    )
+    backupSuccess.value = `Backup downloaded: ${filename} (${formatBytes(size)})`
+  } catch (error) {
+    backupError.value = `${db.name}${db.realmName ? ` (${db.realmName})` : ''}: ${errorText(error, 'Failed to create backup')}`
   } finally {
-    creatingBackup.value = false
+    backupLoading.value = { ...backupLoading.value, [key]: false }
   }
 }
 
@@ -158,8 +202,9 @@ function handleFileSelect(event: Event) {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0]
   if (file) {
-    if (!file.name.endsWith('.sql')) {
-      restoreError.value = 'Only .sql files are accepted'
+    const name = file.name.toLowerCase()
+    if (!name.endsWith('.sql') && !name.endsWith('.sql.gz')) {
+      restoreError.value = 'Only .sql and .sql.gz files are accepted'
       restoreFile.value = null
       return
     }
@@ -167,12 +212,6 @@ function handleFileSelect(event: Event) {
     restoreError.value = ''
   }
 }
-
-const canRestore = computed(() => {
-  if (!restoreFile.value) return false
-  if (restoreDatabase.value === 'characters' && !restoreRealmId.value) return false
-  return restoreConfirm.value
-})
 
 const realmOptions = computed(() =>
   databases.value
@@ -183,37 +222,50 @@ const realmOptions = computed(() =>
     }))
 )
 
+/** Exact confirmation string the server expects for the MySQL restore */
+const restoreTargetName = computed(() => {
+  if (restoreDatabase.value === 'auth') return 'acore_auth'
+  // The realm is part of the confirmation server-side
+  return `acore_characters@realm${restoreRealmId.value}`
+})
+
+const canRestore = computed(() => {
+  if (!restoreEnabled.value || !restoreFile.value) return false
+  if (restoreDatabase.value === 'characters' && !restoreRealmId.value) return false
+  return restoreConfirmText.value.trim() === restoreTargetName.value
+})
+
 async function handleRestore() {
   if (!canRestore.value || !restoreFile.value) return
 
   restoring.value = true
+  restoreProgress.value = 0
   restoreError.value = ''
   restoreSuccess.value = ''
 
   try {
-    const sql = await restoreFile.value.text()
+    const form = new FormData()
+    form.append('database', restoreDatabase.value)
+    if (restoreDatabase.value === 'characters') form.append('realmId', restoreRealmId.value)
+    form.append('confirm', restoreConfirmText.value.trim())
+    form.append('file', restoreFile.value, restoreFile.value.name)
 
-    const response = await $fetch<{ message: string }>('/api/admin/backup/restore', {
-      method: 'POST',
-      body: {
-        sql,
-        database: restoreDatabase.value,
-        realmId: restoreDatabase.value === 'characters' ? restoreRealmId.value : undefined,
-      },
-    })
+    const response = await uploadWithProgress<{ message: string }>(
+      '/api/admin/backup/restore',
+      form,
+      (percent) => { restoreProgress.value = percent }
+    )
 
     restoreSuccess.value = response.message
     restoreFile.value = null
-    restoreConfirm.value = false
+    restoreConfirmText.value = ''
 
-    // Reset file input
     const fileInput = document.getElementById('restore-file') as HTMLInputElement
     if (fileInput) fileInput.value = ''
 
-    // Reload database info
     await loadDatabases()
-  } catch (error: any) {
-    restoreError.value = error.data?.statusMessage || error.message || 'Failed to restore backup'
+  } catch (error) {
+    restoreError.value = errorText(error, 'Failed to restore backup')
   } finally {
     restoring.value = false
   }
@@ -224,8 +276,9 @@ async function handleRestore() {
 async function loadPortalDatabases() {
   loadingPortalDbs.value = true
   try {
-    const data = await $fetch<{ databases: PortalDbInfo[] }>('/api/admin/backup/portal-list')
+    const data = await $fetch<{ databases: PortalDbInfo[]; restoreEnabled?: boolean }>('/api/admin/backup/portal-list')
     portalDatabases.value = data.databases || []
+    portalRestoreEnabled.value = data.restoreEnabled === true
     // Default restore target to first DB
     if (portalDatabases.value.length > 0 && !portalRestoreDb.value) {
       portalRestoreDb.value = portalDatabases.value[0]!.key
@@ -243,28 +296,14 @@ async function downloadPortalBackup(db: PortalDbInfo) {
   portalBackupSuccess.value = ''
 
   try {
-    const response = await $fetch('/api/admin/backup/portal-create', {
-      method: 'POST',
-      body: { database: db.key },
-      responseType: 'blob',
-    })
-
-    const blob = response as unknown as Blob
-    const url = URL.createObjectURL(blob)
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const filename = `portal-${db.key}-${timestamp}.db`
-
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-
+    const { filename } = await downloadFromPost(
+      '/api/admin/backup/portal-create',
+      { database: db.key },
+      `portal-${db.key}.db`
+    )
     portalBackupSuccess.value = `Downloaded: ${filename}`
-  } catch (error: any) {
-    portalBackupError.value = error.data?.statusMessage || error.message || 'Failed to download backup'
+  } catch (error) {
+    portalBackupError.value = errorText(error, 'Failed to download backup')
   } finally {
     portalBackupLoading.value = { ...portalBackupLoading.value, [db.key]: false }
   }
@@ -274,7 +313,7 @@ function handlePortalFileSelect(event: Event) {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0]
   if (file) {
-    if (!file.name.endsWith('.db')) {
+    if (!file.name.toLowerCase().endsWith('.db')) {
       portalRestoreError.value = 'Only .db (SQLite) files are accepted'
       portalRestoreFile.value = null
       return
@@ -292,43 +331,41 @@ const portalRestoreOptions = computed(() =>
 )
 
 const canPortalRestore = computed(() => {
-  if (!portalRestoreFile.value) return false
+  if (!portalRestoreEnabled.value || !portalRestoreFile.value) return false
   if (!portalRestoreDb.value) return false
-  return portalRestoreConfirm.value
+  return portalRestoreConfirmText.value.trim() === portalRestoreDb.value
 })
 
 async function handlePortalRestore() {
   if (!canPortalRestore.value || !portalRestoreFile.value) return
 
   portalRestoring.value = true
+  portalRestoreProgress.value = 0
   portalRestoreError.value = ''
   portalRestoreSuccess.value = ''
 
   try {
-    const arrayBuffer = await portalRestoreFile.value.arrayBuffer()
-    const base64 = btoa(
-      new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-    )
+    const form = new FormData()
+    form.append('database', portalRestoreDb.value)
+    form.append('confirm', portalRestoreConfirmText.value.trim())
+    form.append('file', portalRestoreFile.value, portalRestoreFile.value.name)
 
-    const response = await $fetch<{ message: string }>('/api/admin/backup/portal-restore', {
-      method: 'POST',
-      body: {
-        database: portalRestoreDb.value,
-        data: base64,
-      },
-    })
+    const response = await uploadWithProgress<{ message: string }>(
+      `/api/admin/backup/portal-restore?database=${encodeURIComponent(portalRestoreDb.value)}`,
+      form,
+      (percent) => { portalRestoreProgress.value = percent }
+    )
 
     portalRestoreSuccess.value = response.message
     portalRestoreFile.value = null
-    portalRestoreConfirm.value = false
+    portalRestoreConfirmText.value = ''
 
-    // Reset file input
     const fileInput = document.getElementById('portal-restore-file') as HTMLInputElement
     if (fileInput) fileInput.value = ''
 
     await loadPortalDatabases()
-  } catch (error: any) {
-    portalRestoreError.value = error.data?.statusMessage || error.message || 'Failed to restore backup'
+  } catch (error) {
+    portalRestoreError.value = errorText(error, 'Failed to restore backup')
   } finally {
     portalRestoring.value = false
   }
@@ -350,22 +387,19 @@ function formatBytes(bytes: number): string {
     <!-- ══════════════════════════════════════════════════════════════════════ -->
     <!-- MySQL Backup Section                                                  -->
     <!-- ══════════════════════════════════════════════════════════════════════ -->
-    <UiSectionHeader title="Create Backup" subtitle="Download a MySQL dump of auth and/or character databases" />
+    <UiSectionHeader title="Create Backup" subtitle="Download a gzipped MySQL dump (.sql.gz) — one file per database" />
 
     <UiLoadingState v-if="loadingDatabases" message="Loading database info..." />
 
     <template v-else>
       <div class="backup-section">
-        <h4 class="section-label">Select Databases</h4>
+        <h4 class="section-label">Databases</h4>
         <div class="database-grid">
           <div
             v-for="db in databases"
             :key="dbKey(db)"
-            :class="[
-              'database-card',
-              { 'database-card--selected': selectedBackupDbs.has(dbKey(db)) }
-            ]"
-            @click="toggleBackupDb(dbKey(db))"
+            class="database-card"
+            :data-testid="`backup-card-${dbKey(db)}`"
           >
             <div class="database-card__icon">
               {{ db.type === 'auth' ? '🔐' : '⚔️' }}
@@ -377,20 +411,16 @@ function formatBytes(bytes: number): string {
                 {{ db.host }} · {{ formatBytes(db.sizeBytes || 0) }}
               </span>
             </div>
-            <div class="database-card__check">
-              {{ selectedBackupDbs.has(dbKey(db)) ? '✓' : '' }}
+            <div class="database-card__action">
+              <UiButton
+                size="sm"
+                :loading="backupLoading[dbKey(db)]"
+                @click="downloadBackup(db)"
+              >
+                💾 Download
+              </UiButton>
             </div>
           </div>
-        </div>
-
-        <div class="backup-actions">
-          <UiButton
-            :loading="creatingBackup"
-            :disabled="!canCreateBackup"
-            @click="createBackup"
-          >
-            💾 Download Backup
-          </UiButton>
         </div>
 
         <UiMessage v-if="backupError" variant="error" dismissible @dismiss="backupError = ''">
@@ -405,11 +435,16 @@ function formatBytes(bytes: number): string {
     <!-- MySQL Restore Section -->
     <UiSectionHeader
       title="Restore Backup"
-      subtitle="Upload a .sql file to restore a database. This is a destructive operation!"
+      subtitle="Upload a .sql or .sql.gz file to restore a database. This is a destructive operation!"
     />
 
     <div class="restore-section">
-      <div class="restore-form">
+      <UiMessage v-if="!restoreEnabled" variant="info" data-testid="restore-disabled">
+        Restore is disabled on this server. Set <code>BACKUP_RESTORE_ENABLED=true</code> on the portal
+        deployment to enable it (only on non-production or during a planned restore).
+      </UiMessage>
+
+      <div v-else class="restore-form">
         <div class="form-row">
           <div class="form-field">
             <label class="form-label" for="restore-db">Target Database</label>
@@ -435,11 +470,11 @@ function formatBytes(bytes: number): string {
         </div>
 
         <div class="form-field">
-          <label class="form-label" for="restore-file">SQL File</label>
+          <label class="form-label" for="restore-file">SQL File (.sql / .sql.gz)</label>
           <input
             id="restore-file"
             type="file"
-            accept=".sql"
+            accept=".sql,.gz"
             class="file-input"
             @change="handleFileSelect"
           />
@@ -449,17 +484,20 @@ function formatBytes(bytes: number): string {
         </div>
 
         <div class="danger-confirm">
-          <label class="confirm-label">
-            <input
-              v-model="restoreConfirm"
-              type="checkbox"
-              class="confirm-checkbox"
-            />
-            <span class="confirm-text">
-              ⚠️ I understand this will <strong>overwrite</strong> the existing database. This cannot be undone.
-            </span>
+          <label class="form-label" for="restore-confirm">
+            ⚠️ This will <strong>overwrite</strong> <code>{{ restoreTargetName }}</code>. Type <code>{{ restoreTargetName }}</code> to confirm:
           </label>
+          <input
+            id="restore-confirm"
+            v-model="restoreConfirmText"
+            type="text"
+            class="confirm-input"
+            autocomplete="off"
+            :placeholder="restoreTargetName"
+          />
         </div>
+
+        <UiProgressBar v-if="restoring" :value="restoreProgress" size="sm" />
 
         <div class="restore-actions">
           <UiButton
@@ -471,14 +509,14 @@ function formatBytes(bytes: number): string {
             ⚠️ Restore Database
           </UiButton>
         </div>
-
-        <UiMessage v-if="restoreError" variant="error" dismissible @dismiss="restoreError = ''">
-          {{ restoreError }}
-        </UiMessage>
-        <UiMessage v-if="restoreSuccess" variant="success" dismissible @dismiss="restoreSuccess = ''">
-          {{ restoreSuccess }}
-        </UiMessage>
       </div>
+
+      <UiMessage v-if="restoreError" variant="error" dismissible @dismiss="restoreError = ''">
+        {{ restoreError }}
+      </UiMessage>
+      <UiMessage v-if="restoreSuccess" variant="success" dismissible @dismiss="restoreSuccess = ''">
+        {{ restoreSuccess }}
+      </UiMessage>
     </div>
 
     <!-- ══════════════════════════════════════════════════════════════════════ -->
@@ -535,7 +573,12 @@ function formatBytes(bytes: number): string {
       />
 
       <div class="restore-section">
-        <div class="restore-form">
+        <UiMessage v-if="!portalRestoreEnabled" variant="info" data-testid="portal-restore-disabled">
+          Restore is disabled on this server. Set <code>BACKUP_RESTORE_ENABLED=true</code> on the portal
+          deployment to enable it (only on non-production or during a planned restore).
+        </UiMessage>
+
+        <div v-else class="restore-form">
           <div class="form-row">
             <div class="form-field">
               <label class="form-label" for="portal-restore-db">Target Database</label>
@@ -563,17 +606,21 @@ function formatBytes(bytes: number): string {
           </div>
 
           <div class="danger-confirm">
-            <label class="confirm-label">
-              <input
-                v-model="portalRestoreConfirm"
-                type="checkbox"
-                class="confirm-checkbox"
-              />
-              <span class="confirm-text">
-                ⚠️ I understand this will <strong>overwrite</strong> the existing portal database. This cannot be undone.
-              </span>
+            <label class="form-label" for="portal-restore-confirm">
+              ⚠️ This will <strong>overwrite</strong> the <code>{{ portalRestoreDb }}</code> portal database
+              (the current file is kept as <code>*.pre-restore-*.db</code>). Type <code>{{ portalRestoreDb }}</code> to confirm:
             </label>
+            <input
+              id="portal-restore-confirm"
+              v-model="portalRestoreConfirmText"
+              type="text"
+              class="confirm-input"
+              autocomplete="off"
+              :placeholder="portalRestoreDb"
+            />
           </div>
+
+          <UiProgressBar v-if="portalRestoring" :value="portalRestoreProgress" size="sm" />
 
           <div class="restore-actions">
             <UiButton
@@ -585,14 +632,14 @@ function formatBytes(bytes: number): string {
               ⚠️ Restore Portal Database
             </UiButton>
           </div>
-
-          <UiMessage v-if="portalRestoreError" variant="error" dismissible @dismiss="portalRestoreError = ''">
-            {{ portalRestoreError }}
-          </UiMessage>
-          <UiMessage v-if="portalRestoreSuccess" variant="success" dismissible @dismiss="portalRestoreSuccess = ''">
-            {{ portalRestoreSuccess }}
-          </UiMessage>
         </div>
+
+        <UiMessage v-if="portalRestoreError" variant="error" dismissible @dismiss="portalRestoreError = ''">
+          {{ portalRestoreError }}
+        </UiMessage>
+        <UiMessage v-if="portalRestoreSuccess" variant="success" dismissible @dismiss="portalRestoreSuccess = ''">
+          {{ portalRestoreSuccess }}
+        </UiMessage>
       </div>
     </template>
   </div>
@@ -637,17 +684,11 @@ function formatBytes(bytes: number): string {
   background: $bg-primary;
   border: 2px solid $border-primary;
   border-radius: $radius-lg;
-  cursor: pointer;
   transition: all $transition-base;
 
   &:hover {
     border-color: $blue-light;
     background: rgba($blue-light, 0.05);
-  }
-
-  &--selected {
-    border-color: $blue-primary;
-    background: rgba($blue-primary, 0.1);
   }
 
   &__icon {
@@ -680,20 +721,11 @@ function formatBytes(bytes: number): string {
     font-size: $font-size-xs;
   }
 
-  &__check {
-    font-size: $font-size-xl;
-    color: $blue-primary;
-    font-weight: $font-weight-bold;
-    width: 24px;
-    text-align: center;
-  }
-
   &__action {
     flex-shrink: 0;
   }
 }
 
-.backup-actions,
 .restore-actions {
   margin-top: $spacing-4;
 }
@@ -749,32 +781,26 @@ function formatBytes(bytes: number): string {
 }
 
 .danger-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-2;
   padding: $spacing-4;
   background: rgba($error, 0.08);
   border: 1px solid rgba($error, 0.3);
   border-radius: $radius-lg;
-}
-
-.confirm-label {
-  display: flex;
-  align-items: flex-start;
-  gap: $spacing-3;
-  cursor: pointer;
-}
-
-.confirm-checkbox {
-  margin-top: 3px;
-  flex-shrink: 0;
-  accent-color: $error;
-}
-
-.confirm-text {
-  font-size: $font-size-sm;
-  color: $text-secondary;
-  line-height: 1.5;
 
   strong {
     color: $error-light;
   }
+}
+
+.confirm-input {
+  padding: $spacing-2 $spacing-3;
+  background: $bg-primary;
+  border: 1px solid rgba($error, 0.4);
+  border-radius: $radius-md;
+  color: $text-primary;
+  font-family: monospace;
+  font-size: $font-size-sm;
 }
 </style>

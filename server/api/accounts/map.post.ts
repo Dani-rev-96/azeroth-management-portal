@@ -1,4 +1,6 @@
 import { AccountMappingDB } from '#server/utils/db'
+import { getAuthenticatedUser } from '#server/utils/auth'
+import { resolveMappingExternalId } from '#server/utils/account-mapping-auth'
 import { verifyAccountCredentials } from '#server/services/account'
 import { findRealmsWithCharacters } from '#server/services/realm'
 import type { ManagedAccount, AccountMapping } from '~/types'
@@ -8,38 +10,34 @@ import type { ManagedAccount, AccountMapping } from '~/types'
  * Create mapping between external auth user and WoW account
  * Verifies WoW account credentials before creating mapping
  * No realm selection needed - auth is shared across all realms
+ *
+ * The mapping is always created for the authenticated user; a body `externalId`
+ * (still sent by the client) must match the authenticated user id.
  */
 export default defineEventHandler(async (event) => {
-  const body = await readBody(event)
+  const user = await getAuthenticatedUser(event)
+  const body = (await readBody(event)) ?? {}
 
-  const { externalId, wowAccountName, wowAccountPassword } = body
+  const { wowAccountName, wowAccountPassword } = body
 
-  if (!externalId || !wowAccountName || !wowAccountPassword) {
+  if (!wowAccountName || !wowAccountPassword) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Missing required fields: externalId, wowAccountName, wowAccountPassword',
+      statusMessage: 'Missing required fields: wowAccountName, wowAccountPassword',
+    })
+  }
+
+  const externalId = resolveMappingExternalId(user.id, body.externalId)
+  if (!externalId) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Cannot create a mapping for another user',
     })
   }
 
   try {
-    const config = useRuntimeConfig()
-    const authMode = config.public.authMode
-
-    // Get display name and email from auth headers or mock user
-    let displayName: string
-    let email: string | undefined
-    if (authMode === 'mock') {
-      displayName = config.public.mockUser || 'admin'
-      email = config.public.mockEmail || 'admin@localhost'
-    } else {
-      displayName = getHeader(event, 'x-remote-user') ||
-                    getHeader(event, 'x-auth-request-preferred-username') ||
-                    getHeader(event, 'x-forwarded-preferred-username') ||
-                    externalId
-      email = getHeader(event, 'x-auth-request-email') ||
-              getHeader(event, 'x-forwarded-email') ||
-              undefined
-    }
+    const displayName = user.username
+    const email = user.email || undefined
 
     // Verify WoW account credentials against AzerothCore database
     const wowAccount = await verifyAccountCredentials(wowAccountName, wowAccountPassword)

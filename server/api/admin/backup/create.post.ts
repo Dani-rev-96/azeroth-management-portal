@@ -1,136 +1,90 @@
 /**
  * POST /api/admin/backup/create
- * Create a MySQL dump of auth and/or character databases
- * GM only — returns the dump as a downloadable SQL file
+ * Dump ONE MySQL database (auth or a realm's characters DB) as a gzipped SQL file.
+ * The dump is streamed mysqldump → gzip → temp file → response (never buffered in memory).
+ * GM / admin.backup only.
  *
- * Body: { databases: ('auth' | 'characters')[], realmId?: string }
+ * Body: { database: 'auth' | 'characters', realmId?: string }
+ *   (legacy: { databases: [x] } with exactly one entry)
  */
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
+import { once } from 'node:events'
+import { rm, stat } from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
+import { join } from 'node:path'
 import { getAuthenticatedFeatureUser } from '#server/utils/auth'
-import { getAuthDbConfig, getRealmConfig, getRealms } from '#server/utils/config'
-
-const execFileAsync = promisify(execFile)
-
-interface BackupDbConfig {
-  host: string
-  port: number
-  user: string
-  password: string
-  database: string
-}
+import { getAuthDbConfig, getRealmConfig } from '#server/utils/config'
+import {
+  buildMysqlBackupFilename,
+  createBackupTempDir,
+  spawnDumpToFile,
+} from '#server/utils/backup/mysql-backup'
+import {
+  BackupRequestError,
+  parseBackupTargetRequest,
+  resolveBackupTarget,
+} from '#server/utils/backup/mysql-target'
 
 export default defineEventHandler(async (event) => {
+  let tempDir: string | null = null
+  // Attach before the dump starts: if the client disconnects mid-dump, 'close'
+  // has already fired by the time the dump finishes and would otherwise be missed.
+  const clientGone = new AbortController()
+  event.node.res.once('close', () => clientGone.abort())
+
   try {
     const { username } = await getAuthenticatedFeatureUser(event, 'admin.backup')
 
     const body = await readBody(event)
-    const { databases, realmId } = body as {
-      databases: ('auth' | 'characters')[]
-      realmId?: string
+    const target = resolveBackupTarget(parseBackupTargetRequest(body), { getAuthDbConfig, getRealmConfig })
+    const filename = buildMysqlBackupFilename(target.config.database, target.realmId)
+
+    tempDir = await createBackupTempDir()
+    const dumpPath = join(tempDir, filename)
+    const startedAt = Date.now()
+    await spawnDumpToFile(target.config, dumpPath, { signal: clientGone.signal })
+    if (clientGone.signal.aborted) {
+      // Client went away during the dump; the util already removed the dump file.
+      console.log(`[Backup] Client disconnected during backup ${filename}; dump discarded`)
+      return
+    }
+    const { size } = await stat(dumpPath)
+
+    console.log(
+      `[Backup] GM ${username} created backup ${filename} (${size} bytes gz, ${Date.now() - startedAt} ms)`
+    )
+
+    // Open the file, then delete it right away: the open fd keeps the data readable
+    // and nothing is left behind in TMPDIR however the download ends.
+    const stream = createReadStream(dumpPath)
+    await once(stream, 'open')
+    await rm(tempDir, { recursive: true, force: true })
+    tempDir = null
+    clientGone.signal.addEventListener('abort', () => stream.destroy())
+    if (clientGone.signal.aborted) {
+      stream.destroy()
+      return
     }
 
-    if (!databases || !Array.isArray(databases) || databases.length === 0) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'At least one database must be selected (auth, characters)',
-      })
-    }
-
-    const validDbs = ['auth', 'characters'] as const
-    for (const db of databases) {
-      if (!validDbs.includes(db as typeof validDbs[number])) {
-        throw createError({
-          statusCode: 400,
-          statusMessage: `Invalid database: ${db}. Valid options: ${validDbs.join(', ')}`,
-        })
-      }
-    }
-
-    // Characters database requires a realm ID
-    if (databases.includes('characters') && !realmId) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Realm ID is required when backing up characters database',
-      })
-    }
-
-    // Validate realm exists
-    if (realmId) {
-      const realm = getRealmConfig(realmId)
-      if (!realm) {
-        throw createError({
-          statusCode: 404,
-          statusMessage: `Realm ${realmId} not found`,
-        })
-      }
-    }
-
-    // Build and execute mysqldump
-    const dumpParts: string[] = []
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-    let filename = `backup-${timestamp}`
-
-    for (const db of databases) {
-      if (db === 'auth') {
-        const authConfig = getAuthDbConfig()
-        const dbConfig: BackupDbConfig = {
-          host: authConfig.host,
-          port: authConfig.port,
-          user: authConfig.user,
-          password: authConfig.password,
-          database: authConfig.database,
-        }
-
-        dumpParts.push(`-- Database: ${dbConfig.database}`)
-        dumpParts.push(`-- Backup created by GM: ${username}`)
-        dumpParts.push(`-- Timestamp: ${new Date().toISOString()}`)
-        dumpParts.push('')
-
-        const dumpResult = await executeMysqldump(dbConfig)
-        dumpParts.push(dumpResult)
-        dumpParts.push('')
-        filename += '-auth'
-      }
-
-      if (db === 'characters' && realmId) {
-        const realmConfig = getRealmConfig(realmId)!
-        const dbConfig: BackupDbConfig = {
-          host: realmConfig.dbHost,
-          port: realmConfig.dbPort,
-          user: realmConfig.dbUser,
-          password: realmConfig.dbPassword,
-          database: 'acore_characters',
-        }
-
-        dumpParts.push(`-- Database: ${dbConfig.database} (Realm: ${realmConfig.name})`)
-        dumpParts.push(`-- Backup created by GM: ${username}`)
-        dumpParts.push(`-- Timestamp: ${new Date().toISOString()}`)
-        dumpParts.push('')
-
-        const dumpResult = await executeMysqldump(dbConfig)
-        dumpParts.push(dumpResult)
-        dumpParts.push('')
-        filename += `-characters-${realmId}`
-      }
-    }
-
-    filename += '.sql'
-
-    const fullDump = dumpParts.join('\n')
-    const byteLength = new TextEncoder().encode(fullDump).length
-
-    console.log(`[Backup] GM ${username} created backup: ${filename} (${formatBytes(byteLength)})`)
-
-    // Return as downloadable SQL file
     setResponseHeaders(event, {
-      'Content-Type': 'application/sql',
+      'Content-Type': 'application/gzip',
       'Content-Disposition': `attachment; filename="${filename}"`,
-      'Content-Length': byteLength.toString(),
+      'Content-Length': size.toString(),
+      'Cache-Control': 'no-store',
     })
 
-    return fullDump
+    return sendStream(event, stream)
   } catch (error) {
+    if (tempDir) {
+      await rm(tempDir, { recursive: true, force: true }).catch(() => {})
+    }
+    if (clientGone.signal.aborted) {
+      // Nothing to answer: the client disconnected during the dump.
+      return
+    }
+
+    if (error instanceof BackupRequestError) {
+      throw createError({ statusCode: error.statusCode, statusMessage: error.message })
+    }
     if (error && typeof error === 'object' && 'statusCode' in error) {
       throw error
     }
@@ -142,44 +96,3 @@ export default defineEventHandler(async (event) => {
     })
   }
 })
-
-async function executeMysqldump(config: BackupDbConfig): Promise<string> {
-  const args = [
-    `--host=${config.host}`,
-    `--port=${config.port}`,
-    `--user=${config.user}`,
-    '--single-transaction',
-    '--routines',
-    '--triggers',
-    '--add-drop-table',
-    config.database,
-  ]
-
-  try {
-    const { stdout, stderr } = await execFileAsync('mysqldump', args, {
-      maxBuffer: 1024 * 1024 * 512, // 512MB max
-      env: {
-        ...process.env,
-        // Use MYSQL_PWD env var for password (avoids command line warning)
-        MYSQL_PWD: config.password,
-      },
-    })
-
-    if (stderr && !stderr.includes('Warning') && !stderr.includes('Gtid')) {
-      console.warn('[Backup] mysqldump stderr:', stderr)
-    }
-
-    return stdout
-  } catch (error: any) {
-    console.error('[Backup] mysqldump failed:', error.message)
-    throw new Error(`mysqldump failed for ${config.database}: ${error.stderr || error.message}`)
-  }
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`
-}

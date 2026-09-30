@@ -1,0 +1,19 @@
+# Backup volume for the logical dumps (mysql-backup, portal-sqlite-backup CronJobs).
+# Layout: /backups/mysql/<database>/<target>/<ts>.sql.gz|json, /backups/sqlite/<name>/<ts>.db.gz|json,
+# plus /backups/{mysql,sqlite}/status.json. See k3s/README.md "Backups".
+# Same node and Longhorn disk as the databases: this protects against logical damage (bad restore,
+# deleted characters, broken migration), not against losing the node. Off-site copies come from the
+# Longhorn backup target (k3s/longhorn/) once one is configured.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wow-backups
+  namespace: wow
+  labels:
+    app.kubernetes.io/part-of: wow-backups
+spec:
+  accessModes: [ "ReadWriteOnce" ]
+  storageClassName: longhorn-fast
+  resources:
+    requests:
+      storage: 30Gi

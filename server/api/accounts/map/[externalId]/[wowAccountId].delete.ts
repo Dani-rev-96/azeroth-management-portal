@@ -1,8 +1,11 @@
 import { AccountMappingDB } from '#server/utils/db'
+import { getAuthenticatedUser } from '#server/utils/auth'
+import { canDeleteMapping } from '#server/utils/account-mapping-auth'
 
 /**
  * DELETE /api/accounts/map/:externalId/:wowAccountId
- * Remove mapping between external auth user and WoW account
+ * Remove mapping between external auth user and WoW account.
+ * Allowed for the mapping's owner (externalId === authenticated user id) or a GM.
  */
 export default defineEventHandler(async (event) => {
   const externalId = getRouterParam(event, 'externalId')
@@ -24,23 +27,28 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const config = useRuntimeConfig()
-    const authMode = config.public.authMode
+    const user = await getAuthenticatedUser(event)
 
-    // Get authenticated user from headers or mock user
-    let authenticatedUser: string | undefined
-    if (authMode === 'mock') {
-      authenticatedUser = config.public.mockUser || 'admin'
-    } else {
-      authenticatedUser = getHeader(event, 'x-remote-user') ||
-                          getHeader(event, 'x-auth-request-preferred-username') ||
-                          getHeader(event, 'x-forwarded-preferred-username')
+    let isGM = false
+    if (externalId !== user.id) {
+      // Only non-owners need the GM lookup (same source as server/utils/auth.ts)
+      const config = useRuntimeConfig()
+      if (config.public.authMode === 'mock') {
+        isGM = (config.public.mockGMLevel || 0) > 0
+      } else {
+        const { getUserGMLevel } = await import('#server/services/gm')
+        isGM = (await getUserGMLevel(user.id)) > 0
+      }
     }
 
-    // Verify the mapping belongs to the authenticated user
-    const mappings = AccountMappingDB.findByExternalId(externalId)
-    const mapping = mappings.find(m => m.wow_account_id === wowAccountId)
+    if (!canDeleteMapping({ userId: user.id, isGM, externalId })) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: 'Not authorized to delete this mapping',
+      })
+    }
 
+    const mapping = AccountMappingDB.findByIds(externalId, wowAccountId)
     if (!mapping) {
       throw createError({
         statusCode: 404,
@@ -48,15 +56,6 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Additional security check: verify externalId matches authenticated user
-    if (authenticatedUser && mapping.display_name !== authenticatedUser) {
-      throw createError({
-        statusCode: 403,
-        statusMessage: 'Not authorized to delete this mapping',
-      })
-    }
-
-    // Delete the mapping from database
     const deleted = AccountMappingDB.delete(externalId, wowAccountId)
 
     if (!deleted) {

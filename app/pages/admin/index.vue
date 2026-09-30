@@ -23,6 +23,7 @@ import AdminFeatureGrantsTab from '~/components/admin/AdminFeatureGrantsTab.vue'
 import AdminPortalConfigTab from '~/components/admin/AdminPortalConfigTab.vue'
 import AdminDatabaseTunnelTab from '~/components/admin/AdminDatabaseTunnelTab.vue'
 import { useAuthStore } from '~/stores/auth'
+import { formatFileSize } from '~/utils/wow'
 import { ref, computed, watchEffect, watch } from 'vue'
 
 // Auth check
@@ -119,6 +120,8 @@ const mailSuccess = ref('')
 // File upload state
 const uploading = ref(false)
 const uploadProgress = ref(0)
+const uploadBytesPerSecond = ref(0)
+const uploadEtaSeconds = ref<number | null>(null)
 const uploadError = ref('')
 const uploadSuccess = ref('')
 const deletingFile = ref('')
@@ -245,53 +248,130 @@ async function handleSendMail(data: MailFormData) {
   }
 }
 
-async function handleFileUpload(file: File) {
-  uploading.value = true
+interface FileUploadResponse {
+  success: boolean
+  filename: string
+  size: number
+  replaced: boolean
+}
+
+class FileUploadError extends Error {
+  status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
+let activeUploadXhr: XMLHttpRequest | null = null
+
+/** Error text from an h3 error body ({ statusMessage, message, data: { detail } }) */
+function describeUploadFailure(xhr: XMLHttpRequest): string {
+  let body: any = null
+  try {
+    body = JSON.parse(xhr.responseText)
+  } catch {
+    // Not JSON (e.g. a proxy error page)
+  }
+  const message = body?.statusMessage || body?.message
+  const detail = body?.data?.detail
+  if (message && detail) return `${message}: ${detail}`
+  return message || detail || `Upload failed (HTTP ${xhr.status}${xhr.statusText ? ` ${xhr.statusText}` : ''})`
+}
+
+function sendFileUpload(file: File, overwrite: boolean): Promise<FileUploadResponse> {
   uploadProgress.value = 0
+  uploadBytesPerSecond.value = 0
+  uploadEtaSeconds.value = null
+
+  const formData = new FormData()
+  formData.append('file', file)
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    activeUploadXhr = xhr
+    let sampleAt = performance.now()
+    let sampleLoaded = 0
+
+    xhr.upload.addEventListener('progress', (e) => {
+      if (!e.lengthComputable) return
+      uploadProgress.value = Math.round((e.loaded / e.total) * 100)
+
+      // Smoothed speed over >= 1 s samples, ETA from the smoothed speed
+      const now = performance.now()
+      const elapsedSeconds = (now - sampleAt) / 1000
+      if (elapsedSeconds < 1) return
+      const rate = (e.loaded - sampleLoaded) / elapsedSeconds
+      uploadBytesPerSecond.value = uploadBytesPerSecond.value ? uploadBytesPerSecond.value * 0.7 + rate * 0.3 : rate
+      uploadEtaSeconds.value = uploadBytesPerSecond.value > 0 ? (e.total - e.loaded) / uploadBytesPerSecond.value : null
+      sampleAt = now
+      sampleLoaded = e.loaded
+    })
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new FileUploadError(describeUploadFailure(xhr), xhr.status))
+        return
+      }
+      try {
+        const body = JSON.parse(xhr.responseText) as FileUploadResponse
+        if (body?.success) {
+          resolve(body)
+          return
+        }
+      } catch {
+        // fall through
+      }
+      reject(new FileUploadError('Unexpected response from server (session expired?)', xhr.status))
+    })
+    xhr.addEventListener('error', () => reject(new FileUploadError('Network error during upload', 0)))
+    xhr.addEventListener('abort', () => reject(new FileUploadError('Upload cancelled', 0)))
+    xhr.addEventListener('loadend', () => {
+      if (activeUploadXhr === xhr) activeUploadXhr = null
+    })
+
+    xhr.open('POST', `/api/admin/files/upload${overwrite ? '?overwrite=1' : ''}`)
+    xhr.send(formData)
+  })
+}
+
+async function handleFileUpload(file: File) {
   uploadError.value = ''
   uploadSuccess.value = ''
 
+  let overwrite = false
+  if (publicFiles.value.some(existing => existing.name === file.name)) {
+    if (!confirm(`"${file.name}" already exists. Replace it?`)) return
+    overwrite = true
+  }
+
+  uploading.value = true
   try {
-    const formData = new FormData()
-    formData.append('file', file)
+    let result: FileUploadResponse
+    try {
+      result = await sendFileUpload(file, overwrite)
+    } catch (error) {
+      // Server-side conflict (e.g. the list was stale): ask, then retry with overwrite
+      const isConflict = error instanceof FileUploadError && error.status === 409
+      if (!isConflict || overwrite || !confirm('File exists. Replace?')) throw error
+      result = await sendFileUpload(file, true)
+    }
 
-    await new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
-
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          uploadProgress.value = Math.round((e.loaded / e.total) * 100)
-        }
-      })
-
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(JSON.parse(xhr.responseText))
-        } else {
-          reject(new Error(xhr.responseText || 'Upload failed'))
-        }
-      })
-
-      xhr.addEventListener('error', () => reject(new Error('Upload failed')))
-      xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')))
-
-      xhr.open('POST', '/api/admin/files/upload')
-      xhr.send(formData)
-    })
-
-    uploadSuccess.value = `Successfully uploaded ${file.name}`
+    uploadSuccess.value = `${result.replaced ? 'Replaced' : 'Uploaded'} ${result.filename} (${formatFileSize(result.size)})`
     await fetchFiles()
   } catch (error: any) {
-    try {
-      const errorData = JSON.parse(error.message)
-      uploadError.value = errorData.data?.detail || errorData.statusMessage || 'Upload failed'
-    } catch {
-      uploadError.value = error.message || 'Failed to upload file'
-    }
+    uploadError.value = error?.message || 'Failed to upload file'
   } finally {
     uploading.value = false
     uploadProgress.value = 0
+    uploadBytesPerSecond.value = 0
+    uploadEtaSeconds.value = null
   }
+}
+
+function cancelFileUpload() {
+  activeUploadXhr?.abort()
 }
 
 async function handleFileDelete(filename: string) {
@@ -303,7 +383,7 @@ async function handleFileDelete(filename: string) {
     })
     await fetchFiles()
   } catch (error: any) {
-    alert(error.data?.message || 'Failed to delete file')
+    alert(error.data?.statusMessage || error.data?.message || 'Failed to delete file')
   } finally {
     deletingFile.value = ''
   }
@@ -398,10 +478,13 @@ async function handleFileDelete(filename: string) {
           :loading="loadingFiles"
           :uploading="uploading"
           :upload-progress="uploadProgress"
+          :upload-bytes-per-second="uploadBytesPerSecond"
+          :upload-eta-seconds="uploadEtaSeconds"
           :upload-error="uploadError"
           :upload-success="uploadSuccess"
           :deleting-file="deletingFile"
           @upload="handleFileUpload"
+          @cancel="cancelFileUpload"
           @delete="handleFileDelete"
         />
       </UiTabPanel>

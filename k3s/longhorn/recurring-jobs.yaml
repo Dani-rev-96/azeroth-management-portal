@@ -1,0 +1,53 @@
+# Longhorn RecurringJobs for the wow volumes. Cluster resources in longhorn-system, so they are NOT
+# part of the wow kustomization (k3s/base forces namespace: wow). Applied manually, see README.md.
+#
+# Volumes opt in through the Longhorn group "wow-backup": label the Longhorn volume with
+#   recurring-job-group.longhorn.io/wow-backup=enabled
+#
+# Longhorn runs every RecurringJob as a Kubernetes CronJob without timeZone, so the cron expressions
+# are evaluated in the kube-controller-manager's local time (k3s: the host time zone).
+#
+# Status 2026-09-30 (read-only check): BackupTarget "default" has backupTargetURL "" and reports
+# "backup target URL is empty". The "backup" task therefore fails until a target (S3/NFS/CIFS) is
+# configured. Apply only the snapshot job until then:
+#   kubectl apply -f k3s/longhorn/recurring-jobs.yaml -l wow.dani-home.de/requires-backup-target=false
+---
+# Daily crash-consistent snapshot, kept 7 times. Snapshots live on the same Longhorn disk as the
+# volume (single node, 1 replica): they protect against logical damage, not against losing the disk.
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: wow-snapshot-daily
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/part-of: wow-backups
+    wow.dani-home.de/requires-backup-target: "false"
+spec:
+  name: wow-snapshot-daily
+  task: snapshot
+  cron: "0 2 * * *"
+  retain: 7
+  concurrency: 2
+  groups:
+    - wow-backup
+  labels: {}
+---
+# Weekly backup (snapshot + upload to the backup target), kept 4 times. This is the off-site copy.
+# Requires a configured Longhorn backup target (see README.md).
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: wow-backup-weekly
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/part-of: wow-backups
+    wow.dani-home.de/requires-backup-target: "true"
+spec:
+  name: wow-backup-weekly
+  task: backup
+  cron: "0 4 * * 0"
+  retain: 4
+  concurrency: 1
+  groups:
+    - wow-backup
+  labels: {}

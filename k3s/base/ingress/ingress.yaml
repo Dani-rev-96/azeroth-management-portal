@@ -16,7 +16,6 @@ spec:
           port: 80
       middlewares:
         - name: wow-frontend-auth
-        - name: download-timeout
       priority: 100  # Higher priority to match first
     # All other routes WITH compress and auth
     - kind: Rule
@@ -28,7 +27,6 @@ spec:
       middlewares:
         - name: compress
         - name: wow-frontend-auth
-        - name: download-timeout
   tls:
     secretName: wow-wotlk.dani-home.de
 ---
@@ -76,17 +74,6 @@ spec:
   redirectScheme:
     scheme: https
     permanent: true
----
-# Middleware for long download timeouts
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: download-timeout
-  namespace: wow
-spec:
-  headers:
-    customRequestHeaders:
-      Connection: "keep-alive"
 ---
 # HTTPS für Directus Admin
 apiVersion: traefik.io/v1alpha1

@@ -70,7 +70,6 @@ export default defineNuxtConfig({
   modules: [
 		"@vueuse/nuxt",
 		"@pinia/nuxt",
-		"@vite-pwa/nuxt",
 		"nuxt-svgo",
 		// "@nuxt/image",
 		// "nuxt-directus",
@@ -89,9 +88,12 @@ export default defineNuxtConfig({
 		route: {
 			enabled: true,
 		},
+		// The management API is disabled: its token would be baked in at build time
+		// (defaulting to a public value). An empty token also fails closed if it is
+		// ever re-enabled without a server-options authorization callback.
 		api: {
-			enabled: true,
-			authorization: process.env.NUXT_CACHE_API_TOKEN || 'change-me-in-production',
+			enabled: false,
+			authorization: '',
 		},
 	},
   svgo: {

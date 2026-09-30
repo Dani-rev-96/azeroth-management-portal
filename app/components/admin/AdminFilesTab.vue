@@ -21,6 +21,10 @@ export interface Props {
   loading?: boolean
   uploading?: boolean
   uploadProgress?: number
+  /** Current upload speed in bytes per second (0 while unknown) */
+  uploadBytesPerSecond?: number
+  /** Estimated seconds remaining, null while unknown */
+  uploadEtaSeconds?: number | null
   uploadError?: string
   uploadSuccess?: string
   deletingFile?: string
@@ -28,12 +32,33 @@ export interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   uploadProgress: 0,
+  uploadBytesPerSecond: 0,
+  uploadEtaSeconds: null,
 })
 
 const emit = defineEmits<{
   upload: [file: File]
+  cancel: []
   delete: [filename: string]
 }>()
+
+function formatUploadEta(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`
+  if (m > 0) return `${m}m ${String(s).padStart(2, '0')}s`
+  return `${s}s`
+}
+
+const uploadStats = computed(() => {
+  if (!props.uploadBytesPerSecond) return 'Starting…'
+  const speed = `${formatFileSize(props.uploadBytesPerSecond)}/s`
+  return props.uploadEtaSeconds == null
+    ? speed
+    : `${speed} · ${formatUploadEta(props.uploadEtaSeconds)} remaining`
+})
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
@@ -100,11 +125,23 @@ watch(() => props.uploadSuccess, (success) => {
           📤 Upload File
         </UiButton>
 
-        <UiProgressBar
-          v-if="uploading"
-          :value="uploadProgress"
-          :max="100"
-        />
+        <div v-if="uploading" class="upload-progress">
+          <UiProgressBar
+            :value="uploadProgress"
+            :max="100"
+          />
+          <div class="upload-progress__meta">
+            <span class="upload-progress__stats">{{ uploadStats }}</span>
+            <UiButton
+              type="button"
+              size="sm"
+              variant="secondary"
+              @click="emit('cancel')"
+            >
+              ✖ Cancel
+            </UiButton>
+          </div>
+        </div>
 
         <UiMessage v-if="uploadError" variant="error">{{ uploadError }}</UiMessage>
         <UiMessage v-if="uploadSuccess" variant="success">{{ uploadSuccess }}</UiMessage>
@@ -204,6 +241,25 @@ watch(() => props.uploadSuccess, (success) => {
     color: $blue-light;
     cursor: pointer;
     margin-right: $spacing-4;
+  }
+}
+
+.upload-progress {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-2;
+
+  &__meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: $spacing-4;
+  }
+
+  &__stats {
+    color: $text-secondary;
+    font-size: $font-size-sm;
+    font-variant-numeric: tabular-nums;
   }
 }
 

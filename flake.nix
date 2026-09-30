@@ -26,10 +26,38 @@
 
         package-json = pkgs.lib.trivial.importJSON ./package.json;
 
+        # MySQL client shipped in the images and the devShell. The game DB servers
+        # run `mysql:9`; the 8.4 LTS client matches their auth/protocol, the MariaDB
+        # client does not reliably (mysqldump/mysql are used for backup/restore).
+        mysqlClient = pkgs.mysql84;
+
+        # nix2container images have no /bin or /usr/bin, so the runtime tools are
+        # only reachable through an explicit PATH of store paths.
+        runtimePath = pkgs.lib.makeBinPath [
+          pkgs.nodejs
+          mysqlClient
+          pkgs.gzip
+          pkgs.sqlite-interactive
+          pkgs.coreutils
+          pkgs.bashInteractive
+          pkgs.busybox
+        ];
+
+        # Env shared by the prod images. TMPDIR=/tmp expects a writable /tmp
+        # (an emptyDir in the k8s deployment); the backup code resolves the MySQL
+        # binaries through MYSQLDUMP_BIN / MYSQL_BIN instead of PATH lookups.
+        runtimeEnv = [
+          "NODE_EXTRA_CA_CERTS=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+          "PATH=${runtimePath}"
+          "TMPDIR=/tmp"
+          "MYSQLDUMP_BIN=${mysqlClient}/bin/mysqldump"
+          "MYSQL_BIN=${mysqlClient}/bin/mysql"
+        ];
+
         defaultPkgs = with pkgs; [
           nodejs
           deno
-          mariadb
+          mysqlClient
           sops
           age
           sqlite-interactive
@@ -124,18 +152,20 @@
         prod-image = pkgs.dockerTools.buildLayeredImage {
           name = name;
           tag = version;
+          # TMPDIR=/tmp (runtimeEnv) needs a writable /tmp; the k8s deployment
+          # mounts an emptyDir there, the local podman image needs it baked in.
+          extraCommands = "mkdir -m 1777 tmp";
           contents = [
             pkgs.bashInteractive
             pkgs.coreutils
             pkgs.busybox
             pkgs.sqlite-interactive
-            pkgs.mariadb
+            mysqlClient
+            pkgs.gzip
             prod-package
           ];
           config = {
-            Env = [
-              "NODE_EXTRA_CA_CERTS=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
-            ];
+            Env = runtimeEnv;
             Cmd = [
               "${pkgs.nodejs}/bin/node"
               "${prod-package}/server/index.mjs"
@@ -152,7 +182,8 @@
             pkgs.busybox
             pkgs.cacert
             pkgs.nodejs
-            pkgs.mariadb
+            mysqlClient
+            pkgs.gzip
             src-root
             start-dev
           ];
@@ -186,7 +217,8 @@
             pkgs.cacert
             pkgs.nodejs
             pkgs.sqlite-interactive
-            pkgs.mariadb
+            mysqlClient
+            pkgs.gzip
           ];
           maxLayers = 10;
           # Explicit for the digest-mismatch case (nix2container#127): keep the
@@ -211,9 +243,7 @@
             ghcr-app-layer
           ];
           config = {
-            Env = [
-              "NODE_EXTRA_CA_CERTS=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
-            ];
+            Env = runtimeEnv;
             Cmd = [
               "${pkgs.nodejs}/bin/node"
               "${prod-package}/server/index.mjs"

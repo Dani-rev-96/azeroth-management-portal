@@ -1,11 +1,12 @@
 /**
  * GET /api/admin/backup/portal-list
- * List available portal SQLite databases with size info
+ * List available portal SQLite databases with size info, plus whether restore is enabled
  * GM only
  */
-import { join } from 'path'
 import { existsSync, statSync } from 'fs'
 import { getAuthenticatedFeatureUser } from '#server/utils/auth'
+import { isRestoreEnabled } from '#server/utils/backup/mysql-backup'
+import { PORTAL_DATABASES, getPortalDbPath } from '#server/utils/backup/portal-sqlite'
 
 interface PortalDbEntry {
   key: string
@@ -15,39 +16,12 @@ interface PortalDbEntry {
   exists: boolean
 }
 
-const PORTAL_DATABASES: Array<{ key: string; name: string; envVar: string; defaultFile: string }> = [
-  {
-    key: 'mappings',
-    name: 'Account Mappings',
-    envVar: 'DB_PATH',
-    defaultFile: 'mappings.db',
-  },
-  {
-    key: 'user-settings',
-    name: 'User Settings & Feature Grants',
-    envVar: 'USER_SETTINGS_DB_PATH',
-    defaultFile: 'user-settings.db',
-  },
-  {
-    key: 'portal-config',
-    name: 'Portal Configuration',
-    envVar: 'PORTAL_CONFIG_DB_PATH',
-    defaultFile: 'portal-config.db',
-  },
-]
-
-export function getPortalDbPath(key: string): string | null {
-  const entry = PORTAL_DATABASES.find(db => db.key === key)
-  if (!entry) return null
-  return process.env[entry.envVar] || join(process.cwd(), 'data', entry.defaultFile)
-}
-
 export default defineEventHandler(async (event) => {
   try {
     await getAuthenticatedFeatureUser(event, 'admin.backup')
 
     const databases: PortalDbEntry[] = PORTAL_DATABASES.map((entry) => {
-      const dbPath = process.env[entry.envVar] || join(process.cwd(), 'data', entry.defaultFile)
+      const dbPath = getPortalDbPath(entry.key)!
       let sizeBytes = 0
       let exists = false
 
@@ -76,7 +50,7 @@ export default defineEventHandler(async (event) => {
       }
     })
 
-    return { databases }
+    return { databases, restoreEnabled: isRestoreEnabled() }
   } catch (error) {
     if (error && typeof error === 'object' && 'statusCode' in error) {
       throw error

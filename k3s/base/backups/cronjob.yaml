@@ -1,0 +1,156 @@
+# Nightly logical dumps of the AzerothCore MySQL databases → PVC wow-backups (/backups/mysql).
+# Script: k3s/base/backups/scripts/mysql-backup.sh (ConfigMap wow-backup-scripts).
+# Manual run:  kubectl create job --from=cronjob/mysql-backup mysql-backup-manual-$(date +%s) -n wow
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mysql-backup
+  namespace: wow
+  labels:
+    app.kubernetes.io/name: mysql-backup
+    app.kubernetes.io/part-of: wow-backups
+spec:
+  schedule: "30 3 * * *"
+  timeZone: Europe/Berlin
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mysql-backup
+        app.kubernetes.io/part-of: wow-backups
+    spec:
+      # One retry. The script keeps going when a single database fails and exits 1 at the end,
+      # so a retry dumps every target again (the retention policy keeps both copies of that day).
+      backoffLimit: 1
+      activeDeadlineSeconds: 7200
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: mysql-backup
+            app.kubernetes.io/part-of: wow-backups
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          securityContext:
+            # uid/gid 999 = user "mysql" in the mysql:9 image. fsGroup makes /backups writable for
+            # it; OnRootMismatch skips the recursive chown once the volume root already matches.
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            fsGroup: 999
+            fsGroupChangePolicy: OnRootMismatch
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: mysql-backup
+              # Same image as the wow-acore-*-db servers, so the mysqldump client version matches
+              # the MySQL 9 server version (the servers pull mysql:9 with imagePullPolicy Always;
+              # IfNotPresent here reuses the image the node already has for them).
+              image: mysql:9
+              imagePullPolicy: IfNotPresent
+              command: ["bash", "/scripts/mysql-backup.sh"]
+              env:
+                # Hosts and realm ids come from the portal's ConfigMap (single source of truth).
+                - name: AUTH_HOST
+                  valueFrom:
+                    configMapKeyRef:
+                      name: wow-frontend-env
+                      key: NUXT_DB_AUTH_HOST
+                - name: REALM_0_ID
+                  valueFrom:
+                    configMapKeyRef:
+                      name: wow-frontend-env
+                      key: NUXT_DB_REALM_0_ID
+                - name: REALM_0_HOST
+                  valueFrom:
+                    configMapKeyRef:
+                      name: wow-frontend-env
+                      key: NUXT_DB_REALM_0_HOST
+                - name: REALM_1_ID
+                  valueFrom:
+                    configMapKeyRef:
+                      name: wow-frontend-env
+                      key: NUXT_DB_REALM_1_ID
+                - name: REALM_1_HOST
+                  valueFrom:
+                    configMapKeyRef:
+                      name: wow-frontend-env
+                      key: NUXT_DB_REALM_1_HOST
+                - name: REALM_2_ID
+                  valueFrom:
+                    configMapKeyRef:
+                      name: wow-frontend-env
+                      key: NUXT_DB_REALM_2_ID
+                - name: REALM_2_HOST
+                  valueFrom:
+                    configMapKeyRef:
+                      name: wow-frontend-env
+                      key: NUXT_DB_REALM_2_HOST
+                # "<target>:<host>:<database>". With the current ConfigMap this renders to:
+                #   auth:wow-acore-auth-db:acore_auth
+                #   realm1:wow-acore-blizzlike-db:acore_characters
+                #   realm2:wow-acore-ip-db:acore_characters
+                #   realm3:wow-acore-ip-boosted-db:acore_characters
+                - name: TARGETS
+                  value: >-
+                    auth:$(AUTH_HOST):acore_auth
+                    realm$(REALM_0_ID):$(REALM_0_HOST):acore_characters
+                    realm$(REALM_1_ID):$(REALM_1_HOST):acore_characters
+                    realm$(REALM_2_ID):$(REALM_2_HOST):acore_characters
+                # acore_world is rebuilt from the AzerothCore sources; set to "true" to dump it too.
+                - name: BACKUP_WORLD
+                  value: "false"
+                - name: MYSQL_USER
+                  valueFrom:
+                    configMapKeyRef:
+                      name: wow-frontend-env
+                      key: NUXT_DB_AUTH_USER
+                - name: MYSQL_PORT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: wow-frontend-env
+                      key: NUXT_DB_AUTH_PORT
+                # Read by mysql/mysqldump from the environment, never on the command line.
+                - name: MYSQL_PWD
+                  valueFrom:
+                    secretKeyRef:
+                      name: acore-secrets
+                      key: acore-user-password
+                - name: BACKUP_ROOT
+                  value: /backups/mysql
+                - name: TZ
+                  value: UTC
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: "1"
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: wow-backups
+            - name: scripts
+              configMap:
+                name: wow-backup-scripts
+                defaultMode: 0555
+            - name: tmp
+              emptyDir:
+                sizeLimit: 64Mi

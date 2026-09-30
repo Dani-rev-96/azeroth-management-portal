@@ -1,106 +1,90 @@
 /**
  * POST /api/admin/backup/restore
- * Restore a MySQL dump to auth and/or character databases
- * GM only — accepts raw SQL content
+ * Restore ONE MySQL database from an uploaded .sql or .sql.gz file.
+ * Disabled unless BACKUP_RESTORE_ENABLED=true (403 otherwise).
  *
- * Body: { sql: string, database: 'auth' | 'characters', realmId?: string }
+ * multipart/form-data fields:
+ *   database: 'auth' | 'characters'
+ *   realmId:  required for characters
+ *   confirm:  must equal the full target, e.g. 'acore_auth' or
+ *             'acore_characters@realm1' (the realm is part of the confirmation)
+ *   file:     .sql or .sql.gz
+ *
+ * The upload is streamed to a temp file and from there into `mysql` stdin
+ * (never held in memory). GM only.
  */
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
-import { getAuthenticatedFeatureUser } from '#server/utils/auth'
+import { rm } from 'node:fs/promises'
+import { getAuthenticatedGM } from '#server/utils/auth'
 import { getAuthDbConfig, getRealmConfig } from '#server/utils/config'
-
-const execFileAsync = promisify(execFile)
-
-interface RestoreDbConfig {
-  host: string
-  port: number
-  user: string
-  password: string
-  database: string
-}
+import {
+  createBackupTempDir,
+  isRestoreEnabled,
+  restoreUploadLimitBytes,
+  spawnRestoreFromFile,
+} from '#server/utils/backup/mysql-backup'
+import {
+  BackupRequestError,
+  parseBackupTargetRequest,
+  resolveBackupTarget,
+} from '#server/utils/backup/mysql-target'
+import { MultipartUploadError, receiveMultipartUpload } from '#server/utils/backup/multipart'
 
 export default defineEventHandler(async (event) => {
+  let tempDir: string | null = null
+
   try {
-    const { username } = await getAuthenticatedFeatureUser(event, 'admin.backup')
+    const { username } = await getAuthenticatedGM(event)
 
-    const body = await readBody(event)
-    const { sql, database, realmId } = body as {
-      sql: string
-      database: 'auth' | 'characters'
-      realmId?: string
-    }
-
-    if (!sql || typeof sql !== 'string' || sql.trim().length === 0) {
+    if (!isRestoreEnabled()) {
       throw createError({
-        statusCode: 400,
-        statusMessage: 'SQL content is required',
+        statusCode: 403,
+        statusMessage: 'Restore is disabled on this server (BACKUP_RESTORE_ENABLED)',
       })
     }
 
-    if (!database || !['auth', 'characters'].includes(database)) {
+    tempDir = await createBackupTempDir('amp-restore-')
+    const upload = await receiveMultipartUpload(event.node.req, getHeader(event, 'content-type'), {
+      destDir: tempDir,
+      allowedSuffixes: ['.sql', '.sql.gz'],
+      maxFileBytes: restoreUploadLimitBytes('mysql'),
+    })
+
+    const target = resolveBackupTarget(
+      parseBackupTargetRequest({ database: upload.fields.database, realmId: upload.fields.realmId }),
+      { getAuthDbConfig, getRealmConfig }
+    )
+
+    // The realm is part of the confirmation: picking the wrong realm is the main
+    // risk of a characters restore, so a bare database name is not enough.
+    const expectedConfirm = target.realmId
+      ? `${target.config.database}@realm${target.realmId}`
+      : target.config.database
+    if (upload.fields.confirm !== expectedConfirm) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'Database must be "auth" or "characters"',
+        statusMessage: `Confirmation mismatch: type "${expectedConfirm}" to confirm the restore`,
       })
     }
 
-    if (database === 'characters' && !realmId) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Realm ID is required when restoring characters database',
-      })
-    }
+    const where = `${target.config.database}${target.realmId ? ` (realm ${target.realmId})` : ''}`
+    console.log(`[Restore] GM ${username} starting restore of ${upload.file.originalName} (${upload.file.size} bytes) to ${where}`)
+    const startedAt = Date.now()
 
-    // Validate realm exists
-    if (realmId) {
-      const realm = getRealmConfig(realmId)
-      if (!realm) {
-        throw createError({
-          statusCode: 404,
-          statusMessage: `Realm ${realmId} not found`,
-        })
-      }
-    }
+    await spawnRestoreFromFile(target.config, upload.file.path)
 
-    // Build restore config
-    let dbConfig: RestoreDbConfig
+    console.log(`[Restore] GM ${username} completed restore to ${where} in ${Date.now() - startedAt} ms`)
 
-    if (database === 'auth') {
-      const authConfig = getAuthDbConfig()
-      dbConfig = {
-        host: authConfig.host,
-        port: authConfig.port,
-        user: authConfig.user,
-        password: authConfig.password,
-        database: authConfig.database,
-      }
-    } else {
-      const realmConfig = getRealmConfig(realmId!)!
-      dbConfig = {
-        host: realmConfig.dbHost,
-        port: realmConfig.dbPort,
-        user: realmConfig.dbUser,
-        password: realmConfig.dbPassword,
-        database: 'acore_characters',
-      }
-    }
-
-    console.log(`[Restore] GM ${username} starting restore to ${dbConfig.database}...`)
-
-    await executeMysqlRestore(dbConfig, sql)
-
-    const result = {
+    return {
       success: true,
-      message: `Successfully restored ${database} database${realmId ? ` for realm ${realmId}` : ''}`,
-      database: dbConfig.database,
-      sqlSize: sql.length,
+      message: `Successfully restored ${where} from ${upload.file.originalName}`,
+      database: target.config.database,
+      realmId: target.realmId,
+      sizeBytes: upload.file.size,
     }
-
-    console.log(`[Restore] GM ${username} completed restore to ${dbConfig.database} (${formatBytes(sql.length)})`)
-
-    return result
   } catch (error) {
+    if (error instanceof BackupRequestError || error instanceof MultipartUploadError) {
+      throw createError({ statusCode: error.statusCode, statusMessage: error.message })
+    }
     if (error && typeof error === 'object' && 'statusCode' in error) {
       throw error
     }
@@ -110,41 +94,9 @@ export default defineEventHandler(async (event) => {
       statusCode: 500,
       statusMessage: error instanceof Error ? error.message : 'Failed to restore backup',
     })
+  } finally {
+    if (tempDir) {
+      await rm(tempDir, { recursive: true, force: true }).catch(() => {})
+    }
   }
 })
-
-async function executeMysqlRestore(config: RestoreDbConfig, sql: string): Promise<void> {
-  const args = [
-    `--host=${config.host}`,
-    `--port=${config.port}`,
-    `--user=${config.user}`,
-    config.database,
-  ]
-
-  try {
-    const { stderr } = await execFileAsync('mysql', args, {
-      maxBuffer: 1024 * 1024 * 512, // 512MB max
-      env: {
-        ...process.env,
-        MYSQL_PWD: config.password,
-      },
-      // Pass SQL via stdin
-      input: sql,
-    } as any)
-
-    if (stderr && !stderr.includes('Warning')) {
-      console.warn('[Restore] mysql stderr:', stderr)
-    }
-  } catch (error: any) {
-    console.error('[Restore] mysql import failed:', error.message)
-    throw new Error(`MySQL restore failed for ${config.database}: ${error.stderr || error.message}`)
-  }
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`
-}

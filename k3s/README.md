@@ -13,7 +13,10 @@ k3s/
 │   ├── postgresql/
 │   ├── directus/
 │   ├── wow-wotlk.dani-home.de/
-│   └── ingress/
+│   ├── ingress/
+│   └── backups/                       # Backup-PVC + CronJobs (mysql, sqlite) + Scripts
+│
+├── longhorn/                          # Longhorn RecurringJobs (longhorn-system, manuell!)
 │
 └── overlays/
     └── production/
@@ -174,3 +177,114 @@ stehen direkt als Optionen in der `authorized_keys`-Zeile, kein eigenes
 `db-tunnel-ssh` und `wow-frontend` neu rollen. Der SSH-Host-Fingerprint
 ändert sich bei jedem Neustart des Bastion-Pods (Host-Keys werden in einem
 `emptyDir` gehalten). Für stabile Fingerprints später auf PVC umstellen.
+
+## Backups
+
+> ⚠️ **Restore nie direkt in Prod.** Zurückgespielt wird ausschließlich über die (kommende)
+> Restore-Drill-Prozedur auf einem **Nicht-Prod-MySQL** (lokal `mysql:9` via podman, siehe
+> Phase 4 des Backup-Plans / `scripts/restore-drill.sh`). Keine Dumps per Hand in die
+> `wow-acore-*-db`-Server pipen, keine SQLite-Dateien unter dem laufenden Portal austauschen.
+
+### Was läuft wann
+
+| Wann (Europe/Berlin)      | Was                                  | Wo definiert                          | Ziel |
+|---------------------------|--------------------------------------|---------------------------------------|------|
+| täglich 02:00 ¹           | Longhorn-Snapshot `wow-snapshot-daily` (7 behalten) | `k3s/longhorn/recurring-jobs.yaml` | lokal auf der Longhorn-Disk |
+| täglich 03:15             | CronJob `portal-sqlite-backup`       | `k3s/base/backups/sqlite-cronjob.yaml`| PVC `wow-backups` → `/backups/sqlite` |
+| täglich 03:30             | CronJob `mysql-backup`               | `k3s/base/backups/cronjob.yaml`       | PVC `wow-backups` → `/backups/mysql` |
+| sonntags 04:00 ¹          | Longhorn-Backup `wow-backup-weekly` (4 behalten) | `k3s/longhorn/recurring-jobs.yaml` | Longhorn-Backup-Target (off-site) |
+
+¹ Longhorn-Cron läuft in der Zeitzone des kube-controller-managers (Host-TZ). Die Longhorn-Jobs
+werden **nicht** von `deploy.sh` angewendet und brauchen für `backup` ein Backup-Target. Stand
+2026-09-30 ist **keins** konfiguriert. Details und Befehle: [`k3s/longhorn/README.md`](longhorn/README.md).
+
+`mysql-backup` dumpt `acore_auth` (auth) und `acore_characters` der drei Realms. Hosts und
+Realm-IDs kommen aus der ConfigMap `wow-frontend-env` (`realm1` = blizzlike, `realm2` = ip,
+`realm3` = ip-boosted). `acore_world` nur mit `BACKUP_WORLD=true`. Image `mysql:9`, also dieselbe
+Version wie die Server. Die SQLite-Kopie liest `wow-frontend-sqllite-data` **read-only** mit, während
+das Portal läuft (gleicher Node, podAffinity). Warum das mit WAL sicher ist, steht im Kopf von
+`k3s/base/backups/sqlite-cronjob.yaml`.
+
+Die Scripts liegen in `k3s/base/backups/scripts/` (Quelle; `scripts/backup/` verlinkt nur dorthin)
+und landen per `configMapGenerator` in der ConfigMap `wow-backup-scripts`.
+
+### Dateien auf `wow-backups`
+
+```text
+/backups/mysql/status.json                                # letzter Lauf, pro Target lastSuccessAt/lastError
+/backups/mysql/<db>/<target>/<ts>.sql.gz                  # z.B. acore_characters/realm2/20260930T013000Z.sql.gz
+/backups/mysql/<db>/<target>/<ts>.json                    # Manifest: host, serverVersion, sha256, sizeBytes, durationSec, tables{name: rowEstimate}
+/backups/sqlite/status.json
+/backups/sqlite/<name>/<ts>.db.gz                         # mappings | user-settings | portal-config
+/backups/sqlite/<name>/<ts>.json                          # Manifest inkl. integrityCheck und exakten Row-Counts
+```
+
+`<ts>` ist UTC (`YYYYMMDDTHHMMSSZ`). Ein Dump heißt erst dann `.sql.gz`/`.db.gz`, wenn alles
+geklappt hat: mysqldump- und gzip-Exitcode, `gzip -t`, bei SQLite `integrity_check`. Vorher heißt er
+`.partial`. Jede Datei enthält genau eine Datenbank, ohne `CREATE DATABASE`/`USE`.
+Retention pro Target, erst nach einem erfolgreichen Backup: alles aus den letzten 7 Tagen, dazu das
+neueste Backup jeder ISO-Woche (4 Wochen) und jedes Monats (6 Monate). Script:
+`backup-retention.sh`, Tests: `tests/unit/scripts/backup/`.
+
+### Manuell auslösen / prüfen
+
+```bash
+kubectl create job --from=cronjob/mysql-backup mysql-backup-manual-$(date +%s) -n wow
+kubectl create job --from=cronjob/portal-sqlite-backup portal-sqlite-backup-manual-$(date +%s) -n wow
+
+kubectl get cronjobs,jobs,pods -n wow -l app.kubernetes.io/part-of=wow-backups
+kubectl logs -n wow job/<job-name>
+```
+
+Manuelle Jobs räumt die CronJob-History nicht weg: `kubectl delete job -n wow <job-name>`.
+
+### Backup herauskopieren und verifizieren
+
+Helper-Pod, der `wow-backups` **read-only** mountet. Das Image hat busybox `tar` (braucht
+`kubectl cp`) und `sqlite3`:
+
+```bash
+kubectl run wow-backups-shell -n wow --restart=Never --image=keinos/sqlite3:3.46.1 --overrides='{
+  "spec": {
+    "securityContext": {"runAsUser": 999, "runAsGroup": 999},
+    "containers": [{"name": "wow-backups-shell", "image": "keinos/sqlite3:3.46.1",
+      "command": ["sleep", "3600"],
+      "volumeMounts": [{"name": "backups", "mountPath": "/backups", "readOnly": true}]}],
+    "volumes": [{"name": "backups", "persistentVolumeClaim": {"claimName": "wow-backups", "readOnly": true}}]
+  }}'
+kubectl wait -n wow --for=condition=Ready pod/wow-backups-shell
+kubectl exec -n wow wow-backups-shell -- cat /backups/mysql/status.json
+kubectl exec -n wow wow-backups-shell -- ls -la /backups/mysql/acore_characters/realm2
+
+TS=20260930T013000Z
+kubectl cp wow/wow-backups-shell:/backups/mysql/acore_characters/realm2/$TS.sql.gz ./$TS.sql.gz
+kubectl cp wow/wow-backups-shell:/backups/mysql/acore_characters/realm2/$TS.json   ./$TS.json
+kubectl delete pod -n wow wow-backups-shell
+
+# lokal prüfen
+gzip -t $TS.sql.gz && sha256sum $TS.sql.gz && grep '"sha256"' $TS.json   # Hashes müssen gleich sein
+zcat $TS.sql.gz | head -n 30
+# SQLite: gunzip -c <ts>.db.gz > check.db && sqlite3 check.db 'PRAGMA integrity_check'
+```
+
+### Erster Lauf nach dem Deploy (Checkliste)
+
+1. `./k3s/deploy.sh` legt PVC `wow-backups` (30 Gi, longhorn-fast), ConfigMap und beide CronJobs an.
+2. Beide Jobs einmal manuell starten (siehe oben) und die Logs lesen. `status.json` muss
+   `"ok": true` zeigen.
+3. Die Warnung `SELECT command denied … column_masking_policy … when trying to dump masking policies`
+   ist harmlos: mysqldump 9.x liest optional Masking-Policies, der Dump läuft trotzdem durch.
+4. Enthält eine DB Stored Procedures/Functions, braucht `acore` das globale Recht `SHOW_ROUTINE`.
+   Sonst bricht mysqldump mit `insufficient privileges to SHOW CREATE PROCEDURE` ab und der Job
+   meldet den Fehler. Fix (einmalig, als root auf dem jeweiligen Server):
+   `GRANT SHOW_ROUTINE ON *.* TO 'acore'@'%';`
+5. Schlägt `portal-sqlite-backup` mit `unable to open database file` fehl, sind die SQLite-Dateien
+   für uid 999 nicht lesbar. Dann in `sqlite-cronjob.yaml` `runAsUser: 0` **und** `runAsNonRoot: false`
+setzen; die Quelle bleibt
+   read-only gemountet. Läuft das Portal nicht, bleibt der Job Pending bzw. scheitert, weil er
+   neben dem Portal-Pod laufen muss und die WAL-Dateien braucht.
+
+Grenzen: `wow-backups` liegt auf demselben Node und derselben Disk wie die Datenbanken. Off-site
+gibt es erst mit dem Longhorn-Backup-Target (dann `wow-backups` mit in die Gruppe `wow-backup`
+aufnehmen). Einen Alarm für „neuestes Backup älter als 36 h“ gibt es noch nicht; `status.json` ist
+die Datenquelle dafür (Portal, Phase 2).

@@ -1,121 +1,120 @@
 /**
  * POST /api/admin/backup/portal-restore
- * Restore a portal SQLite database from an uploaded .db file
- * Validates the file is a valid SQLite database before overwriting
+ * Replace a portal SQLite database with an uploaded .db file.
+ * Disabled unless BACKUP_RESTORE_ENABLED=true (403 otherwise).
  *
- * Body: { database: string, data: string (base64) }
- * GM only
+ * Query: ?database=<portal DB key> ('mappings' | 'user-settings' | 'portal-config')
+ * multipart/form-data fields:
+ *   database: optional, must match ?database= when present
+ *   confirm:  must equal the database key
+ *   file:     .db
+ *
+ * The upload is streamed into `<db dir>/.backup-tmp/` (same filesystem as the
+ * target), validated (header, integrity_check, expected table), then swapped in
+ * after closing the live connection. The previous file is kept as
+ * `<name>.pre-restore-<ts>.db`. GM only.
  */
-import { existsSync, mkdirSync } from 'fs'
-import { writeFile, rename, unlink } from 'fs/promises'
-import { dirname, join } from 'path'
-import { tmpdir } from 'os'
-import Database from 'better-sqlite3'
-import { getAuthenticatedFeatureUser } from '#server/utils/auth'
-import { getPortalDbPath } from './portal-list.get'
+import { rm } from 'node:fs/promises'
+import { getAuthenticatedGM } from '#server/utils/auth'
+import { isRestoreEnabled, restoreUploadLimitBytes } from '#server/utils/backup/mysql-backup'
+import { MultipartUploadError, receiveMultipartUpload } from '#server/utils/backup/multipart'
+import {
+  PortalRestoreValidationError,
+  ensurePortalBackupTempDir,
+  getPortalDatabaseDefinition,
+  getPortalDbPath,
+  swapPortalDatabaseFile,
+  validatePortalSqliteFile,
+} from '#server/utils/backup/portal-sqlite'
+import { closeDatabase } from '#server/utils/db'
+import { closeUserSettingsDatabase } from '#server/utils/user-settings'
+import { closePortalConfigDatabase } from '#server/utils/portal-config-db'
+
+/** Closes the live connection of each portal DB; the owning getter reopens lazily. */
+const CLOSE_LIVE_DATABASE: Record<string, () => void> = {
+  'mappings': closeDatabase,
+  'user-settings': closeUserSettingsDatabase,
+  'portal-config': closePortalConfigDatabase,
+}
 
 export default defineEventHandler(async (event) => {
-  let tempPath: string | null = null
+  let uploadedPath: string | null = null
 
   try {
-    const { username } = await getAuthenticatedFeatureUser(event, 'admin.backup')
+    const { username } = await getAuthenticatedGM(event)
 
-    const body = await readBody(event)
-    const { database, data } = body as { database: string; data: string }
-
-    if (!database || typeof database !== 'string') {
+    if (!isRestoreEnabled()) {
       throw createError({
-        statusCode: 400,
-        statusMessage: 'Database key is required',
+        statusCode: 403,
+        statusMessage: 'Restore is disabled on this server (BACKUP_RESTORE_ENABLED)',
       })
     }
 
-    if (!data || typeof data !== 'string') {
+    // The target is taken from ?database= (before the body is parsed) so the upload
+    // can be streamed straight into a temp dir next to that target (same filesystem).
+    const query = getQuery(event)
+    const database = typeof query.database === 'string' ? query.database : ''
+    const definition = getPortalDatabaseDefinition(database)
+    const targetPath = getPortalDbPath(database)
+    const closeLiveDatabase = CLOSE_LIVE_DATABASE[database]
+    if (!definition || !targetPath || !closeLiveDatabase) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'Base64-encoded database file is required',
+        statusMessage: `Unknown portal database: ${database || '(missing ?database=)'}`,
       })
     }
 
-    const dbPath = getPortalDbPath(database)
-    if (!dbPath) {
+    const tempDir = await ensurePortalBackupTempDir(targetPath)
+    const upload = await receiveMultipartUpload(event.node.req, getHeader(event, 'content-type'), {
+      destDir: tempDir,
+      allowedSuffixes: ['.db', '.sqlite', '.sqlite3'],
+      maxFileBytes: restoreUploadLimitBytes('sqlite'),
+    })
+    uploadedPath = upload.file.path
+
+    if (upload.fields.database !== undefined && upload.fields.database !== database) {
       throw createError({
         statusCode: 400,
-        statusMessage: `Unknown portal database: ${database}`,
+        statusMessage: 'Form field "database" does not match the ?database= query parameter',
       })
     }
-
-    // Decode base64 to buffer
-    const buffer = Buffer.from(data, 'base64')
-
-    if (buffer.length === 0) {
+    if (upload.fields.confirm !== database) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'Uploaded file is empty',
+        statusMessage: `Confirmation mismatch: type "${database}" to confirm the restore`,
       })
     }
-
-    // Validate it's actually a SQLite database by checking the header magic
-    const SQLITE_MAGIC = 'SQLite format 3\0'
-    const header = buffer.subarray(0, 16).toString('ascii')
-    if (header !== SQLITE_MAGIC) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Uploaded file is not a valid SQLite database',
-      })
+    if (upload.file.size === 0) {
+      throw createError({ statusCode: 400, statusMessage: 'Uploaded file is empty' })
     }
 
-    // Write to temp file first and validate by opening it
-    const timestamp = Date.now()
-    tempPath = join(tmpdir(), `portal-restore-${database}-${timestamp}.db`)
-    await writeFile(tempPath, buffer)
+    validatePortalSqliteFile(upload.file.path, definition.requiredTable)
 
-    // Try to open and run integrity check
-    try {
-      const testDb = new Database(tempPath, { readonly: true })
-      try {
-        const result = testDb.pragma('integrity_check') as Array<{ integrity_check: string }>
-        if (result[0]?.integrity_check !== 'ok') {
-          throw new Error('Database integrity check failed')
-        }
-      } finally {
-        testDb.close()
-      }
-    } catch (error: any) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: `Invalid SQLite database: ${error.message}`,
-      })
-    }
+    const { preRestorePath } = swapPortalDatabaseFile({
+      targetPath,
+      replacementPath: upload.file.path,
+      closeLiveDatabase,
+    })
+    uploadedPath = null // moved into place
 
-    // Ensure target directory exists
-    const targetDir = dirname(dbPath)
-    if (!existsSync(targetDir)) {
-      mkdirSync(targetDir, { recursive: true })
-    }
-
-    // Remove old WAL/SHM files if they exist (they won't be valid after replacement)
-    try {
-      if (existsSync(dbPath + '-wal')) await unlink(dbPath + '-wal')
-      if (existsSync(dbPath + '-shm')) await unlink(dbPath + '-shm')
-    } catch {
-      // Ignore cleanup errors
-    }
-
-    // Atomically replace the database file
-    await rename(tempPath, dbPath)
-    tempPath = null // Prevent cleanup since we've moved it
-
-    const sizeStr = formatBytes(buffer.length)
-    console.log(`[Restore] GM ${username} restored portal DB: ${database} (${sizeStr})`)
+    console.log(
+      `[Restore] GM ${username} restored portal DB ${database} from ${upload.file.originalName} (${upload.file.size} bytes); previous file kept at ${preRestorePath ?? '(none)'}`
+    )
 
     return {
       success: true,
-      message: `Successfully restored ${database} database (${sizeStr})`,
+      message: `Successfully restored ${database} database (${upload.file.size} bytes)`,
       database,
-      sizeBytes: buffer.length,
+      sizeBytes: upload.file.size,
+      preRestorePath,
     }
   } catch (error) {
+    if (error instanceof MultipartUploadError) {
+      throw createError({ statusCode: error.statusCode, statusMessage: error.message })
+    }
+    if (error instanceof PortalRestoreValidationError) {
+      throw createError({ statusCode: 400, statusMessage: error.message })
+    }
     if (error && typeof error === 'object' && 'statusCode' in error) {
       throw error
     }
@@ -126,21 +125,8 @@ export default defineEventHandler(async (event) => {
       statusMessage: error instanceof Error ? error.message : 'Failed to restore portal backup',
     })
   } finally {
-    // Clean up temp file if it still exists
-    if (tempPath) {
-      try {
-        await unlink(tempPath)
-      } catch {
-        // Ignore cleanup errors
-      }
+    if (uploadedPath) {
+      await rm(uploadedPath, { force: true }).catch(() => {})
     }
   }
 })
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`
-}

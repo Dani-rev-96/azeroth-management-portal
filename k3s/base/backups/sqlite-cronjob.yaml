@@ -1,0 +1,127 @@
+# Nightly copies of the portal SQLite databases (mappings.db, user-settings.db, portal-config.db)
+# → PVC wow-backups (/backups/sqlite). Script: k3s/base/backups/scripts/sqlite-backup.sh.
+# Manual run:  kubectl create job --from=cronjob/portal-sqlite-backup portal-sqlite-backup-manual-$(date +%s) -n wow
+#
+# The source PVC wow-frontend-sqllite-data is ReadWriteOnce and stays mounted read-write by the
+# running wow-frontend pod. RWO allows a second pod on the SAME node, so this Job must land next to
+# wow-frontend (required podAffinity below; the cluster has a single node "ubuntu" anyway). If the
+# portal is not running, the Job stays Pending until activeDeadlineSeconds and fails visibly.
+#
+# The source is mounted READ-ONLY (volume readOnly + mount readOnly): this Job can never write to
+# the portal's databases, and kubelet does not apply fsGroup to read-only volumes, so the portal's
+# file ownership is not touched either. The databases are in WAL mode; SQLite >= 3.22 can read them
+# with a read-only -shm (see the header of sqlite-backup.sh). Verified locally with a concurrent
+# writer: every copy was transactionally consistent and passed integrity_check.
+# Consequences of read-only:
+#   - the -wal/-shm files must exist, i.e. the portal must have the databases open (it opens all
+#     three at startup via the Nitro plugin open-sqlite-databases.ts; if one still has no -wal, the
+#     script falls back to immutable=1, which is safe for a clean checkpointed file). With the
+#     portal stopped and a database that was never opened, the fallback covers it.
+#   - the online backup restarts after every write by the portal; it finishes once the portal is
+#     quiet for a moment (the portal writes rarely). activeDeadlineSeconds bounds a pathological case.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: portal-sqlite-backup
+  namespace: wow
+  labels:
+    app.kubernetes.io/name: portal-sqlite-backup
+    app.kubernetes.io/part-of: wow-backups
+spec:
+  schedule: "15 3 * * *"
+  timeZone: Europe/Berlin
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: portal-sqlite-backup
+        app.kubernetes.io/part-of: wow-backups
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: portal-sqlite-backup
+            app.kubernetes.io/part-of: wow-backups
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app: wow-frontend
+                  topologyKey: kubernetes.io/hostname
+          securityContext:
+            # Same uid/gid as the mysql-backup Job so both can write below /backups.
+            # Reading needs the portal's database files to be world-readable (SQLite creates them
+            # 0644 under the default umask 022). If they are not, the Job fails with "unable to
+            # open database file"; fix: set runAsUser: 0 AND runAsNonRoot: false here (the source
+            # stays mounted read-only).
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            fsGroup: 999
+            fsGroupChangePolicy: OnRootMismatch
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: sqlite-backup
+              # Pinned alpine 3.20 based image with the sqlite3 CLI 3.46.1 (plus busybox gzip,
+              # sha256sum, awk, find, stat). No package install at runtime, so the Job does not
+              # depend on the alpine mirrors; no bash, hence the scripts are POSIX sh.
+              image: keinos/sqlite3:3.46.1
+              imagePullPolicy: IfNotPresent
+              command: ["sh", "/scripts/sqlite-backup.sh"]
+              env:
+                - name: SQLITE_SOURCE_DIR
+                  value: /data/sqlite
+                - name: SQLITE_DATABASES
+                  value: "mappings.db user-settings.db portal-config.db"
+                - name: BACKUP_ROOT
+                  value: /backups/sqlite
+                - name: TZ
+                  value: UTC
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: sqlite-data
+                  mountPath: /data/sqlite
+                  readOnly: true
+                - name: backups
+                  mountPath: /backups
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: sqlite-data
+              persistentVolumeClaim:
+                claimName: wow-frontend-sqllite-data
+                readOnly: true
+            - name: backups
+              persistentVolumeClaim:
+                claimName: wow-backups
+            - name: scripts
+              configMap:
+                name: wow-backup-scripts
+                defaultMode: 0555
+            - name: tmp
+              emptyDir:
+                sizeLimit: 64Mi

@@ -1,6 +1,6 @@
 {
   "name": "azeroth-management-portal",
-  "version": "1.16.4",
+  "version": "1.17.0",
   "type": "module",
   "description": "A modern, CMS-independent management and community portal for AzerothCore WoW servers",
   "repository": {
@@ -41,7 +41,6 @@
     "@pinia/nuxt": "^0.11.3",
     "@primeuix/themes": "^2.0.3",
     "@types/busboy": "^1.5.4",
-    "@vite-pwa/nuxt": "^1.1.0",
     "@vueuse/core": "^14.1.0",
     "@vueuse/nuxt": "^14.1.0",
     "better-sqlite3": "^12.6.2",

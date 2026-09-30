@@ -10,6 +10,7 @@ Production deployment guide for the Azeroth Management Portal.
 - [Reverse Proxy Setup](#reverse-proxy-setup)
 - [SSL/TLS Configuration](#ssltls-configuration)
 - [Production Checklist](#production-checklist)
+- [Backups](#backups)
 - [Monitoring](#monitoring)
 
 ## Deployment Options
@@ -462,6 +463,113 @@ npm run dev:ssl
 - [ ] Configure proper auth mode
 - [ ] Set correct `appBaseUrl`
 - [ ] Test all realm connections
+
+## Backups
+
+> ⚠️ **Never restore straight into production.** Restores only go through the (upcoming)
+> restore-drill procedure against a **non-production MySQL** (a local `mysql:9` started with podman;
+> see Phase 4 of the backup plan / `scripts/restore-drill.sh`). Do not pipe a dump into the
+> `wow-acore-*-db` servers by hand, and do not swap SQLite files under the running portal.
+
+The k3s deployment ships the backup infrastructure in `k3s/base/backups/` (applied by
+`k3s/deploy.sh`) and `k3s/longhorn/` (applied by hand). The operator runbook, in German, is in
+[`k3s/README.md`](../k3s/README.md#backups). The Longhorn part is in
+[`k3s/longhorn/README.md`](../k3s/longhorn/README.md).
+
+### What runs when
+
+| When (Europe/Berlin)  | What                                                             | Output |
+|-----------------------|------------------------------------------------------------------|--------|
+| daily 02:00 ¹         | Longhorn RecurringJob `wow-snapshot-daily` (task snapshot, retain 7) | Longhorn snapshots on the node's disk |
+| daily 03:15           | CronJob `portal-sqlite-backup` (`keinos/sqlite3:3.46.1`)         | PVC `wow-backups` → `/backups/sqlite` |
+| daily 03:30           | CronJob `mysql-backup` (`mysql:9`, same image as the DB servers) | PVC `wow-backups` → `/backups/mysql` |
+| Sunday 04:00 ¹        | Longhorn RecurringJob `wow-backup-weekly` (task backup, retain 4) | Longhorn backup target (off-site) |
+
+¹ Longhorn evaluates the cron expression in the kube-controller-manager's time zone. The `backup`
+task needs a Longhorn backup target. As of 2026-09-30 **none is configured**
+(`BackupTarget default`: `backupTargetURL: ""`), so only the snapshot job should be applied for now.
+
+- `mysql-backup` runs `mysqldump --single-transaction --routines --triggers --events
+  --set-gtid-purged=OFF --no-tablespaces` for `acore_auth` and for each realm's `acore_characters`.
+  `acore_world` is only dumped with `BACKUP_WORLD=true`. Hosts and realm ids come from the
+  `wow-frontend-env` ConfigMap. The password is `acore-secrets/acore-user-password`, passed as
+  `MYSQL_PWD`.
+- `portal-sqlite-backup` mounts `wow-frontend-sqllite-data` **read-only** next to the running portal
+  pod (required podAffinity; the PVC is RWO). It copies `mappings.db`, `user-settings.db` and
+  `portal-config.db` with `sqlite3 'file:…?mode=ro' .backup`, then runs `PRAGMA integrity_check`
+  on the copy.
+- Both jobs: `concurrencyPolicy: Forbid`, `backoffLimit: 1`, run as uid/gid 999 with a read-only
+  root filesystem. If one database fails, the others still run and the job exits non-zero.
+
+### Where the files go
+
+```text
+/backups/mysql/status.json                     last run: per target lastRunAt, lastSuccessAt, lastBackup, lastError
+/backups/mysql/<database>/<target>/<ts>.sql.gz one database per file, no CREATE DATABASE/USE
+/backups/mysql/<database>/<target>/<ts>.json   manifest: database, target, realmId, host, serverVersion,
+                                               createdAt, sizeBytes, sha256 (of the .gz), durationSec,
+                                               tables {name: rowEstimate}
+/backups/sqlite/status.json
+/backups/sqlite/<name>/<ts>.db.gz              name = mappings | user-settings | portal-config
+/backups/sqlite/<name>/<ts>.json               manifest incl. integrityCheck and exact row counts
+```
+
+Targets are `auth`, `realm1`, `realm2`, `realm3` (the realm id). `<ts>` is the UTC start time,
+`YYYYMMDDTHHMMSSZ`. Files are written as `.partial` and only renamed once every check passed:
+both pipeline exit codes, `gzip -t`, and for SQLite `integrity_check`. Retention runs per target,
+and only after a successful backup. It keeps everything from the last 7 days, plus the newest
+backup of each of the last 4 ISO weeks and the newest of each of the last 6 months that have
+backups. The dump and its manifest are deleted together.
+The scripts live in `k3s/base/backups/scripts/`, with links in `scripts/backup/`. They support
+`DRY_RUN=1` and are tested in `tests/unit/scripts/backup/`.
+
+### Trigger a manual run
+
+```bash
+kubectl create job --from=cronjob/mysql-backup mysql-backup-manual-$(date +%s) -n wow
+kubectl create job --from=cronjob/portal-sqlite-backup portal-sqlite-backup-manual-$(date +%s) -n wow
+kubectl get jobs,pods -n wow -l app.kubernetes.io/part-of=wow-backups
+kubectl logs -n wow job/<job-name>
+```
+
+### Copy a backup out and verify it
+
+```bash
+# helper pod that mounts wow-backups read-only (image has tar for kubectl cp, and sqlite3)
+kubectl run wow-backups-shell -n wow --restart=Never --image=keinos/sqlite3:3.46.1 --overrides='{
+  "spec": {
+    "securityContext": {"runAsUser": 999, "runAsGroup": 999},
+    "containers": [{"name": "wow-backups-shell", "image": "keinos/sqlite3:3.46.1",
+      "command": ["sleep", "3600"],
+      "volumeMounts": [{"name": "backups", "mountPath": "/backups", "readOnly": true}]}],
+    "volumes": [{"name": "backups", "persistentVolumeClaim": {"claimName": "wow-backups", "readOnly": true}}]
+  }}'
+kubectl wait -n wow --for=condition=Ready pod/wow-backups-shell
+kubectl exec -n wow wow-backups-shell -- cat /backups/mysql/status.json
+
+TS=20260930T013000Z
+kubectl cp wow/wow-backups-shell:/backups/mysql/acore_auth/auth/$TS.sql.gz ./$TS.sql.gz
+kubectl cp wow/wow-backups-shell:/backups/mysql/acore_auth/auth/$TS.json ./$TS.json
+kubectl delete pod -n wow wow-backups-shell
+
+gzip -t $TS.sql.gz
+sha256sum $TS.sql.gz; grep '"sha256"' $TS.json      # must match
+# SQLite: gunzip -c <ts>.db.gz > check.db && sqlite3 check.db 'PRAGMA integrity_check'   # → ok
+```
+
+### Known limitations
+
+- `wow-backups` is on the same node and Longhorn disk as the databases. An off-site copy only
+  exists once a Longhorn backup target is configured. Then add `wow-backups` to the `wow-backup`
+  group as well.
+- If a database contains stored routines, the `acore` user needs the global `SHOW_ROUTINE`
+  privilege. Without it the dump fails loudly. MySQL 9's mysqldump prints a harmless
+  `column_masking_policy` warning for users without access to the `mysql` schema.
+- The SQLite job runs as uid 999 and assumes the portal's database files are world-readable.
+  If `portal-sqlite-backup` fails with `unable to open database file`, set `runAsUser: 0` **and**
+  `runAsNonRoot: false` in `k3s/base/backups/sqlite-cronjob.yaml` (the source stays read-only).
+- No staleness alert yet ("newest backup older than 36 h"). `status.json` is the data source for
+  it.
 
 ## Monitoring
 
